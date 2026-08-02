@@ -1,2 +1,2 @@
-# pallet
+# Pallet
 SSH/SFTP macOS Application
