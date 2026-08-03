@@ -1,0 +1,17 @@
+{
+  "tabWidth": 2,
+  "useTabs": false,
+  "singleQuote": false,
+  "singleAttributePerLine": true,
+  "trailingComma": "all",
+  "printWidth": 128,
+  "overrides": [
+    {
+      "files": ["*.html"],
+      "options": {
+        "singleAttributePerLine": false
+      }
+    }
+  ],
+  "plugins": ["prettier-plugin-tailwindcss"]
+}

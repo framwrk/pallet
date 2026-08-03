@@ -1,0 +1,12 @@
+{
+  "version": 10,
+  "users": [
+    {
+      "status": 1,
+      "username": "testuser",
+      "password": "testpass",
+      "home_dir": "/srv/sftpgo/data/testuser",
+      "permissions": { "/": ["*"] }
+    }
+  ]
+}

@@ -1,0 +1,25 @@
+# environment variables
+.env
+
+# packages
+node_modules
+
+# builds
+dist
+out
+
+# OS files
+.DS_Store
+
+# cache
+.eslintcache
+
+# logs
+*.log*
+
+# tests
+tests/node/.build/
+tests/integration/docker/keys/
+
+# other files
+CLAUDE.md

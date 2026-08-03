@@ -1,0 +1,55 @@
+appId: com.framwrk.pallet
+productName: Pallet
+directories:
+  buildResources: build
+files:
+  - "!**/.vscode/*"
+  - "!src/*"
+  - "!tests/*"
+  - "!electron.vite.config.{js,ts,mjs,cjs}"
+  - "!{.eslintcache,eslint.config.mjs,.prettierignore,.prettierrc.yaml,CHANGELOG.md,README.md}"
+  - "!{.env,.env.*,.npmrc,pnpm-lock.yaml,bun.lock,bun.lockb}"
+  - "!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}"
+  - "!{INITIAL_PLAN.md,PROJECT_INFO.md}"
+asarUnpack:
+  - resources/**
+win:
+  executableName: pallet
+nsis:
+  artifactName: ${name}-${version}-setup.${ext}
+  shortcutName: ${productName}
+  uninstallDisplayName: ${productName}
+  createDesktopShortcut: always
+mac:
+  entitlementsInherit: build/entitlements.mac.plist
+  # arm64 only for the beta. A universal build needs every native dependency
+  # compiled for both slices; ssh2's optional `sshcrypto.node` addon is a
+  # single locally-built binary, so a universal package would carry an arm64
+  # object inside the x64 slice. Shipping Intel support means building native
+  # deps per-arch in CI — tracked as a follow-up, not a beta blocker.
+  target:
+    - target: dmg
+      arch: arm64
+    - target: zip
+      arch: arm64
+  minimumSystemVersion: "13.0"
+  extendInfo:
+    - NSDocumentsFolderUsageDescription: Pallet browses and transfers files in your Documents folder.
+    - NSDownloadsFolderUsageDescription: Pallet browses and transfers files in your Downloads folder.
+  notarize: false
+dmg:
+  artifactName: ${name}-${version}.${ext}
+linux:
+  target:
+    - AppImage
+    - snap
+    - deb
+  maintainer: electronjs.org
+  category: Utility
+appImage:
+  artifactName: ${name}-${version}.${ext}
+npmRebuild: false
+publish:
+  provider: github
+  owner: framwrk
+  repo: pallet

@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    # Versions are strictly MAJOR.MINOR.PATCH, so tags are v0.1.0 — never v0.1.0-beta.1.
+    tags: ["v[0-9]+.[0-9]+.[0-9]+"]
+  pull_request:
+
+jobs:
+  check:
+    name: Lint, typecheck, unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+      - run: bun install --frozen-lockfile
+      - run: bun run lint
+      - run: bun run typecheck
+      - run: bun run test
+
+  integration:
+    name: SFTP integration (Dockerized OpenSSH)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+      - run: bun install --frozen-lockfile
+      # The harness builds and runs the containers itself. The suites verify the
+      # daemon is reachable first and fail fast with a clear message if not.
+      - run: docker info --format 'docker {{.ServerVersion}} ready'
+      - run: bun run test:integration
+      - run: bun run test:interop
+      - run: bun run test:advanced
+      - run: bun run test:resilience
+      # Scale is trimmed in CI — the full 5 GB / 10k run is a release check.
+      - run: PALLET_SCALE_GB=1 PALLET_SCALE_FILES=2000 bun run test:scale
+
+  package:
+    name: electron-builder dry run
+    # Only on tags: packaging needs macOS runners, which are metered.
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+      - run: bun install --frozen-lockfile
+      - run: bun run rebuild
+      - run: bun run build:mac
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pallet-macos
+          path: |
+            dist/*.dmg
+            dist/*.zip

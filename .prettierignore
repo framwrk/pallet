@@ -1,0 +1,8 @@
+out
+dist
+bun.lock
+LICENSE.md
+tsconfig.json
+tsconfig.*.json
+src/renderer/src/components/ui
+tests/node/.build
