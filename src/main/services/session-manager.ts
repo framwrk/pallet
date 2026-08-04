@@ -190,6 +190,12 @@ export class SessionManager {
     // Post-handshake errors must not become uncaught exceptions.
     client.on("error", () => {});
     session.reconnectAttempt = 0;
+    // handleDrop already emptied the pool, but a stream destroyed by the drop
+    // can emit 'close' without an 'error' and release its channel back into
+    // the free list afterwards — still on the outgoing generation, so the
+    // release-time guard lets it through. Clear the pool again here, where the
+    // new connection begins, so nothing from the old one can be leased out.
+    this.resetPool(session, new Error("Connection replaced"));
     session.generation++;
     this.setStatus(session, "connected");
   }

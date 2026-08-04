@@ -21,6 +21,16 @@ import { makeEndpoint, joinPath, type TransferEndpoint } from "./endpoints";
 import type { SessionManager } from "../session-manager";
 
 const PART_SUFFIX = ".pallet-part";
+/**
+ * Backstop for the stream path, mirroring the endpoint's META_TIMEOUT_MS.
+ *
+ * A channel can be dead while the session still reports "connected" — ssh2
+ * never calls back on one, so `client.sftp()` and the pipeline both wait
+ * forever and the job sits in "running" with a `.pallet-part` on the server.
+ * Nothing else catches that: keepalive (45s) only notices a dead *transport*.
+ * Sitting above it keeps ordinary drops on the auto-pause path.
+ */
+const STALL_TIMEOUT_MS = 60_000;
 
 interface PlanFile {
   relPath: string;
@@ -359,15 +369,30 @@ export class TransferQueue {
       flight.abort = reject;
     });
 
+    // Fires only if this file makes no progress at all; every chunk re-arms it.
+    let stalled = false;
+    let stallTimer: NodeJS.Timeout | null = null;
+    const armStall = (): void => {
+      if (stallTimer) clearTimeout(stallTimer);
+      stallTimer = setTimeout(() => {
+        stalled = true;
+        flight.abort?.(new Error(`Transfer stalled: no progress for ${STALL_TIMEOUT_MS / 1000}s`));
+      }, STALL_TIMEOUT_MS);
+    };
+
     const startBytes = job.doneBytes;
     try {
-      const src = await job.from.createReadStream(joinPath(job.request.sourceBase, file.relPath));
+      armStall();
+      // Opening races the abort too: acquiring a channel is itself an
+      // unbounded wait, and this is where `aborted` gets its first handler.
+      const src = await Promise.race([job.from.createReadStream(joinPath(job.request.sourceBase, file.relPath)), aborted]);
       flight.src = src;
-      const dst = await job.to.createWriteStream(partPath, file.mode);
+      const dst = await Promise.race([job.to.createWriteStream(partPath, file.mode), aborted]);
       flight.dst = dst;
 
       const counter = new Transform({
         transform: (chunk: Buffer, _enc, cb) => {
+          armStall();
           job.doneBytes += chunk.length;
           job.samples.push({ t: Date.now(), bytes: job.doneBytes });
           if (job.samples.length > 200) job.samples.splice(0, 100);
@@ -400,12 +425,16 @@ export class TransferQueue {
         // Put the file back and let the session's reconnect revive us.
         job.queue.unshift(file);
         this.setAutoPaused(job, true);
-      } else if (job.userPaused || job.autoPaused) {
+      } else if (job.userPaused || job.autoPaused || stalled) {
+        // A stall with the session still up means this channel is dead, not
+        // the connection: retry the file on a fresh one rather than pausing
+        // for a reconnect that is never going to be announced.
         job.queue.unshift(file);
       } else {
         job.errors.push({ relPath: file.relPath, message: (err as Error).message });
       }
     } finally {
+      if (stallTimer) clearTimeout(stallTimer);
       job.inFlight.delete(file.relPath);
       this.emit(job, true);
     }
