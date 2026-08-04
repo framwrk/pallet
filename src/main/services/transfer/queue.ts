@@ -31,6 +31,8 @@ const PART_SUFFIX = ".pallet-part";
  * Sitting above it keeps ordinary drops on the auto-pause path.
  */
 const STALL_TIMEOUT_MS = 60_000;
+/** Guard against retrying one file forever when its channel keeps dying. */
+const MAX_CHANNEL_RETRIES = 5;
 
 interface PlanFile {
   relPath: string;
@@ -82,6 +84,8 @@ class Job {
   errors: TransferError[] = [];
   /** Names already produced per destination directory (keep-both bookkeeping). */
   destNames = new Map<string, Set<string>>();
+  /** Per-file count of retries after a dead channel, capped so it can't spin. */
+  retries = new Map<string, number>();
   samples: { t: number; bytes: number }[] = [];
   lastEmit = 0;
   resumeWaiters: (() => void)[] = [];
@@ -421,15 +425,20 @@ export class TransferQueue {
       job.doneBytes = startBytes;
 
       if (job.canceled) return;
-      if (this.isDisconnect(job, err)) {
+      if (this.sessionDown(job)) {
         // Put the file back and let the session's reconnect revive us.
         job.queue.unshift(file);
         this.setAutoPaused(job, true);
-      } else if (job.userPaused || job.autoPaused || stalled) {
-        // A stall with the session still up means this channel is dead, not
-        // the connection: retry the file on a fresh one rather than pausing
-        // for a reconnect that is never going to be announced.
+      } else if (job.userPaused || job.autoPaused) {
         job.queue.unshift(file);
+      } else if (stalled || this.isChannelError(err)) {
+        // The session is up, so this is one dead channel — or the reconnect
+        // landed while we were in here. Either way, retry on a fresh channel:
+        // auto-pausing now would wait on a status event that never comes.
+        const attempts = (job.retries.get(file.relPath) ?? 0) + 1;
+        job.retries.set(file.relPath, attempts);
+        if (attempts <= MAX_CHANNEL_RETRIES) job.queue.unshift(file);
+        else job.errors.push({ relPath: file.relPath, message: (err as Error).message });
       } else {
         job.errors.push({ relPath: file.relPath, message: (err as Error).message });
       }
@@ -440,19 +449,22 @@ export class TransferQueue {
     }
   }
 
-  private isDisconnect(job: Job, err: unknown): boolean {
-    const refs = [job.request.from, job.request.to];
-    const sftpRefs = refs.filter((r) => r.kind === "sftp");
+  /** True while a session this job depends on is not usable. */
+  private sessionDown(job: Job): boolean {
+    const sftpRefs = [job.request.from, job.request.to].filter((r) => r.kind === "sftp");
     if (sftpRefs.length === 0) return false;
-    const disconnected = sftpRefs.some((r) => {
+    return sftpRefs.some((r) => {
       try {
         return this.sessions.status((r as { sessionId: string }).sessionId) !== "connected";
       } catch {
         return true;
       }
     });
-    const msg = (err as Error).message ?? "";
-    return disconnected || /ENOTCONN|not connected|no response|channel closed/i.test(msg);
+  }
+
+  /** "The channel is gone", as opposed to "this file cannot be transferred". */
+  private isChannelError(err: unknown): boolean {
+    return /ENOTCONN|not connected|no response|channel closed/i.test((err as Error).message ?? "");
   }
 
   private setAutoPaused(job: Job, value: boolean): void {
