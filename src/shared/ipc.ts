@@ -48,6 +48,13 @@ export const AppChannels = {
   updateAvailable: "app:updateAvailable",
 } as const;
 
+export const PrefChannels = {
+  get: "prefs:get",
+  set: "prefs:set",
+  /** main → renderer: preferences changed, broadcast to every window. */
+  changed: "prefs:changed",
+} as const;
+
 export const EditChannels = {
   open: "edit:open",
   /** main → renderer re-upload notifications. */

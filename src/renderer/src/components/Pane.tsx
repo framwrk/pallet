@@ -1,12 +1,12 @@
 import { useMemo, useState } from "react";
-import { ChevronDown, ChevronRight, ChevronUp, AlertTriangle, Server, CircleX, RefreshCw } from "lucide-react";
+import { AlertTriangle, ChevronDown, ChevronRight, ChevronUp, CircleX, RefreshCw, Server } from "lucide-react";
 import type { SortKey } from "@shared/types";
 import { cn } from "@/lib/utils";
 import { formatBytes } from "@/lib/format";
 import { visibleEntries } from "@/lib/entries";
 import { FileList } from "./FileList";
 import { Button } from "@/components/ui/button";
-import { navigate, pathLib, setActive, setSort, useAppState, type PaneBackend, type PaneId } from "@/store/panes";
+import { type PaneBackend, type PaneId, navigate, pathLib, setActive, setSort, useAppState } from "@/store/panes";
 import { disconnectPane, reconnectPane } from "@/store/sftp";
 
 function SortHeader({

@@ -35,10 +35,12 @@ function ConnectForm({
   paneId,
   editing,
   prefill,
+  defaultConcurrency,
 }: {
   paneId: "left" | "right";
   editing: Favorite | null;
   prefill: Favorite | null;
+  defaultConcurrency: number;
 }): React.JSX.Element {
   const seed = editing ?? prefill;
   const [name, setName] = useState(seed?.name ?? "");
@@ -56,7 +58,7 @@ function ConnectForm({
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [keepalive, setKeepalive] = useState("15");
   const [compression, setCompression] = useState(false);
-  const [concurrency, setConcurrency] = useState("4");
+  const [concurrency, setConcurrency] = useState(String(defaultConcurrency));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -110,7 +112,7 @@ function ConnectForm({
       ...(remotePathField.trim() ? { remotePath: remotePathField.trim() } : {}),
       keepaliveIntervalMs: Math.max(0, Number.parseInt(keepalive, 10) || 15) * 1000,
       compression,
-      concurrency: Number.parseInt(concurrency, 10) || 4,
+      concurrency: Number.parseInt(concurrency, 10) || defaultConcurrency,
     };
     setBusy(true);
     setError(null);
@@ -397,6 +399,7 @@ export function ConnectDialog(): React.JSX.Element {
           paneId={app.active}
           editing={editing}
           prefill={app.connectPrefill}
+          defaultConcurrency={app.defaultConcurrency}
         />
       </DialogContent>
     </Dialog>

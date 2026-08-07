@@ -16,6 +16,7 @@ import type {
   VolumeInfo,
 } from "../shared/types";
 import type { PalletApi } from "../shared/api";
+import type { Preferences } from "../shared/preferences";
 import type { ConflictAction, ConflictPrompt, TransferJobSnapshot, TransferRequest } from "../shared/transfers";
 import {
   AppChannels,
@@ -23,6 +24,7 @@ import {
   FavoriteChannels,
   FsChannels,
   HostKeyChannels,
+  PrefChannels,
   SftpChannels,
   TransferChannels,
   UiChannels,
@@ -121,6 +123,11 @@ const pallet: PalletApi = {
     revealLog: (): Promise<void> => invoke(AppChannels.revealLog),
     onUpdateAvailable: (cb: (info: { version: string; url: string; prerelease: boolean }) => void): (() => void) =>
       subscribe(AppChannels.updateAvailable, cb),
+  },
+  prefs: {
+    get: (): Promise<Preferences> => invoke(PrefChannels.get),
+    set: (patch: Partial<Preferences>): Promise<Preferences> => invoke(PrefChannels.set, patch),
+    onChange: (cb: (prefs: Preferences) => void): (() => void) => subscribe(PrefChannels.changed, cb),
   },
   ui: {
     contextMenu: (items: ContextMenuItem[]): Promise<string | null> => invoke(UiChannels.contextMenu, items),

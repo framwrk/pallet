@@ -8,6 +8,7 @@ import type { EndpointRef } from "@shared/transfers";
 import { enqueuePaneCopy } from "./transfers";
 import { isDirLike } from "@/lib/entries";
 import {
+  type PaneId,
   getState,
   navigate,
   otherPane,
@@ -16,7 +17,6 @@ import {
   selectNames,
   setConfirmDelete,
   setRenaming,
-  type PaneId,
 } from "./panes";
 
 interface Clipboard {

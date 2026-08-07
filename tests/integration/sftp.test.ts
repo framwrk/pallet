@@ -5,7 +5,7 @@
  */
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import type { SessionStatusEvent } from "../../src/shared/types";
-import { SessionManager, type HostKeyDecisionInput } from "../../src/main/services/session-manager";
+import { type HostKeyDecisionInput, SessionManager } from "../../src/main/services/session-manager";
 import { SftpService } from "../../src/main/services/sftp-service";
 import { HARNESS, restartServer, startServer, stopServer } from "./harness";
 

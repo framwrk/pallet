@@ -1,4 +1,4 @@
-import { promises as fs, type Dirent, type Stats } from "fs";
+import { type Dirent, type Stats, promises as fs } from "fs";
 import { join } from "path";
 import { homedir } from "os";
 import type { DirListing, Entry, KnownFolders, VolumeInfo } from "../../shared/types";

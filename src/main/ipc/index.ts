@@ -9,6 +9,7 @@ import { popupContextMenu } from "../services/context-menu";
 import { registerSftpHandlers } from "./sftp";
 import { registerFavoriteHandlers } from "./favorites";
 import { registerTransferHandlers } from "./transfers";
+import { registerPrefHandlers } from "./prefs";
 
 /**
  * Every handler returns an IpcResult envelope instead of throwing, so the
@@ -57,6 +58,7 @@ export function registerIpcHandlers(): void {
   registerSftpHandlers();
   registerFavoriteHandlers();
   registerTransferHandlers();
+  registerPrefHandlers();
 
   handle(AppChannels.version, () => app.getVersion());
   handle(AppChannels.checkForUpdate, () => checkForUpdate());

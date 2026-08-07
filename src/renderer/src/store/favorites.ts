@@ -1,6 +1,6 @@
 /** Favorites CRUD + connect-by-favorite (M4). */
 import type { Favorite, FavoriteInput } from "@shared/types";
-import { getState, navigate, otherPane, pushToast, setBackend, setConnectOpen, setFavorites, type PaneId } from "./panes";
+import { type PaneId, getState, navigate, otherPane, pushToast, setBackend, setConnectOpen, setFavorites } from "./panes";
 
 export async function loadFavorites(): Promise<void> {
   try {

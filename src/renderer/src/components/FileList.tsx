@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { Folder, File as FileIcon, CornerUpRight } from "lucide-react";
+import { CornerUpRight, File as FileIcon, Folder } from "lucide-react";
 import type { Entry } from "@shared/types";
 import { cn } from "@/lib/utils";
 import { formatBytes, formatModified } from "@/lib/format";
 import { isDirLike } from "@/lib/entries";
-import { extendTo, selectOnly, toggleSelect, clearSelection, setActive, type PaneId, type PaneState } from "@/store/panes";
+import { type PaneId, type PaneState, clearSelection, extendTo, selectOnly, setActive, toggleSelect } from "@/store/panes";
 import { cancelRename, commitRename, openEntry, showBackgroundContextMenu, showRowContextMenu } from "@/store/ops";
 import { enqueuePaneCopy } from "@/store/transfers";
 

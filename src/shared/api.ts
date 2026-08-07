@@ -1,4 +1,5 @@
 import type { ConflictAction, ConflictPrompt, TransferJobSnapshot, TransferRequest } from "./transfers";
+import type { Preferences } from "./preferences";
 import type {
   ConnectProfile,
   ConnectResult,
@@ -97,6 +98,13 @@ export interface PalletApi {
     openExternal(url: string): Promise<void>;
     revealLog(): Promise<void>;
     onUpdateAvailable(cb: (info: { version: string; url: string; prerelease: boolean }) => void): () => void;
+  };
+  prefs: {
+    get(): Promise<Preferences>;
+    /** Merges a patch; resolves with the full new set. */
+    set(patch: Partial<Preferences>): Promise<Preferences>;
+    /** Subscribe to changes from any window; returns unsubscribe. */
+    onChange(cb: (prefs: Preferences) => void): () => void;
   };
   ui: {
     /** Native context menu; resolves with the clicked item id, or null. */

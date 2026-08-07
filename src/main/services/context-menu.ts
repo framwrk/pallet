@@ -1,4 +1,4 @@
-import { BrowserWindow, Menu, type IpcMainInvokeEvent } from "electron";
+import { BrowserWindow, type IpcMainInvokeEvent, Menu } from "electron";
 import type { ContextMenuItem } from "../../shared/types";
 
 /** Show a native context menu; resolves with the clicked item id, or null. */

@@ -10,6 +10,7 @@ import { createHash } from "crypto";
 import { promises as fs } from "fs";
 import { Client, type ConnectConfig, type SFTPWrapper } from "ssh2";
 import type { ConnectProfile, ConnectResult, SessionStatus, SessionStatusEvent } from "../../shared/types";
+import { MAX_CONCURRENCY as MAX_CONCURRENCY_PREFERENCE } from "../../shared/preferences";
 
 export interface HostKeyDecisionInput {
   host: string;
@@ -55,7 +56,7 @@ const DEFAULT_CONCURRENCY = 3;
  * SFTP endpoint holds one for metadata, so capping streams at 7 keeps the
  * worst case at 9 and leaves headroom.
  */
-const MAX_CONCURRENCY = 7;
+const MAX_CONCURRENCY = Math.min(7, MAX_CONCURRENCY_PREFERENCE);
 
 export function parseKeyType(keyBlob: Buffer): string {
   try {

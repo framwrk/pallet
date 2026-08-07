@@ -1,8 +1,8 @@
 import { useRef, useState } from "react";
-import { HardDrive, Home, Monitor, FileText, Download, Usb, Plug, Server } from "lucide-react";
+import { Download, FileText, HardDrive, Home, Monitor, Plug, Server, Usb } from "lucide-react";
 import type { ColorLabel, Favorite } from "@shared/types";
 import { cn } from "@/lib/utils";
-import { navigate, setConnectOpen, setEditingFavorite, useAppState, type PaneId } from "@/store/panes";
+import { type PaneId, navigate, setConnectOpen, setEditingFavorite, useAppState } from "@/store/panes";
 import { connectFavorite, favoriteContextMenu, reorderFavorites } from "@/store/favorites";
 
 const LABEL_COLORS: Record<ColorLabel, string> = {
@@ -110,7 +110,7 @@ export function Sidebar(): React.JSX.Element {
   }
 
   return (
-    <aside className="bg-sidebar flex w-44 shrink-0 flex-col gap-3 overflow-y-auto border-r px-2 py-2">
+    <aside className="bg-sidebar m-2 flex w-48 shrink-0 flex-col gap-3 overflow-y-auto rounded-lg p-2">
       <button
         className="border-border text-sidebar-foreground hover:bg-sidebar-accent flex w-full items-center gap-2 rounded-md border border-dashed px-2 py-1.5 text-left text-[13px]"
         onClick={() => setConnectOpen(true)}

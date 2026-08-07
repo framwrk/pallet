@@ -1,0 +1,29 @@
+import { BrowserWindow, ipcMain } from "electron";
+import type { IpcResult } from "../../shared/types";
+import type { Preferences } from "../../shared/preferences";
+import { PrefChannels } from "../../shared/ipc";
+import { getPreferences, setPreferences } from "../services/prefs-store";
+
+function handle<Args extends unknown[], T>(channel: string, fn: (...args: Args) => T | Promise<T>): void {
+  ipcMain.handle(channel, async (_event, ...args): Promise<IpcResult<T>> => {
+    try {
+      return { ok: true, value: await fn(...(args as Args)) };
+    } catch (err) {
+      const e = err as NodeJS.ErrnoException;
+      return { ok: false, error: { code: e.code ?? "EUNKNOWN", message: e.message ?? String(err) } };
+    }
+  });
+}
+
+export function registerPrefHandlers(): void {
+  handle(PrefChannels.get, () => getPreferences());
+  handle(PrefChannels.set, (patch: Partial<Preferences>) => {
+    const next = setPreferences(patch);
+    // Broadcast to every window (sender included) so the main window and the
+    // settings window stay in sync through one path.
+    for (const win of BrowserWindow.getAllWindows()) {
+      win.webContents.send(PrefChannels.changed, next);
+    }
+    return next;
+  });
+}

@@ -8,7 +8,7 @@ import { createWriteStream, promises as fs, unwatchFile, watchFile } from "fs";
 import { join } from "path";
 import { randomUUID } from "crypto";
 import { pipeline } from "stream/promises";
-import { makeEndpoint, type TransferEndpoint } from "./transfer/endpoints";
+import { type TransferEndpoint, makeEndpoint } from "./transfer/endpoints";
 import type { SessionManager } from "./session-manager";
 
 export interface EditEvent {

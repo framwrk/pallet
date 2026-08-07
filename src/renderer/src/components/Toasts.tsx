@@ -1,4 +1,4 @@
-import { X, AlertCircle, Info } from "lucide-react";
+import { AlertCircle, Info, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { dismissToast, useAppState } from "@/store/panes";
 

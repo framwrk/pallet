@@ -2,7 +2,7 @@
 import { useSyncExternalStore } from "react";
 import type { ConflictAction, ConflictPrompt, TransferJobSnapshot } from "@shared/transfers";
 import type { EndpointRef } from "@shared/transfers";
-import { getState, pushToast, refresh, type PaneId } from "./panes";
+import { type PaneId, getState, pushToast, refresh } from "./panes";
 
 interface TransferUiState {
   jobs: TransferJobSnapshot[];

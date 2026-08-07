@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { remotePath, localPath } from "../../src/shared/paths";
+import { localPath, remotePath } from "../../src/shared/paths";
 
 describe("remotePath.normalize", () => {
   test("collapses dot segments and duplicate slashes", () => {

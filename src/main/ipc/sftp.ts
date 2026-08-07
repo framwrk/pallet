@@ -2,7 +2,7 @@ import { BrowserWindow, dialog, ipcMain } from "electron";
 import { randomUUID } from "crypto";
 import type { ConnectProfile, HostKeyPrompt, IpcResult, PreviewData } from "../../shared/types";
 import { EditChannels, HostKeyChannels, SftpChannels, UiChannels } from "../../shared/ipc";
-import { SessionManager, type HostKeyDecisionInput } from "../services/session-manager";
+import { type HostKeyDecisionInput, SessionManager } from "../services/session-manager";
 import { SftpService } from "../services/sftp-service";
 import { EditSessions } from "../services/edit-sessions";
 import * as hostKeys from "../services/host-key-store";

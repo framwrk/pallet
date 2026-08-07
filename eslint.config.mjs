@@ -37,6 +37,7 @@ export default defineConfig(
     rules: {
       ...eslintPluginReactHooks.configs.recommended.rules,
       ...eslintPluginReactRefresh.configs.vite.rules,
+      "sort-imports": "error",
     },
   },
   // The renderer never constructs paths with Node's `path` (POSIX vs platform
@@ -44,6 +45,7 @@ export default defineConfig(
   {
     files: ["src/renderer/**/*.{ts,tsx}"],
     rules: {
+      "sort-imports": "error",
       "no-restricted-imports": [
         "error",
         {

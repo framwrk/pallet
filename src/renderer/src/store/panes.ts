@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from "react";
 import type { Entry, Favorite, HostKeyPrompt, KnownFolders, SessionStatus, SortDir, SortKey, VolumeInfo } from "@shared/types";
 import { localPath, remotePath } from "@shared/paths";
+import { DEFAULT_PREFERENCES } from "@shared/preferences";
 
 export type PaneId = "left" | "right";
 
@@ -52,6 +53,8 @@ export interface AppState {
   active: PaneId;
   panes: Record<PaneId, PaneState>;
   showHidden: boolean;
+  /** Preference seeding the connect dialog's concurrency field. */
+  defaultConcurrency: number;
   volumes: VolumeInfo[];
   knownFolders: KnownFolders | null;
   goToOpen: boolean;
@@ -90,7 +93,8 @@ function initialPane(): PaneState {
 let state: AppState = {
   active: "left",
   panes: { left: initialPane(), right: initialPane() },
-  showHidden: false,
+  showHidden: DEFAULT_PREFERENCES.showHidden,
+  defaultConcurrency: DEFAULT_PREFERENCES.defaultConcurrency,
   volumes: [],
   knownFolders: null,
   goToOpen: false,
@@ -242,6 +246,8 @@ export function setSort(id: PaneId, key: SortKey): void {
 
 export function setShowHidden(show: boolean): void {
   setApp({ showHidden: show });
+  // Persisted so the settings window and the next launch agree.
+  void window.pallet.prefs.set({ showHidden: show });
 }
 
 export function setGoToOpen(open: boolean): void {
@@ -384,12 +390,20 @@ export function moveFocus(id: PaneId, delta: number, extend: boolean, visible: r
 // --- boot ------------------------------------------------------------------
 
 export async function initApp(): Promise<void> {
-  const [home, folders, vols] = await Promise.all([
+  const [home, folders, vols, prefs] = await Promise.all([
     window.pallet.fs.homeDir(),
     window.pallet.fs.knownFolders(),
     window.pallet.fs.volumes(),
+    window.pallet.prefs.get(),
   ]);
-  setApp({ knownFolders: folders, volumes: vols });
+  setApp({
+    knownFolders: folders,
+    volumes: vols,
+    showHidden: prefs.showHidden,
+    defaultConcurrency: prefs.defaultConcurrency,
+  });
+  // Keep in step with edits made in the settings window.
+  window.pallet.prefs.onChange((next) => setApp({ showHidden: next.showHidden, defaultConcurrency: next.defaultConcurrency }));
   await Promise.all([navigate("left", home, "replace"), navigate("right", home, "replace")]);
 }
 

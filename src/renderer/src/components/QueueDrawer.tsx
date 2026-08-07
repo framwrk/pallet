@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronUp, Pause, Play, RotateCcw, Trash2, X, AlertCircle } from "lucide-react";
+import { AlertCircle, ChevronDown, ChevronUp, Pause, Play, RotateCcw, Trash2, X } from "lucide-react";
 import type { TransferJobSnapshot } from "@shared/transfers";
 import { cn } from "@/lib/utils";
 import { formatBytes } from "@/lib/format";

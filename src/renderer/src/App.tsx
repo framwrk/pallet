@@ -16,13 +16,13 @@ import { loadFavorites } from "@/store/favorites";
 import { initTransferEvents } from "@/store/transfers";
 import { visibleEntries } from "@/lib/entries";
 import {
+  clearSelection,
   getState,
   goUp,
   initApp,
   moveFocus,
   refresh,
   selectAll,
-  clearSelection,
   setConnectOpen,
   setGoToOpen,
   setInspectorOpen,

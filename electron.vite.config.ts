@@ -14,6 +14,14 @@ export default defineConfig({
         "@shared": resolve("src/shared"),
       },
     },
+    build: {
+      rollupOptions: {
+        input: {
+          index: resolve("src/renderer/index.html"),
+          settings: resolve("src/renderer/settings.html"),
+        },
+      },
+    },
     plugins: [react(), tailwindcss()],
   },
 });
