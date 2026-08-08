@@ -17,9 +17,6 @@ out
 # logs
 *.log*
 
-# tests
-tests/node/.build/
-tests/integration/docker/keys/
 
 # other files
 CLAUDE.md

@@ -5,7 +5,6 @@ directories:
 files:
   - "!**/.vscode/*"
   - "!src/*"
-  - "!tests/*"
   - "!electron.vite.config.{js,ts,mjs,cjs}"
   - "!{.eslintcache,eslint.config.mjs,.prettierignore,.prettierrc.yaml,CHANGELOG.md,README.md}"
   - "!{.env,.env.*,.npmrc,pnpm-lock.yaml,bun.lock,bun.lockb}"

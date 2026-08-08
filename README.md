@@ -48,35 +48,12 @@ bun run dev         # run in development
 bun run build:mac   # produce a .dmg and .zip in dist/
 ```
 
-### Tests
+### Checks
 
 ```bash
 bun run lint
 bun run typecheck
-bun run test              # unit: path utils, conflict naming, semver
-bun run test:integration  # SFTP + transfers against Dockerized OpenSSH (needs Docker)
-bun run test:resilience   # connection-drop-mid-transfer safety (needs Docker)
-bun run test:interop      # round-trip against SFTPGo, a non-OpenSSH server (needs Docker)
-bun run test:advanced     # keepalive / compression / concurrency options (needs Docker)
-bun run test:scale        # 5 GB file + 10,000-file directory, both ways (needs Docker, slow)
 ```
-
-The integration suites build real SFTP servers in Docker and drive the actual main-process
-services against them — no mocks. They check that the Docker daemon is reachable before doing any
-work and fail immediately with an actionable message if it isn't, and they clean up leftover
-containers from a previous run rather than waiting on a port the corpse still holds. No suite can
-hang: every wait has a deadline and every run has an overall ceiling.
-
-Scale is tunable:
-
-```bash
-PALLET_SCALE_GB=1 PALLET_SCALE_FILES=2000 bun run test:scale
-```
-
-Everything under `tests/node/` runs on Node rather than Bun. That's deliberate: Pallet ships on
-Electron, and `ssh2`'s streams behave differently on Bun's runtime — a dead channel's callbacks
-never fire there, so reconnect paths stall in ways they never do in the real app. Those suites
-test the runtime we actually ship.
 
 ## License
 
