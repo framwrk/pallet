@@ -118,6 +118,14 @@ function handleKeyDown(e: KeyboardEvent): void {
   }
 
   if (!meta) return;
+
+  // Matched on e.code, not e.key: with Shift held this key reports ">".
+  if (shift && e.code === "Period") {
+    e.preventDefault();
+    setShowHidden(!state.showHidden);
+    return;
+  }
+
   switch (e.key.toLowerCase()) {
     case "r":
       e.preventDefault();
@@ -167,12 +175,6 @@ function handleKeyDown(e: KeyboardEvent): void {
       if (!shift) {
         e.preventDefault();
         void undo();
-      }
-      return;
-    case ".":
-      if (shift) {
-        e.preventDefault();
-        setShowHidden(!getState().showHidden);
       }
       return;
   }

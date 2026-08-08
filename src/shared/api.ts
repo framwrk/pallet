@@ -106,6 +106,10 @@ export interface PalletApi {
     /** Subscribe to changes from any window; returns unsubscribe. */
     onChange(cb: (prefs: Preferences) => void): () => void;
   };
+  settings: {
+    /** Settings window only: fit the window to the active tab and title it. */
+    resize(contentHeight: number, title: string): Promise<void>;
+  };
   ui: {
     /** Native context menu; resolves with the clicked item id, or null. */
     contextMenu(items: ContextMenuItem[]): Promise<string | null>;

@@ -55,6 +55,11 @@ export const PrefChannels = {
   changed: "prefs:changed",
 } as const;
 
+export const SettingsChannels = {
+  /** Settings window only: size the window to the active tab's content. */
+  resize: "settings:resize",
+} as const;
+
 export const EditChannels = {
   open: "edit:open",
   /** main → renderer re-upload notifications. */

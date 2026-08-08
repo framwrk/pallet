@@ -1,10 +1,11 @@
-import { BrowserWindow, Menu, app, shell } from "electron";
+import { BrowserWindow, Menu, app, ipcMain, shell } from "electron";
 import { join } from "path";
 import { electronApp, is, optimizer } from "@electron-toolkit/utils";
 import icon from "../../resources/icon.png?asset";
 import { registerIpcHandlers } from "./ipc";
 import { sessionManager } from "./ipc/sftp";
-import { AppChannels } from "../shared/ipc";
+import { AppChannels, SettingsChannels } from "../shared/ipc";
+import type { IpcResult } from "../shared/types";
 import { startUpdateChecks } from "./services/update-checker";
 import { installCrashHandlers, log, logFilePath } from "./services/logger";
 
@@ -52,8 +53,10 @@ function openSettingsWindow(): void {
   }
 
   const win = new BrowserWindow({
-    width: 560,
-    height: 380,
+    width: 520,
+    // The General tab's natural height, so the window opens at its final size;
+    // the renderer reports the exact figure for each tab as you switch.
+    height: 165,
     resizable: false,
     minimizable: false,
     maximizable: false,
@@ -80,6 +83,24 @@ function openSettingsWindow(): void {
   } else {
     win.loadFile(join(__dirname, "../renderer/settings.html"));
   }
+}
+
+/**
+ * Settings tabs hold different amounts of content, and a macOS settings window
+ * is expected to grow or shrink to fit rather than leave dead space. The
+ * renderer measures its own content and reports it here.
+ */
+function registerSettingsWindowHandlers(): void {
+  ipcMain.handle(SettingsChannels.resize, (event, contentHeight: number, title: string): IpcResult<void> => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    if (win && win === settingsWindow && !win.isDestroyed()) {
+      win.setTitle(title);
+      const [width, height] = win.getContentSize();
+      const next = Math.round(contentHeight);
+      if (next > 0 && Math.abs(height - next) > 1) win.setContentSize(width, next, true);
+    }
+    return { ok: true, value: undefined };
+  });
 }
 
 function buildMenu(): void {
@@ -142,6 +163,7 @@ app.whenReady().then(() => {
   });
 
   registerIpcHandlers();
+  registerSettingsWindowHandlers();
   buildMenu();
   createWindow();
 

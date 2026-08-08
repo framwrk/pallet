@@ -25,6 +25,7 @@ import {
   FsChannels,
   HostKeyChannels,
   PrefChannels,
+  SettingsChannels,
   SftpChannels,
   TransferChannels,
   UiChannels,
@@ -128,6 +129,9 @@ const pallet: PalletApi = {
     get: (): Promise<Preferences> => invoke(PrefChannels.get),
     set: (patch: Partial<Preferences>): Promise<Preferences> => invoke(PrefChannels.set, patch),
     onChange: (cb: (prefs: Preferences) => void): (() => void) => subscribe(PrefChannels.changed, cb),
+  },
+  settings: {
+    resize: (contentHeight: number, title: string): Promise<void> => invoke(SettingsChannels.resize, contentHeight, title),
   },
   ui: {
     contextMenu: (items: ContextMenuItem[]): Promise<string | null> => invoke(UiChannels.contextMenu, items),
