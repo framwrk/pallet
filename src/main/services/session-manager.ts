@@ -6,11 +6,11 @@
  * integration tests can drive it directly. Host-key decisions and status
  * events are injected via SessionManagerHooks.
  */
-import { createHash } from "crypto";
-import { promises as fs } from "fs";
 import { Client, type ConnectConfig, type SFTPWrapper } from "ssh2";
 import type { ConnectProfile, ConnectResult, SessionStatus, SessionStatusEvent } from "../../shared/types";
-import { MAX_CONCURRENCY as MAX_CONCURRENCY_PREFERENCE } from "../../shared/preferences";
+import { DEFAULT_CONCURRENCY, MAX_CONCURRENCY } from "../../shared/preferences";
+import { createHash } from "crypto";
+import { promises as fs } from "fs";
 
 export interface HostKeyDecisionInput {
   host: string;
@@ -50,13 +50,6 @@ interface Session {
 }
 
 const RECONNECT_DELAYS_MS = [1000, 2000, 4000, 8000, 15000];
-const DEFAULT_CONCURRENCY = 3;
-/**
- * OpenSSH's default MaxSessions is 10. Browsing holds one channel and the
- * SFTP endpoint holds one for metadata, so capping streams at 7 keeps the
- * worst case at 9 and leaves headroom.
- */
-const MAX_CONCURRENCY = Math.min(7, MAX_CONCURRENCY_PREFERENCE);
 
 export function parseKeyType(keyBlob: Buffer): string {
   try {

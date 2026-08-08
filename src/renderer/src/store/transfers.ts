@@ -1,8 +1,8 @@
 /** Renderer transfer state: job snapshots, conflict prompts, drawer UI (M5). */
-import { useSyncExternalStore } from "react";
 import type { ConflictAction, ConflictPrompt, TransferJobSnapshot } from "@shared/transfers";
-import type { EndpointRef } from "@shared/transfers";
 import { type PaneId, getState, pushToast, refresh } from "./panes";
+import type { EndpointRef } from "@shared/transfers";
+import { useSyncExternalStore } from "react";
 
 interface TransferUiState {
   jobs: TransferJobSnapshot[];

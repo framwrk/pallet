@@ -1,12 +1,12 @@
-import { useEffect, useMemo, useState } from "react";
 import { CornerUpRight, File as FileIcon, Folder, X } from "lucide-react";
 import type { Entry, PreviewData } from "@shared/types";
-import { localPath } from "@shared/paths";
-import { cn } from "@/lib/utils";
-import { formatBytes, formatModified } from "@/lib/format";
-import { isDirLike } from "@/lib/entries";
-import { Button } from "@/components/ui/button";
 import { type PaneBackend, pushToast, refresh, setInspectorOpen, useAppState } from "@/store/panes";
+import { formatBytes, formatModified } from "@/lib/format";
+import { useEffect, useMemo, useState } from "react";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
+import { isDirLike } from "@/lib/entries";
+import { localPath } from "@shared/paths";
 
 const PREVIEW_MAX = 1024 * 1024; // §2.1: inline preview < 1 MB
 const TEXT_EXTS = new Set([

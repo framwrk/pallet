@@ -1,15 +1,15 @@
-import { app, ipcMain, shell } from "electron";
-import type { ContextMenuItem, IpcResult } from "../../shared/types";
-import { AppChannels, FsChannels, UiChannels } from "../../shared/ipc";
-import { checkForUpdate } from "../services/update-checker";
-import { logFilePath } from "../services/logger";
 import * as localFs from "../services/local-fs";
 import * as localOps from "../services/local-ops";
+import { AppChannels, FsChannels, UiChannels } from "../../shared/ipc";
+import type { ContextMenuItem, IpcResult } from "../../shared/types";
+import { app, ipcMain, shell } from "electron";
+import { checkForUpdate } from "../services/update-checker";
+import { logFilePath } from "../services/logger";
 import { popupContextMenu } from "../services/context-menu";
-import { registerSftpHandlers } from "./sftp";
 import { registerFavoriteHandlers } from "./favorites";
-import { registerTransferHandlers } from "./transfers";
 import { registerPrefHandlers } from "./prefs";
+import { registerSftpHandlers } from "./sftp";
+import { registerTransferHandlers } from "./transfers";
 
 /**
  * Every handler returns an IpcResult envelope instead of throwing, so the

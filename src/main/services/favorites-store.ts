@@ -1,7 +1,7 @@
-import { randomUUID } from "crypto";
 import type { ColorLabel, Favorite, FavoriteInput } from "../../shared/types";
-import { getDb } from "../db";
 import { deleteSecret, storeSecret } from "./secrets";
+import { getDb } from "../db";
+import { randomUUID } from "crypto";
 
 interface Row {
   id: string;

@@ -2,8 +2,8 @@
  * Read-side SFTP operations over a session's browse channel (M3).
  * Electron-free so the Docker integration tests can exercise it directly.
  */
-import type { SFTPWrapper } from "ssh2";
 import type { DirListing, Entry } from "../../shared/types";
+import type { SFTPWrapper } from "ssh2";
 import type { SessionManager } from "./session-manager";
 
 const S_IFMT = 0o170000;

@@ -1,9 +1,9 @@
-import { useState } from "react";
-import { FileWarning } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
-import { formatBytes, formatModified } from "@/lib/format";
 import { answerConflict, useTransfers } from "@/store/transfers";
+import { formatBytes, formatModified } from "@/lib/format";
+import { Button } from "@/components/ui/button";
+import { FileWarning } from "lucide-react";
+import { useState } from "react";
 
 function Facts({ title, size, mtimeMs }: { title: string; size: number; mtimeMs: number }): React.JSX.Element {
   return (

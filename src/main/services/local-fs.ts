@@ -1,7 +1,7 @@
-import { type Dirent, type Stats, promises as fs } from "fs";
-import { join } from "path";
-import { homedir } from "os";
 import type { DirListing, Entry, KnownFolders, VolumeInfo } from "../../shared/types";
+import { type Dirent, type Stats, promises as fs } from "fs";
+import { homedir } from "os";
+import { join } from "path";
 
 const STAT_CONCURRENCY = 64;
 

@@ -1,13 +1,13 @@
+import { AppChannels, SettingsChannels } from "../shared/ipc";
 import { BrowserWindow, Menu, app, ipcMain, shell } from "electron";
-import { join } from "path";
 import { electronApp, is, optimizer } from "@electron-toolkit/utils";
+import { installCrashHandlers, log, logFilePath } from "./services/logger";
+import type { IpcResult } from "../shared/types";
 import icon from "../../resources/icon.png?asset";
+import { join } from "path";
 import { registerIpcHandlers } from "./ipc";
 import { sessionManager } from "./ipc/sftp";
-import { AppChannels, SettingsChannels } from "../shared/ipc";
-import type { IpcResult } from "../shared/types";
 import { startUpdateChecks } from "./services/update-checker";
-import { installCrashHandlers, log, logFilePath } from "./services/logger";
 
 function createWindow(): void {
   const mainWindow = new BrowserWindow({

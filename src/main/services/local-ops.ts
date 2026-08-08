@@ -1,5 +1,5 @@
-import { promises as fs } from "fs";
 import { basename, dirname, extname, join } from "path";
+import { promises as fs } from "fs";
 import { shell } from "electron";
 
 async function exists(p: string): Promise<boolean> {

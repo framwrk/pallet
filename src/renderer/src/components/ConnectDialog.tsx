@@ -1,13 +1,13 @@
-import { useState } from "react";
 import { ChevronDown, ChevronRight, KeyRound, LockKeyhole, Star } from "lucide-react";
 import type { ColorLabel, ConnectProfile, Favorite, FavoriteInput } from "@shared/types";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
 import { pushToast, setConnectOpen, useAppState } from "@/store/panes";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { cn } from "@/lib/utils";
 import { connectPane } from "@/store/sftp";
 import { saveFavorite } from "@/store/favorites";
+import { useState } from "react";
 
 function Row({ label, children }: { label: string; children: React.ReactNode }): React.JSX.Element {
   return (

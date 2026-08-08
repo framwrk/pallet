@@ -1,5 +1,4 @@
 /** Renderer-side SFTP session flow: connect/disconnect panes, events (M3). */
-import type { ConnectProfile } from "@shared/types";
 import {
   type PaneId,
   getState,
@@ -11,6 +10,7 @@ import {
   setConnectOpen,
   updateSessionStatus,
 } from "./panes";
+import type { ConnectProfile } from "@shared/types";
 
 let eventsBound = false;
 

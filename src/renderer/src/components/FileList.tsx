@@ -1,13 +1,13 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { useVirtualizer } from "@tanstack/react-virtual";
 import { CornerUpRight, File as FileIcon, Folder } from "lucide-react";
-import type { Entry } from "@shared/types";
-import { cn } from "@/lib/utils";
-import { formatBytes, formatModified } from "@/lib/format";
-import { isDirLike } from "@/lib/entries";
 import { type PaneId, type PaneState, clearSelection, extendTo, selectOnly, setActive, toggleSelect } from "@/store/panes";
 import { cancelRename, commitRename, openEntry, showBackgroundContextMenu, showRowContextMenu } from "@/store/ops";
+import { formatBytes, formatModified } from "@/lib/format";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { Entry } from "@shared/types";
+import { cn } from "@/lib/utils";
 import { enqueuePaneCopy } from "@/store/transfers";
+import { isDirLike } from "@/lib/entries";
+import { useVirtualizer } from "@tanstack/react-virtual";
 
 const DND_MIME = "application/x-pallet-items";
 
@@ -103,6 +103,10 @@ export function FileList({ paneId, pane, visible, isActive }: FileListProps): Re
     void enqueuePaneCopy(payload.pane, paneId, payload.names, destDir);
   }
 
+  // TanStack Virtual returns methods that read live scroll state, so the React
+  // Compiler refuses to memoize this component. That is the behaviour we want
+  // here -- the rows must re-render on scroll -- so silence the advisory.
+  // eslint-disable-next-line react-hooks/incompatible-library
   const virtualizer = useVirtualizer({
     count: visible.length,
     getScrollElement: () => scrollRef.current,

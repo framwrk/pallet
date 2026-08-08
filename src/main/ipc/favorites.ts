@@ -1,7 +1,7 @@
-import { ipcMain } from "electron";
+import * as store from "../services/favorites-store";
 import type { ConnectProfile, ConnectResult, Favorite, FavoriteInput, IpcResult } from "../../shared/types";
 import { FavoriteChannels } from "../../shared/ipc";
-import * as store from "../services/favorites-store";
+import { ipcMain } from "electron";
 import { readSecret } from "../services/secrets";
 import { sessionManager } from "./sftp";
 

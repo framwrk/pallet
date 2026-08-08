@@ -1,4 +1,16 @@
-import { contextBridge, ipcRenderer } from "electron";
+import {
+  AppChannels,
+  EditChannels,
+  FavoriteChannels,
+  FsChannels,
+  HostKeyChannels,
+  PrefChannels,
+  SettingsChannels,
+  SftpChannels,
+  TransferChannels,
+  UiChannels,
+} from "../shared/ipc";
+import type { ConflictAction, ConflictPrompt, TransferJobSnapshot, TransferRequest } from "../shared/transfers";
 import type {
   ConnectProfile,
   ConnectResult,
@@ -15,21 +27,9 @@ import type {
   SessionStatusEvent,
   VolumeInfo,
 } from "../shared/types";
+import { contextBridge, ipcRenderer } from "electron";
 import type { PalletApi } from "../shared/api";
 import type { Preferences } from "../shared/preferences";
-import type { ConflictAction, ConflictPrompt, TransferJobSnapshot, TransferRequest } from "../shared/transfers";
-import {
-  AppChannels,
-  EditChannels,
-  FavoriteChannels,
-  FsChannels,
-  HostKeyChannels,
-  PrefChannels,
-  SettingsChannels,
-  SftpChannels,
-  TransferChannels,
-  UiChannels,
-} from "../shared/ipc";
 
 /** Error surfaced to the renderer with a stable machine-readable code. */
 export class PalletError extends Error {

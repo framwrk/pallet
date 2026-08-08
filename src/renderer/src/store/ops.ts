@@ -2,11 +2,6 @@
  * Local file operations driven from the UI (M2). Each op reports failures as
  * toasts and refreshes affected panes. Undo covers rename and move, per plan.
  */
-import { localPath } from "@shared/paths";
-import type { Entry } from "@shared/types";
-import type { EndpointRef } from "@shared/transfers";
-import { enqueuePaneCopy } from "./transfers";
-import { isDirLike } from "@/lib/entries";
 import {
   type PaneId,
   getState,
@@ -18,6 +13,11 @@ import {
   setConfirmDelete,
   setRenaming,
 } from "./panes";
+import type { EndpointRef } from "@shared/transfers";
+import type { Entry } from "@shared/types";
+import { enqueuePaneCopy } from "./transfers";
+import { isDirLike } from "@/lib/entries";
+import { localPath } from "@shared/paths";
 
 interface Clipboard {
   endpoint: EndpointRef;

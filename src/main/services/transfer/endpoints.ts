@@ -5,8 +5,8 @@
  *
  * Paths are POSIX on both sides (macOS local paths are POSIX).
  */
-import { createReadStream, createWriteStream, promises as fs } from "fs";
 import type { Readable, Writable } from "stream";
+import { createReadStream, createWriteStream, promises as fs } from "fs";
 import type { SFTPWrapper } from "ssh2";
 import type { SessionManager } from "../session-manager";
 

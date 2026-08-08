@@ -1,11 +1,12 @@
+import * as hostKeys from "../services/host-key-store";
 import { BrowserWindow, dialog, ipcMain } from "electron";
-import { randomUUID } from "crypto";
 import type { ConnectProfile, HostKeyPrompt, IpcResult, PreviewData } from "../../shared/types";
 import { EditChannels, HostKeyChannels, SftpChannels, UiChannels } from "../../shared/ipc";
 import { type HostKeyDecisionInput, SessionManager } from "../services/session-manager";
-import { SftpService } from "../services/sftp-service";
 import { EditSessions } from "../services/edit-sessions";
-import * as hostKeys from "../services/host-key-store";
+import type { SessionStatusEvent } from "../../shared/types";
+import { SftpService } from "../services/sftp-service";
+import { randomUUID } from "crypto";
 
 function broadcast(channel: string, payload: unknown): void {
   for (const win of BrowserWindow.getAllWindows()) {
@@ -44,8 +45,6 @@ async function verifyHostKey(input: HostKeyDecisionInput): Promise<boolean> {
   }
   return trusted;
 }
-
-import type { SessionStatusEvent } from "../../shared/types";
 
 const statusListeners: ((event: SessionStatusEvent) => void)[] = [];
 

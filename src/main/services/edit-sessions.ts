@@ -3,13 +3,13 @@
  * open it with the default app, poll for changes, and re-upload through the
  * same .pallet-part staging the transfer queue uses.
  */
+import { type TransferEndpoint, makeEndpoint } from "./transfer/endpoints";
 import { app, shell } from "electron";
 import { createWriteStream, promises as fs, unwatchFile, watchFile } from "fs";
-import { join } from "path";
-import { randomUUID } from "crypto";
-import { pipeline } from "stream/promises";
-import { type TransferEndpoint, makeEndpoint } from "./transfer/endpoints";
 import type { SessionManager } from "./session-manager";
+import { join } from "path";
+import { pipeline } from "stream/promises";
+import { randomUUID } from "crypto";
 
 export interface EditEvent {
   kind: "uploaded" | "error";

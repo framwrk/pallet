@@ -1,9 +1,9 @@
-import { useRef } from "react";
-import { localPath } from "@shared/paths";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
 import { navigate, setGoToOpen, useAppState } from "@/store/panes";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { localPath } from "@shared/paths";
+import { useRef } from "react";
 
 /** ⌘⇧G "Go to Folder" dialog, navigating the active pane. */
 export function GoToDialog(): React.JSX.Element {

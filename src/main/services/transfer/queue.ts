@@ -5,8 +5,6 @@
  *
  * Electron-free so the Docker integration tests can drive it directly.
  */
-import { pipeline } from "stream/promises";
-import { type Readable, Transform, type Writable } from "stream";
 import type {
   ConflictAction,
   ConflictPrompt,
@@ -15,10 +13,12 @@ import type {
   TransferRequest,
   TransferState,
 } from "../../../shared/transfers";
-import type { SessionStatusEvent } from "../../../shared/types";
-import { keepBothName } from "../../../shared/keep-both";
+import { type Readable, Transform, type Writable } from "stream";
 import { type TransferEndpoint, joinPath, makeEndpoint } from "./endpoints";
 import type { SessionManager } from "../session-manager";
+import type { SessionStatusEvent } from "../../../shared/types";
+import { keepBothName } from "../../../shared/keep-both";
+import { pipeline } from "stream/promises";
 
 const PART_SUFFIX = ".pallet-part";
 /**

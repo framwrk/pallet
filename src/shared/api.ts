@@ -1,5 +1,4 @@
 import type { ConflictAction, ConflictPrompt, TransferJobSnapshot, TransferRequest } from "./transfers";
-import type { Preferences } from "./preferences";
 import type {
   ConnectProfile,
   ConnectResult,
@@ -15,6 +14,7 @@ import type {
   SessionStatusEvent,
   VolumeInfo,
 } from "./types";
+import type { Preferences } from "./preferences";
 
 /**
  * The contextBridge surface exposed as window.pallet.

@@ -1,8 +1,8 @@
 import { AlertCircle, ChevronDown, ChevronUp, Pause, Play, RotateCcw, Trash2, X } from "lucide-react";
+import { clearFinishedJobs, jobAction, removeJob, setDrawerOpen, useTransfers } from "@/store/transfers";
 import type { TransferJobSnapshot } from "@shared/transfers";
 import { cn } from "@/lib/utils";
 import { formatBytes } from "@/lib/format";
-import { clearFinishedJobs, jobAction, removeJob, setDrawerOpen, useTransfers } from "@/store/transfers";
 
 const TERMINAL = ["completed", "failed", "canceled"];
 

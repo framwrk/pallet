@@ -1,10 +1,10 @@
 import { BrowserWindow, ipcMain } from "electron";
-import type { IpcResult } from "../../shared/types";
 import type { ConflictAction, TransferRequest } from "../../shared/transfers";
+import { onSessionStatus, sessionManager } from "./sftp";
+import type { IpcResult } from "../../shared/types";
 import { TransferChannels } from "../../shared/ipc";
 import { TransferQueue } from "../services/transfer/queue";
 import { getDb } from "../db";
-import { onSessionStatus, sessionManager } from "./sftp";
 
 function broadcast(channel: string, payload: unknown): void {
   for (const win of BrowserWindow.getAllWindows()) {

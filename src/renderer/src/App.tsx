@@ -1,20 +1,14 @@
-import { useEffect } from "react";
-import { Toolbar } from "@/components/Toolbar";
-import { Sidebar } from "@/components/Sidebar";
-import { Pane } from "@/components/Pane";
-import { GoToDialog } from "@/components/GoToDialog";
-import { ConnectDialog } from "@/components/ConnectDialog";
-import { HostKeyDialog } from "@/components/HostKeyDialog";
-import { QueueDrawer } from "@/components/QueueDrawer";
-import { ConflictDialog } from "@/components/ConflictDialog";
-import { Inspector } from "@/components/Inspector";
-import { ConfirmDeleteDialog } from "@/components/ConfirmDeleteDialog";
-import { Toasts } from "@/components/Toasts";
-import { UpdateToast } from "@/components/UpdateToast";
-import { initSftpEvents } from "@/store/sftp";
-import { loadFavorites } from "@/store/favorites";
-import { initTransferEvents } from "@/store/transfers";
-import { visibleEntries } from "@/lib/entries";
+import {
+  beginRename,
+  copySelection,
+  copyToOther,
+  moveToOther,
+  newFolder,
+  openSelection,
+  paste,
+  trashSelection,
+  undo,
+} from "@/store/ops";
 import {
   clearSelection,
   getState,
@@ -29,17 +23,23 @@ import {
   setShowHidden,
   switchPane,
 } from "@/store/panes";
-import {
-  beginRename,
-  copySelection,
-  copyToOther,
-  moveToOther,
-  newFolder,
-  openSelection,
-  paste,
-  trashSelection,
-  undo,
-} from "@/store/ops";
+import { ConfirmDeleteDialog } from "@/components/ConfirmDeleteDialog";
+import { ConflictDialog } from "@/components/ConflictDialog";
+import { ConnectDialog } from "@/components/ConnectDialog";
+import { GoToDialog } from "@/components/GoToDialog";
+import { HostKeyDialog } from "@/components/HostKeyDialog";
+import { Inspector } from "@/components/Inspector";
+import { Pane } from "@/components/Pane";
+import { QueueDrawer } from "@/components/QueueDrawer";
+import { Sidebar } from "@/components/Sidebar";
+import { Toasts } from "@/components/Toasts";
+import { Toolbar } from "@/components/Toolbar";
+import { UpdateToast } from "@/components/UpdateToast";
+import { initSftpEvents } from "@/store/sftp";
+import { initTransferEvents } from "@/store/transfers";
+import { loadFavorites } from "@/store/favorites";
+import { useEffect } from "react";
+import { visibleEntries } from "@/lib/entries";
 
 function isEditableTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;

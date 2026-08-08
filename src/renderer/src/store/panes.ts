@@ -1,7 +1,7 @@
-import { useSyncExternalStore } from "react";
 import type { Entry, Favorite, HostKeyPrompt, KnownFolders, SessionStatus, SortDir, SortKey, VolumeInfo } from "@shared/types";
 import { localPath, remotePath } from "@shared/paths";
 import { DEFAULT_PREFERENCES } from "@shared/preferences";
+import { useSyncExternalStore } from "react";
 
 export type PaneId = "left" | "right";
 

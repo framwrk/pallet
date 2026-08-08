@@ -8,8 +8,8 @@
  * here is GitHub's own flag on a release — it is not encoded in the version
  * string, which never carries a suffix.
  */
-import { app } from "electron";
 import { compareVersions, parseVersion } from "../../shared/semver";
+import { app } from "electron";
 import { getDb } from "../db";
 import { log } from "./logger";
 

@@ -1,7 +1,7 @@
-import { ShieldAlert, ShieldQuestion } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
+import { ShieldAlert, ShieldQuestion } from "lucide-react";
 import { shiftHostKeyPrompt, useAppState } from "@/store/panes";
+import { Button } from "@/components/ui/button";
 
 /**
  * TOFU verification (§2.1 Host keys): first contact shows the fingerprint;

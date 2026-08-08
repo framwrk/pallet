@@ -1,9 +1,9 @@
-import { useRef, useState } from "react";
-import { Download, FileText, HardDrive, Home, Monitor, Plug, Server, Usb } from "lucide-react";
 import type { ColorLabel, Favorite } from "@shared/types";
-import { cn } from "@/lib/utils";
+import { Download, FileText, HardDrive, Home, Monitor, Plug, Server, Usb } from "lucide-react";
 import { type PaneId, navigate, setConnectOpen, setEditingFavorite, useAppState } from "@/store/panes";
 import { connectFavorite, favoriteContextMenu, reorderFavorites } from "@/store/favorites";
+import { useRef, useState } from "react";
+import { cn } from "@/lib/utils";
 
 const LABEL_COLORS: Record<ColorLabel, string> = {
   none: "",

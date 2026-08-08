@@ -3,8 +3,8 @@
  * secret deliberately, and every line is passed through `redact()` before it
  * hits disk in case an error message or stack carries one incidentally.
  */
-import { app } from "electron";
 import { appendFileSync, mkdirSync, renameSync, statSync } from "fs";
+import { app } from "electron";
 import { join } from "path";
 import { redact } from "../../shared/redact";
 

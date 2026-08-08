@@ -1,8 +1,8 @@
 import { ArrowLeft, ArrowRight, FolderPlus, Info, RotateCw, Trash2 } from "lucide-react";
-import { localPath } from "@shared/paths";
-import { cn } from "@/lib/utils";
 import { goBack, goForward, refresh, setInspectorOpen, useAppState } from "@/store/panes";
 import { newFolder, trashSelection } from "@/store/ops";
+import { cn } from "@/lib/utils";
+import { localPath } from "@shared/paths";
 
 function ToolButton({
   icon: Icon,
