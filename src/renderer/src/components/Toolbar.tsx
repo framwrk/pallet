@@ -81,30 +81,6 @@ export function Toolbar(): React.JSX.Element {
           onClick={() => setInspectorOpen(!app.inspectorOpen)}
         />
       </ToolButtonGroup>
-      <ToolButtonGroup>
-        <ToolButton
-          icon={RotateCw}
-          label="Refresh"
-          onClick={() => refresh(app.active)}
-        />
-        <ToolButton
-          icon={FolderPlus}
-          label="New Folder"
-          onClick={() => void newFolder(app.active)}
-          disabled={!pane.cwd || !!pane.error}
-        />
-        <ToolButton
-          icon={Trash2}
-          label="Move to Trash"
-          onClick={() => void trashSelection(app.active)}
-          disabled={pane.selected.size === 0}
-        />
-        <ToolButton
-          icon={Info}
-          label="Get Info (⌘I)"
-          onClick={() => setInspectorOpen(!app.inspectorOpen)}
-        />
-      </ToolButtonGroup>
     </header>
   );
 }
