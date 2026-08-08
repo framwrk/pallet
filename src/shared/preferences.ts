@@ -8,6 +8,17 @@ export interface Preferences {
   appearance: Appearance;
   /** Seeds the connect dialog's parallel transfer channels field. */
   defaultConcurrency: number;
+  /**
+   * Walk folders to total their contents instead of showing "--". Local panes
+   * only; a local walk is cheap enough to be the safe default for the switch.
+   */
+  calculateFolderSizes: boolean;
+  /**
+   * Extend folder sizing to remote panes. Gated behind its own switch because
+   * sizing a remote tree is the most expensive thing the app asks of a server,
+   * and it is inert while calculateFolderSizes is off.
+   */
+  calculateRemoteFolderSizes: boolean;
 }
 
 export const DEFAULT_CONCURRENCY = 3;
@@ -24,4 +35,6 @@ export const DEFAULT_PREFERENCES: Preferences = {
   showHidden: false,
   appearance: "system",
   defaultConcurrency: 4,
+  calculateFolderSizes: false,
+  calculateRemoteFolderSizes: false,
 };

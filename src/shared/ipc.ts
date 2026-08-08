@@ -17,6 +17,12 @@ export const FsChannels = {
   open: "fs:open",
 } as const;
 
+export const FolderSizeChannels = {
+  get: "folderSize:get",
+  cancel: "folderSize:cancel",
+  invalidate: "folderSize:invalidate",
+} as const;
+
 export const UiChannels = {
   contextMenu: "ui:contextMenu",
   pickFile: "ui:pickFile",

@@ -15,6 +15,7 @@ import type {
   VolumeInfo,
 } from "./types";
 import type { Preferences } from "./preferences";
+import type { SizeTarget } from "./types";
 
 /**
  * The contextBridge surface exposed as window.pallet.
@@ -98,6 +99,17 @@ export interface PalletApi {
     openExternal(url: string): Promise<void>;
     revealLog(): Promise<void>;
     onUpdateAvailable(cb: (info: { version: string; url: string; prerelease: boolean }) => void): () => void;
+  };
+  folderSize: {
+    /**
+     * Total apparent bytes under a folder. Resolves null when the request was
+     * cancelled before it started; cached results come back immediately.
+     */
+    get(target: SizeTarget, path: string): Promise<number | null>;
+    /** Drop a request that hasn't started yet (row scrolled out of view). */
+    cancel(target: SizeTarget, path: string): Promise<void>;
+    /** Forget cached totals for a folder and everything under it. */
+    invalidate(target: SizeTarget, path: string): Promise<void>;
   };
   prefs: {
     get(): Promise<Preferences>;

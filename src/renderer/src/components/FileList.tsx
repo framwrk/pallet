@@ -2,6 +2,7 @@ import { CornerUpRight, File as FileIcon, Folder } from "lucide-react";
 import { type PaneId, type PaneState, clearSelection, extendTo, selectOnly, setActive, toggleSelect } from "@/store/panes";
 import { cancelRename, commitRename, openEntry, showBackgroundContextMenu, showRowContextMenu } from "@/store/ops";
 import { formatBytes, formatModified } from "@/lib/format";
+import { isSizeable, useFolderSizes } from "@/lib/folder-size";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Entry } from "@shared/types";
 import { cn } from "@/lib/utils";
@@ -114,6 +115,17 @@ export function FileList({ paneId, pane, visible, isActive }: FileListProps): Re
     overscan: 12,
   });
 
+  // Only the rows the virtualizer has mounted, so sizing follows the viewport
+  // rather than the whole directory.
+  const virtualItems = virtualizer.getVirtualItems();
+  const folderSizes = useFolderSizes(
+    virtualItems
+      .map((row) => visible[row.index])
+      .filter(isSizeable)
+      .map((entry) => entry.path),
+    pane.backend,
+  );
+
   const focusedIndex = useMemo(() => visible.findIndex((e) => e.name === pane.focused), [visible, pane.focused]);
 
   useEffect(() => {
@@ -169,7 +181,7 @@ export function FileList({ paneId, pane, visible, isActive }: FileListProps): Re
         className="relative w-full"
         style={{ height: virtualizer.getTotalSize() }}
       >
-        {virtualizer.getVirtualItems().map((row) => {
+        {virtualItems.map((row) => {
           const entry = visible[row.index];
           const selected = pane.selected.has(entry.name);
           const dirLike = isDirLike(entry);
@@ -241,7 +253,11 @@ export function FileList({ paneId, pane, visible, isActive }: FileListProps): Re
                   selected && isActive && "text-primary-foreground/80",
                 )}
               >
-                {dirLike ? "--" : formatBytes(entry.size)}
+                {dirLike
+                  ? folderSizes.has(entry.path)
+                    ? formatBytes(folderSizes.get(entry.path)!)
+                    : "--"
+                  : formatBytes(entry.size)}
               </span>
               <span
                 className={cn(

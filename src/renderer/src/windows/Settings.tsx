@@ -35,10 +35,14 @@ function Group({ footnote, children }: { footnote: string; children: React.React
   );
 }
 
-/** Label leading, control trailing — the macOS grouped-form row. */
-function Row({ label, children }: { label: string; children: React.ReactNode }): React.JSX.Element {
+/**
+ * Label leading, control trailing — the macOS grouped-form row. `indent` marks
+ * a row as subordinate to the one above it, which also gets the hairline that
+ * separates them.
+ */
+function Row({ label, indent, children }: { label: string; indent?: boolean; children: React.ReactNode }): React.JSX.Element {
   return (
-    <div className="flex min-h-10 items-center justify-between gap-6 px-3 py-1.5">
+    <div className={cn("flex min-h-10 items-center justify-between gap-6 px-3 py-1.5", indent && "border-t pl-7")}>
       <span className="text-[13px]">{label}</span>
       {children}
     </div>
@@ -176,14 +180,35 @@ export function Settings(): React.JSX.Element {
         className="px-5 py-5"
       >
         {prefs === null ? null : tab === "general" ? (
-          <Group footnote="Also toggled with ⇧⌘. in the file browser.">
-            <Row label="Show hidden files">
-              <Switch
-                checked={prefs.showHidden}
-                onCheckedChange={(checked) => save({ showHidden: checked })}
-              />
-            </Row>
-          </Group>
+          <div className="flex flex-col gap-4">
+            <Group footnote="Also toggled with ⇧⌘. in the file browser.">
+              <Row label="Show hidden files">
+                <Switch
+                  checked={prefs.showHidden}
+                  onCheckedChange={(checked) => save({ showHidden: checked })}
+                />
+              </Row>
+            </Group>
+            <Group footnote="Totals the contents of each folder instead of showing “--”. Local folders only, unless you include remote ones — sizing a tree over SSH is far slower than reading it off disk.">
+              <Row label="Calculate folder sizes">
+                <Switch
+                  checked={prefs.calculateFolderSizes}
+                  onCheckedChange={(checked) => save({ calculateFolderSizes: checked })}
+                />
+              </Row>
+              {prefs.calculateFolderSizes && (
+                <Row
+                  label="Include remote folders"
+                  indent
+                >
+                  <Switch
+                    checked={prefs.calculateRemoteFolderSizes}
+                    onCheckedChange={(checked) => save({ calculateRemoteFolderSizes: checked })}
+                  />
+                </Row>
+              )}
+            </Group>
+          </div>
         ) : tab === "appearance" ? (
           <Group footnote="System follows the macOS appearance setting.">
             <Row label="Appearance">

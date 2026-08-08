@@ -43,6 +43,11 @@ interface Session {
   /** Pool of transfer channels (§3.3); size from the profile's concurrency. */
   pool: ChannelPool;
   status: SessionStatus;
+  /**
+   * Whether the server's `du` understands -b (GNU). Probed on first use and
+   * cached; false sends folder sizing down the SFTP-walk path instead.
+   */
+  duApparentBytes: boolean | null;
   /** Set while the user is deliberately disconnecting. */
   closing: boolean;
   reconnectAttempt: number;
@@ -137,6 +142,7 @@ export class SessionManager {
       sftp: null,
       pool: { free: [], total: 0, waiters: [] },
       status: "connecting",
+      duApparentBytes: null,
       closing: false,
       reconnectAttempt: 0,
       reconnectTimer: null,
@@ -297,6 +303,56 @@ export class SessionManager {
       throw err;
     }
     return session.sftp;
+  }
+
+  /** Cached `du -b` support, or null until probed. Survives reconnects. */
+  duApparentBytes(sessionId: string): boolean | null {
+    return this.mustGet(sessionId).duApparentBytes;
+  }
+
+  setDuApparentBytes(sessionId: string, supported: boolean): void {
+    this.mustGet(sessionId).duApparentBytes = supported;
+  }
+
+  /**
+   * Run one command on its own exec channel and collect its output.
+   *
+   * Folder sizing is the only caller and holds at most one of these at a
+   * time: the browse channel plus a saturated transfer pool already sits at 9
+   * of OpenSSH's default MaxSessions of 10, leaving room for exactly one more.
+   * stdout is capped because a channel that floods would otherwise be
+   * unbounded memory in the main process.
+   */
+  async exec(sessionId: string, command: string, maxBytes = 64 * 1024): Promise<{ stdout: string; code: number | null }> {
+    const session = this.mustGet(sessionId);
+    if (session.status !== "connected") {
+      const err: NodeJS.ErrnoException = new Error("Not connected");
+      err.code = "ENOTCONN";
+      throw err;
+    }
+    return new Promise((resolve, reject) => {
+      session.client.exec(command, (err, stream) => {
+        if (err) return reject(err);
+        const chunks: Buffer[] = [];
+        let length = 0;
+        let code: number | null = null;
+        stream.on("data", (chunk: Buffer) => {
+          if (length >= maxBytes) return;
+          chunks.push(chunk);
+          length += chunk.length;
+        });
+        // Draining stderr keeps the peer from stalling on a full window; the
+        // content itself is not interesting, since a nonzero exit is enough.
+        stream.stderr.resume();
+        stream.on("exit", (exitCode: number | null) => {
+          code = exitCode;
+        });
+        stream.on("close", () => {
+          resolve({ stdout: Buffer.concat(chunks).subarray(0, maxBytes).toString("utf8"), code });
+        });
+        stream.on("error", reject);
+      });
+    });
   }
 
   /**

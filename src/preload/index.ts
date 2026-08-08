@@ -2,6 +2,7 @@ import {
   AppChannels,
   EditChannels,
   FavoriteChannels,
+  FolderSizeChannels,
   FsChannels,
   HostKeyChannels,
   PrefChannels,
@@ -25,6 +26,7 @@ import type {
   KnownFolders,
   PreviewData,
   SessionStatusEvent,
+  SizeTarget,
   VolumeInfo,
 } from "../shared/types";
 import { contextBridge, ipcRenderer } from "electron";
@@ -124,6 +126,11 @@ const pallet: PalletApi = {
     revealLog: (): Promise<void> => invoke(AppChannels.revealLog),
     onUpdateAvailable: (cb: (info: { version: string; url: string; prerelease: boolean }) => void): (() => void) =>
       subscribe(AppChannels.updateAvailable, cb),
+  },
+  folderSize: {
+    get: (target: SizeTarget, path: string): Promise<number | null> => invoke(FolderSizeChannels.get, target, path),
+    cancel: (target: SizeTarget, path: string): Promise<void> => invoke(FolderSizeChannels.cancel, target, path),
+    invalidate: (target: SizeTarget, path: string): Promise<void> => invoke(FolderSizeChannels.invalidate, target, path),
   },
   prefs: {
     get: (): Promise<Preferences> => invoke(PrefChannels.get),

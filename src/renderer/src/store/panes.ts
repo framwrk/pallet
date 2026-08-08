@@ -1,4 +1,14 @@
-import type { Entry, Favorite, HostKeyPrompt, KnownFolders, SessionStatus, SortDir, SortKey, VolumeInfo } from "@shared/types";
+import type {
+  Entry,
+  Favorite,
+  HostKeyPrompt,
+  KnownFolders,
+  SessionStatus,
+  SizeTarget,
+  SortDir,
+  SortKey,
+  VolumeInfo,
+} from "@shared/types";
 import { localPath, remotePath } from "@shared/paths";
 import { DEFAULT_PREFERENCES } from "@shared/preferences";
 import { useSyncExternalStore } from "react";
@@ -19,6 +29,11 @@ export type PaneBackend =
 /** Path semantics for a pane: POSIX either way, but kept distinct (§3.1). */
 export function pathLib(backend: PaneBackend): typeof localPath {
   return backend.kind === "sftp" ? remotePath : localPath;
+}
+
+/** Narrows a pane's backend to what the folder-size cache keys on. */
+export function sizeTarget(backend: PaneBackend): SizeTarget {
+  return backend.kind === "sftp" ? { kind: "sftp", sessionId: backend.sessionId } : { kind: "local" };
 }
 
 export interface PaneState {
@@ -55,6 +70,10 @@ export interface AppState {
   showHidden: boolean;
   /** Preference seeding the connect dialog's concurrency field. */
   defaultConcurrency: number;
+  /** Preference: total folder contents instead of showing "--" for size. */
+  calculateFolderSizes: boolean;
+  /** Preference: extend the above to remote panes. */
+  calculateRemoteFolderSizes: boolean;
   volumes: VolumeInfo[];
   knownFolders: KnownFolders | null;
   goToOpen: boolean;
@@ -95,6 +114,8 @@ let state: AppState = {
   panes: { left: initialPane(), right: initialPane() },
   showHidden: DEFAULT_PREFERENCES.showHidden,
   defaultConcurrency: DEFAULT_PREFERENCES.defaultConcurrency,
+  calculateFolderSizes: DEFAULT_PREFERENCES.calculateFolderSizes,
+  calculateRemoteFolderSizes: DEFAULT_PREFERENCES.calculateRemoteFolderSizes,
   volumes: [],
   knownFolders: null,
   goToOpen: false,
@@ -189,7 +210,11 @@ export async function navigate(id: PaneId, path: string, mode: NavigateMode = "p
 
 export function refresh(id: PaneId): void {
   const pane = state.panes[id];
-  if (pane.cwd) void navigate(id, pane.cwd, "none");
+  if (!pane.cwd) return;
+  // An explicit refresh is the one moment the user is telling us the directory
+  // has changed, so cached totals beneath it are the ones to drop.
+  void window.pallet.folderSize.invalidate(sizeTarget(pane.backend), pane.cwd);
+  void navigate(id, pane.cwd, "none");
 }
 
 export function goBack(id: PaneId): void {
@@ -401,9 +426,18 @@ export async function initApp(): Promise<void> {
     volumes: vols,
     showHidden: prefs.showHidden,
     defaultConcurrency: prefs.defaultConcurrency,
+    calculateFolderSizes: prefs.calculateFolderSizes,
+    calculateRemoteFolderSizes: prefs.calculateRemoteFolderSizes,
   });
   // Keep in step with edits made in the settings window.
-  window.pallet.prefs.onChange((next) => setApp({ showHidden: next.showHidden, defaultConcurrency: next.defaultConcurrency }));
+  window.pallet.prefs.onChange((next) =>
+    setApp({
+      showHidden: next.showHidden,
+      defaultConcurrency: next.defaultConcurrency,
+      calculateFolderSizes: next.calculateFolderSizes,
+      calculateRemoteFolderSizes: next.calculateRemoteFolderSizes,
+    }),
+  );
   await Promise.all([navigate("left", home, "replace"), navigate("right", home, "replace")]);
 }
 

@@ -2,6 +2,7 @@ import { CornerUpRight, File as FileIcon, Folder, X } from "lucide-react";
 import type { Entry, PreviewData } from "@shared/types";
 import { type PaneBackend, pushToast, refresh, setInspectorOpen, useAppState } from "@/store/panes";
 import { formatBytes, formatModified } from "@/lib/format";
+import { isSizeable, useFolderSizes } from "@/lib/folder-size";
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -197,6 +198,10 @@ export function Inspector(): React.JSX.Element | null {
     if (entry) setDraft({ path: entry.path, mode: m & 0o7777 });
   };
 
+  // Above the early return so the hook order stays fixed; an empty list while
+  // the inspector is closed keeps it from walking anything you cannot see.
+  const folderSizes = useFolderSizes(app.inspectorOpen && entry && isSizeable(entry) ? [entry.path] : [], pane.backend);
+
   if (!app.inspectorOpen) return null;
 
   const mode = draftMode ?? (entry ? entry.mode & 0o7777 : 0);
@@ -266,7 +271,14 @@ export function Inspector(): React.JSX.Element | null {
             {(
               [
                 ["Kind", entry.kind === "dir" ? "Folder" : entry.kind === "symlink" ? "Symlink" : "File"],
-                ["Size", isDirLike(entry) ? "--" : formatBytes(entry.size)],
+                [
+                  "Size",
+                  !isDirLike(entry)
+                    ? formatBytes(entry.size)
+                    : folderSizes.has(entry.path)
+                      ? formatBytes(folderSizes.get(entry.path)!)
+                      : "--",
+                ],
                 ["Modified", formatModified(entry.mtimeMs)],
                 ["Where", localPath.dirname(entry.path)],
                 ["Extension", localPath.extname(entry.name) || "--"],

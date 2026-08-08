@@ -49,6 +49,9 @@ export interface IpcError {
 
 export type IpcResult<T> = { ok: true; value: T } | { ok: false; error: IpcError };
 
+/** Which filesystem a folder-size request refers to. */
+export type SizeTarget = { kind: "local" } | { kind: "sftp"; sessionId: string };
+
 export type SortKey = "name" | "size" | "mtime";
 export type SortDir = "asc" | "desc";
 

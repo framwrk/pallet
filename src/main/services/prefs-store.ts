@@ -6,7 +6,7 @@ import { getDb } from "../db";
  * TEXT column. Anything unreadable falls back to the default for that key.
  */
 function coerce(stored: Record<string, unknown>): Preferences {
-  const { showHidden, appearance, defaultConcurrency } = stored;
+  const { showHidden, appearance, defaultConcurrency, calculateFolderSizes, calculateRemoteFolderSizes } = stored;
   return {
     showHidden: typeof showHidden === "boolean" ? showHidden : DEFAULT_PREFERENCES.showHidden,
     appearance:
@@ -15,6 +15,12 @@ function coerce(stored: Record<string, unknown>): Preferences {
       typeof defaultConcurrency === "number" && Number.isFinite(defaultConcurrency)
         ? Math.min(MAX_CONCURRENCY, Math.max(MIN_CONCURRENCY, Math.round(defaultConcurrency)))
         : DEFAULT_PREFERENCES.defaultConcurrency,
+    calculateFolderSizes:
+      typeof calculateFolderSizes === "boolean" ? calculateFolderSizes : DEFAULT_PREFERENCES.calculateFolderSizes,
+    calculateRemoteFolderSizes:
+      typeof calculateRemoteFolderSizes === "boolean"
+        ? calculateRemoteFolderSizes
+        : DEFAULT_PREFERENCES.calculateRemoteFolderSizes,
   };
 }
 

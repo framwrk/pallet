@@ -5,7 +5,7 @@ import { join } from "path";
 
 const STAT_CONCURRENCY = 64;
 
-async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+export async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
   const out = new Array<R>(items.length);
   let next = 0;
   async function worker(): Promise<void> {

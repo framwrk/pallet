@@ -1,9 +1,10 @@
 import * as hostKeys from "../services/host-key-store";
 import { BrowserWindow, dialog, ipcMain } from "electron";
-import type { ConnectProfile, HostKeyPrompt, IpcResult, PreviewData } from "../../shared/types";
-import { EditChannels, HostKeyChannels, SftpChannels, UiChannels } from "../../shared/ipc";
+import type { ConnectProfile, HostKeyPrompt, IpcResult, PreviewData, SizeTarget } from "../../shared/types";
+import { EditChannels, FolderSizeChannels, HostKeyChannels, SftpChannels, UiChannels } from "../../shared/ipc";
 import { type HostKeyDecisionInput, SessionManager } from "../services/session-manager";
 import { EditSessions } from "../services/edit-sessions";
+import { FolderSizes } from "../services/folder-size";
 import type { SessionStatusEvent } from "../../shared/types";
 import { SftpService } from "../services/sftp-service";
 import { randomUUID } from "crypto";
@@ -63,6 +64,14 @@ export const sessionManager = new SessionManager({
 
 export const sftpService = new SftpService(sessionManager);
 
+export const folderSizes = new FolderSizes(sessionManager);
+
+// Session ids are never reused, so cached sizes for a closed session are dead
+// weight; drop them rather than holding every folder the user ever looked at.
+onSessionStatus((event) => {
+  if (event.status === "disconnected") folderSizes.forgetSession(event.sessionId);
+});
+
 export const editSessions = new EditSessions(sessionManager, (event) => broadcast(EditChannels.event, event));
 
 function handle<Args extends unknown[], T>(channel: string, fn: (...args: Args) => T | Promise<T>): void {
@@ -101,6 +110,9 @@ export function registerSftpHandlers(): void {
       truncated: buf.length < entry.size,
     };
   });
+  handle(FolderSizeChannels.get, (target: SizeTarget, p: string) => folderSizes.get(target, p));
+  handle(FolderSizeChannels.cancel, (target: SizeTarget, p: string) => folderSizes.cancel(target, p));
+  handle(FolderSizeChannels.invalidate, (target: SizeTarget, p: string) => folderSizes.invalidate(target, p));
   handle(EditChannels.open, (sessionId: string, remotePath: string) => editSessions.open(sessionId, remotePath));
   handle(HostKeyChannels.respond, (requestId: string, trust: boolean) => {
     pendingPrompts.get(requestId)?.(trust);
