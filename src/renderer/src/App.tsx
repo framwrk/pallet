@@ -194,23 +194,25 @@ function App(): React.JSX.Element {
   }, []);
 
   return (
-    <div className="flex h-full flex-col overflow-hidden">
-      <Toolbar />
-      <div className="flex min-h-0 flex-1">
-        <Sidebar />
-        <Pane paneId="left" />
-        <div className="bg-border w-px shrink-0" />
-        <Pane paneId="right" />
-        <Inspector />
+    <div className="flex h-full select-none">
+      <Sidebar />
+      <div className="flex w-full flex-col overflow-hidden">
+        <Toolbar />
+        <div className="flex min-h-0 flex-1">
+          <Pane paneId="left" />
+          <div className="bg-border w-px shrink-0" />
+          <Pane paneId="right" />
+          <Inspector />
+        </div>
+        <QueueDrawer />
+        <GoToDialog />
+        <ConnectDialog />
+        <HostKeyDialog />
+        <ConflictDialog />
+        <ConfirmDeleteDialog />
+        <Toasts />
+        <UpdateToast />
       </div>
-      <QueueDrawer />
-      <GoToDialog />
-      <ConnectDialog />
-      <HostKeyDialog />
-      <ConflictDialog />
-      <ConfirmDeleteDialog />
-      <Toasts />
-      <UpdateToast />
     </div>
   );
 }

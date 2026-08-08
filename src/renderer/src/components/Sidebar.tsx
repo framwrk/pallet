@@ -1,5 +1,5 @@
+import { CircleArrowDown, Dock, File, HardDrive, Home, Plug, Server, Usb } from "lucide-react";
 import type { ColorLabel, Favorite } from "@shared/types";
-import { Download, FileText, HardDrive, Home, Monitor, Plug, Server, Usb } from "lucide-react";
 import { type PaneId, navigate, setConnectOpen, setEditingFavorite, useAppState } from "@/store/panes";
 import { connectFavorite, favoriteContextMenu, reorderFavorites } from "@/store/favorites";
 import { useRef, useState } from "react";
@@ -36,7 +36,7 @@ function SidebarItem({
   return (
     <button
       className={cn(
-        "text-sidebar-foreground hover:bg-sidebar-accent flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-[13px]",
+        "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px]",
         currentPath === path && "bg-sidebar-accent font-medium",
       )}
       onClick={() => void navigate(activePaneId, path)}
@@ -69,7 +69,7 @@ function FavoriteItem({
       onDragOver={onDragOver}
       onDrop={onDrop}
       className={cn(
-        "text-sidebar-foreground hover:bg-sidebar-accent flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-[13px]",
+        "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px]",
         dragTarget && "border-primary border-t-2",
       )}
       onClick={() => void connectFavorite(activePaneId, favorite.id)}
@@ -110,17 +110,17 @@ export function Sidebar(): React.JSX.Element {
   }
 
   return (
-    <aside className="bg-sidebar m-2 flex w-48 shrink-0 flex-col gap-3 overflow-y-auto rounded-lg p-2">
+    <aside className="bg-sidebar m-2 mr-0 flex w-64 shrink-0 flex-col gap-3 overflow-y-auto rounded-lg p-2 pt-9">
       <button
         className="border-border text-sidebar-foreground hover:bg-sidebar-accent flex w-full items-center gap-2 rounded-md border border-dashed px-2 py-1.5 text-left text-[13px]"
         onClick={() => setConnectOpen(true)}
         title="Connect to Server (⌘K)"
       >
         <Plug className="size-4 shrink-0 text-sky-600 dark:text-sky-400" />
-        <span className="truncate">Connect to Server…</span>
+        <span className="truncate">Connect to Server</span>
       </button>
       <div>
-        <SectionTitle>DEVICES</SectionTitle>
+        <SectionTitle>Devices</SectionTitle>
         {app.volumes.map((v) => (
           <SidebarItem
             key={v.path}
@@ -133,7 +133,7 @@ export function Sidebar(): React.JSX.Element {
       </div>
       {kf && (
         <div>
-          <SectionTitle>PLACES</SectionTitle>
+          <SectionTitle>Places</SectionTitle>
           <SidebarItem
             icon={Home}
             label="Home"
@@ -141,19 +141,19 @@ export function Sidebar(): React.JSX.Element {
             {...common}
           />
           <SidebarItem
-            icon={Monitor}
+            icon={Dock}
             label="Desktop"
             path={kf.desktop}
             {...common}
           />
           <SidebarItem
-            icon={FileText}
+            icon={File}
             label="Documents"
             path={kf.documents}
             {...common}
           />
           <SidebarItem
-            icon={Download}
+            icon={CircleArrowDown}
             label="Downloads"
             path={kf.downloads}
             {...common}
@@ -162,7 +162,7 @@ export function Sidebar(): React.JSX.Element {
       )}
       {app.favorites.length > 0 && (
         <div onDragLeave={() => setDropIndex(null)}>
-          <SectionTitle>FAVORITES</SectionTitle>
+          <SectionTitle>Favorites</SectionTitle>
           {app.favorites.map((favorite, i) => (
             <FavoriteItem
               key={favorite.id}

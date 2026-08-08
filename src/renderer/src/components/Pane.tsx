@@ -133,13 +133,14 @@ export function Pane({ paneId }: { paneId: PaneId }): React.JSX.Element {
   return (
     <section
       className={cn(
-        "bg-background flex min-w-0 flex-1 flex-col overflow-hidden border-t-2",
-        isActive ? "border-t-primary" : "border-t-transparent",
+        "bg-background relative flex min-w-0 flex-1 flex-col overflow-hidden",
+        isActive &&
+          "after:bg-primary after:pointer-events-none after:absolute after:top-0 after:right-2 after:left-2 after:h-1 after:rounded-full",
       )}
       onMouseDownCapture={() => setActive(paneId)}
       data-pane={paneId}
     >
-      <div className="flex h-8 items-center gap-1 border-b px-2">
+      <div className="mt-1 flex h-8 items-center gap-1 border-b px-2">
         {pane.backend.kind === "sftp" && (
           <span
             className="bg-primary/10 text-primary flex shrink-0 items-center gap-1 rounded-full py-0.5 pr-0.5 pl-2 text-[11px] font-medium"

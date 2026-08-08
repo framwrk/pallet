@@ -141,7 +141,7 @@ export function FileList({ paneId, pane, visible, isActive }: FileListProps): Re
   return (
     <div
       ref={scrollRef}
-      className="min-h-0 flex-1 overflow-y-auto select-none"
+      className="min-h-0 flex-1 overflow-y-auto"
       onMouseDown={(e) => {
         if (e.target === scrollRef.current || e.target === e.currentTarget) {
           setActive(paneId);
@@ -178,7 +178,7 @@ export function FileList({ paneId, pane, visible, isActive }: FileListProps): Re
               key={entry.name}
               className={cn(
                 "absolute left-0 grid w-full grid-cols-[minmax(0,1fr)_5.5rem_11rem] items-center gap-2 px-3 text-[13px]",
-                row.index % 2 === 1 && !selected && "bg-muted/40",
+                // row.index % 2 === 1 && !selected && "bg-muted/40",
                 selected && (isActive ? "bg-primary text-primary-foreground" : "bg-muted text-foreground"),
               )}
               style={{
@@ -209,7 +209,7 @@ export function FileList({ paneId, pane, visible, isActive }: FileListProps): Re
                 void showRowContextMenu(paneId, entry);
               }}
             >
-              <span className="flex min-w-0 items-center gap-1.5">
+              <span className="flex min-w-0 items-center gap-2">
                 {dirLike ? (
                   <Folder
                     className={cn("size-4 shrink-0", selected && isActive ? "text-primary-foreground" : "text-sky-500")}
