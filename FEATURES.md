@@ -17,6 +17,7 @@ press **F5** to send it to the other pane. The rest of this document is detail.
 - [Conflicts](#conflicts)
 - [The inspector](#the-inspector)
 - [Editing remote files](#editing-remote-files)
+- [Settings](#settings)
 - [Updates](#updates)
 - [Logs and privacy](#logs-and-privacy)
 - [Keyboard reference](#keyboard-reference)
@@ -30,19 +31,20 @@ Pallet is a dual-pane file manager. Both panes start as local file browsers, and
 pointed at a remote server independently — so you can go local↔remote, local↔local, or
 remote↔remote.
 
-| Region           | What it is                                                                                                         |
-| ---------------- | ------------------------------------------------------------------------------------------------------------------ |
-| **Toolbar**      | Back, Forward, Refresh, New Folder, Move to Trash, Get Info. Acts on the **active pane**.                          |
-| **Sidebar**      | `Connect to Server…`, then DEVICES (mounted volumes), PLACES (Home, Desktop, Documents, Downloads), and FAVORITES. |
-| **Panes**        | Two side-by-side file lists, each with its own breadcrumb bar and status line.                                     |
-| **Queue drawer** | Collapsible transfer queue along the bottom. Appears when you start a transfer.                                    |
-| **Inspector**    | Right-hand info panel. Toggle with **⌘I** or **Space**.                                                            |
+| Region           | What it is                                                                                                        |
+| ---------------- | ----------------------------------------------------------------------------------------------------------------- |
+| **Toolbar**      | Back, Forward, Refresh, New Folder, Move to Trash, Get Info. Acts on the **active pane**.                         |
+| **Sidebar**      | `Connect to Server`, then Devices (mounted volumes), Places (Home, Desktop, Documents, Downloads), and Favorites. |
+| **Panes**        | Two side-by-side file lists, each with its own breadcrumb bar and status line.                                    |
+| **Queue drawer** | Collapsible transfer queue along the bottom. Appears when you start a transfer.                                   |
+| **Inspector**    | Right-hand info panel. Toggle with **⌘I** or **Space**.                                                           |
 
 **The active pane** is the one with the accent-colored top border. Every toolbar button and keyboard
 shortcut applies to it. Click a pane or press **⇥** to switch. Keyboard focus and the active pane are
 always the same thing — they never drift apart.
 
-The window follows your system light/dark appearance automatically.
+The window follows your system light/dark appearance by default, and can be pinned to light or dark
+in [Settings](#settings).
 
 ---
 
@@ -61,9 +63,11 @@ panes.
 
 **Sorting.** Click the **Name**, **Size**, or **Date Modified** column header. Click again to
 reverse. Folders always sort first regardless of the column, and names sort naturally — `file2`
-comes before `file10`. Each pane sorts independently.
+comes before `file10`. Each pane sorts independently. Sorting by Size falls back to name _among_
+folders, even when folder sizes are being calculated.
 
-**Hidden files** are off by default. Toggle with **⌘⇧.** (Command-Shift-period).
+**Hidden files** are off by default. Toggle with **⌘⇧.** (Command-Shift-period). The setting is
+remembered across launches, and is the same switch as the one in Settings.
 
 **Status line.** Each pane's footer shows item count and free space (`19 items, 42.39 GB
 available`). With a selection, it switches to `3 of 19 selected`.
@@ -73,6 +77,33 @@ opens and scrolls without stalling.
 
 **Symlinks** are shown with an arrow badge and are labeled with what they point at, so you know
 whether descending will work. Pallet never follows them during a recursive copy or delete.
+
+### Folder sizes
+
+Folders show `--` in the Size column. Turn on **Calculate folder sizes** in
+[Settings](#settings) and Pallet walks each one and shows the total instead — in the file list and
+in the inspector.
+
+It's off by default, and off for remote panes even when it's on, because the cost is not the same
+everywhere:
+
+- **Locally**, a walk is cheap. Only the rows currently on screen are sized, and only once
+  scrolling has held still for a moment, so a fast scroll through a big directory doesn't start
+  work you'll never see. At most four walks run at a time.
+- **Remotely**, sizing a tree is the most expensive thing Pallet asks of a server, so it needs a
+  second switch — **Include remote folders**. Pallet tries `du -sb` first, which is a single round
+  trip; on a server whose `du` doesn't take `-b` (macOS, BSD, BusyBox) it falls back, once and for
+  the rest of the session, to an SFTP walk of one round trip per directory. Only one remote sizing
+  job runs per server at a time, so it can't crowd out your transfers.
+
+Totals are **apparent size** — the sum of the sizes of the files inside, the same number `du`
+reports — not disk usage. Symlinks count at their own size and are never followed, so a link to `/`
+can't turn one folder into a walk of the whole filesystem. Unreadable subfolders contribute nothing
+rather than failing the total.
+
+Totals are cached. **⌘R** on a directory drops the cached totals for it and everything below it —
+that's the moment you're telling Pallet the contents changed. Disconnecting a server forgets its
+totals entirely.
 
 ---
 
@@ -120,7 +151,7 @@ undoable; Trash is recoverable through Finder instead.
 
 ## Connecting to a server
 
-Press **⌘K**, or click **Connect to Server…** at the top of the sidebar.
+Press **⌘K**, or click **Connect to Server** at the top of the sidebar.
 
 | Field                               | Notes                                                                                                                             |
 | ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
@@ -138,8 +169,9 @@ Press **⌘K**, or click **Connect to Server…** at the top of the sidebar.
 **Show Advanced** reveals three more:
 
 - **Keepalive (s)** — how often to ping an idle connection. Default 15.
-- **Concurrency** — parallel transfer channels, 1–7. Default 4. Raise it for many small files; lower
-  it if your server limits sessions. (Values outside the range are clamped rather than rejected.)
+- **Concurrency** — parallel transfer channels, 1–7. Seeded from **Default concurrency** in
+  [Settings](#settings), which starts at 4. Raise it for many small files; lower it if your server
+  limits sessions. (Values outside the range are clamped rather than rejected.)
 - **Compression** — negotiates zlib. Worth turning on over a slow link, a waste of CPU on a fast one.
 
 Click **Connect** to connect once, or **Add to Favorites** to save the settings for next time.
@@ -180,9 +212,9 @@ Saved connections live in the FAVORITES section of the sidebar, each with its co
 | Delete   | Right-click → **Delete**                   |
 | Reorder  | Drag it up or down the list                |
 
-Favorites are stored in SQLite on your machine. **Passwords and key passphrases never go in the
-database** — they're encrypted through macOS Keychain via Electron's `safeStorage`, and the database
-holds only which auth method you chose and whether a secret exists.
+Favorites are stored in SQLite on your machine, alongside your settings. **Passwords and key
+passphrases never go in the database** — they're encrypted through macOS Keychain via Electron's
+`safeStorage`, and the database holds only which auth method you chose and whether a secret exists.
 
 Favorites also track when you last used them.
 
@@ -247,6 +279,11 @@ You can't manually resume that one; it's waiting on the network, not on you.
 **If a transfer is interrupted,** the affected file restarts from the beginning on retry. Files that
 already completed in the batch are not re-sent. (Resuming mid-file from a byte offset is post-beta.)
 
+**If a transfer stalls** — no bytes at all for 60 seconds — Pallet gives up on that channel and
+restarts the file on a fresh one, up to five times before recording it as an error. A single dead
+channel on an otherwise healthy connection is the case this covers: the session still reports itself
+connected, so the auto-pause path would never fire and the job would sit at "running" forever.
+
 ---
 
 ## Conflicts
@@ -290,6 +327,34 @@ it. **Every time you save, it re-uploads** — through the same `.pallet-part` s
 transfer. A toast confirms each upload.
 
 Keep the file open and keep saving; each save is another upload. Close the editor when you're done.
+
+---
+
+## Settings
+
+**⌘,**, or **Pallet → Settings…**. A separate window with three tabs, which resizes itself to fit
+whichever tab you're on.
+
+### General
+
+| Setting                    | Default | What it does                                                                             |
+| -------------------------- | ------- | ---------------------------------------------------------------------------------------- |
+| **Show hidden files**      | Off     | The same switch as **⌘⇧.** in the file browser.                                          |
+| **Calculate folder sizes** | Off     | Total each folder's contents instead of showing `--`. See [Folder sizes](#folder-sizes). |
+| **Include remote folders** | Off     | Extends the above to connected servers. Only appears while folder sizes are on.          |
+
+### Appearance
+
+**Appearance** — System, Light, or Dark. System follows the macOS setting and keeps following it if
+you change it while Pallet is running.
+
+### Transfers
+
+**Default concurrency** — 1–7, default 4. Seeds the connect dialog's concurrency field; it doesn't
+change connections that already exist.
+
+Changes save as you make them — there's no OK button — and apply to open windows immediately.
+Preferences live in the same local SQLite database as your favorites.
 
 ---
 
@@ -361,6 +426,7 @@ reveals something you'd rather not share.
 | -------------- | ----------------- |
 | `⌘I` / `Space` | Toggle inspector  |
 | `⌘K`           | Connect to server |
+| `⌘,`           | Settings          |
 
 ---
 
@@ -380,7 +446,7 @@ Deliberate omissions for the beta, not bugs:
   protocol is a known quantity, just not this release.
 - **Folder sync / mirror**
 - **Archive preview**
-- **Custom themes** — light and dark follow the system, and that's it.
+- **Custom themes** — light and dark, following the system or pinned in Settings, and that's it.
 - **Automatic updates** — blocked on code signing.
 - **Intel Macs** — the beta ships arm64 only.
 
