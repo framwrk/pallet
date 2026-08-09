@@ -3,15 +3,17 @@ import react from "@vitejs/plugin-react";
 import { resolve } from "path";
 import tailwindcss from "@tailwindcss/vite";
 
+const shared = { "@shared": resolve("src/shared") };
+
 export default defineConfig({
-  main: {},
-  preload: {},
+  main: { resolve: { alias: shared } },
+  preload: { resolve: { alias: shared } },
   renderer: {
     resolve: {
       alias: {
         "@renderer": resolve("src/renderer/src"),
         "@": resolve("src/renderer/src"),
-        "@shared": resolve("src/shared"),
+        ...shared,
       },
     },
     build: {

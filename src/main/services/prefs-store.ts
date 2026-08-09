@@ -1,5 +1,6 @@
-import { DEFAULT_PREFERENCES, MAX_CONCURRENCY, MIN_CONCURRENCY, type Preferences } from "../../shared/preferences";
-import { getDb } from "../db";
+import { DEFAULT_PREFERENCES, MAX_CONCURRENCY, MIN_CONCURRENCY } from "@shared/prefs/prefs.constants";
+import type { Preferences } from "@shared/prefs/prefs.types";
+import { getDb } from "./database";
 
 /**
  * Values are stored as JSON so booleans and numbers round-trip through the
@@ -54,4 +55,26 @@ export function setPreferences(patch: Partial<Preferences>): Preferences {
   });
   tx(next);
   return next;
+}
+
+/**
+ * Raw access for keys outside the typed `Preferences` set — the update
+ * checker's bookkeeping (`updates.prerelease`, `updates.lastCheck`).
+ *
+ * These store the string verbatim, where the typed accessors above store JSON.
+ * The two happen to coincide for booleans and numbers, but not for strings, so
+ * a key belongs to one accessor or the other and never both.
+ */
+export function getPreferenceRow(key: string, fallback: string): string {
+  const row = getDb().prepare("SELECT value FROM preferences WHERE key = ?").get(key) as { value: string } | undefined;
+  return row?.value ?? fallback;
+}
+
+export function setPreferenceRow(key: string, value: string): void {
+  getDb()
+    .prepare(
+      `INSERT INTO preferences (key, value) VALUES (?, ?)
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+    )
+    .run(key, value);
 }

@@ -1,8 +1,8 @@
 import { BrowserWindow, ipcMain } from "electron";
 import { getPreferences, setPreferences } from "../services/prefs-store";
-import type { IpcResult } from "../../shared/types";
-import { PrefChannels } from "../../shared/ipc";
-import type { Preferences } from "../../shared/preferences";
+import type { IpcResult } from "@shared/ipc/ipc.types";
+import { PrefChannels } from "@shared/ipc/ipc.constants";
+import type { Preferences } from "@shared/prefs/prefs.types";
 
 function handle<Args extends unknown[], T>(channel: string, fn: (...args: Args) => T | Promise<T>): void {
   ipcMain.handle(channel, async (_event, ...args): Promise<IpcResult<T>> => {

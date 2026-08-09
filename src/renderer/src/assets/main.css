@@ -3,6 +3,11 @@
 @import "shadcn/tailwind.css";
 @import "@fontsource-variable/inter";
 
+/* Tailwind's automatic detection only walks the renderer tree. Shared
+   constants hold class names too (the favorite label swatches), and without
+   this they are scanned by nothing and their utilities are never generated. */
+@source "../../../shared";
+
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {

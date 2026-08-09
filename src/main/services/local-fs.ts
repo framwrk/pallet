@@ -1,22 +1,10 @@
-import type { DirListing, Entry, KnownFolders, VolumeInfo } from "../../shared/types";
+import type { DirListing, Entry, KnownFolders, VolumeInfo } from "@shared/fs/fs.types";
 import { type Dirent, type Stats, promises as fs } from "fs";
 import { homedir } from "os";
 import { join } from "path";
+import { mapLimit } from "../utils/concurrency";
 
 const STAT_CONCURRENCY = 64;
-
-export async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
-  const out = new Array<R>(items.length);
-  let next = 0;
-  async function worker(): Promise<void> {
-    while (next < items.length) {
-      const i = next++;
-      out[i] = await fn(items[i]);
-    }
-  }
-  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
-  return out;
-}
 
 function entryFromStats(name: string, path: string, dirent: Dirent, stats: Stats | null): Entry {
   const isLink = dirent.isSymbolicLink();

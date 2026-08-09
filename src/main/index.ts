@@ -1,11 +1,11 @@
-import { AppChannels, SettingsChannels } from "../shared/ipc";
+import { AppChannels, SettingsChannels } from "@shared/ipc/ipc.constants";
 import { BrowserWindow, Menu, app, ipcMain, shell } from "electron";
 import { electronApp, is, optimizer } from "@electron-toolkit/utils";
 import { installCrashHandlers, log, logFilePath } from "./services/logger";
-import type { IpcResult } from "../shared/types";
+import type { IpcResult } from "@shared/ipc/ipc.types";
 import icon from "../../resources/icon.png?asset";
 import { join } from "path";
-import { registerIpcHandlers } from "./ipc";
+import { registerIpcHandlers } from "./ipc/register";
 import { sessionManager } from "./ipc/sftp";
 import { startUpdateChecks } from "./services/update-checker";
 

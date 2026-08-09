@@ -8,9 +8,9 @@
  * here is GitHub's own flag on a release — it is not encoded in the version
  * string, which never carries a suffix.
  */
-import { compareVersions, parseVersion } from "../../shared/semver";
+import { compareVersions, parseVersion } from "@shared/version/version.utils";
+import { getPreferenceRow, setPreferenceRow } from "./prefs-store";
 import { app } from "electron";
-import { getDb } from "../db";
 import { log } from "./logger";
 
 const REPO = "framwrk/pallet";
@@ -29,19 +29,8 @@ interface GithubRelease {
   draft: boolean;
 }
 
-function getPref(key: string, fallback: string): string {
-  const row = getDb().prepare("SELECT value FROM preferences WHERE key = ?").get(key) as { value: string } | undefined;
-  return row?.value ?? fallback;
-}
-
-function setPref(key: string, value: string): void {
-  getDb()
-    .prepare("INSERT INTO preferences (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value")
-    .run(key, value);
-}
-
 export async function checkForUpdate(): Promise<UpdateInfo | null> {
-  const includePrerelease = getPref("updates.prerelease", "true") === "true";
+  const includePrerelease = getPreferenceRow("updates.prerelease", "true") === "true";
   const url = includePrerelease
     ? `https://api.github.com/repos/${REPO}/releases?per_page=10`
     : `https://api.github.com/repos/${REPO}/releases/latest`;
@@ -51,7 +40,7 @@ export async function checkForUpdate(): Promise<UpdateInfo | null> {
   if (!res.ok) throw new Error(`GitHub API ${res.status}`);
   const body = (await res.json()) as GithubRelease | GithubRelease[];
   const releases = Array.isArray(body) ? body : [body];
-  setPref("updates.lastCheck", String(Date.now()));
+  setPreferenceRow("updates.lastCheck", String(Date.now()));
 
   // Pick the highest version, not merely the most recently published: a patch
   // to an older line can be released after a newer minor. Tags that aren't

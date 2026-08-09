@@ -10,28 +10,16 @@ import {
   SftpChannels,
   TransferChannels,
   UiChannels,
-} from "../shared/ipc";
-import type { ConflictAction, ConflictPrompt, TransferJobSnapshot, TransferRequest } from "../shared/transfers";
-import type {
-  ConnectProfile,
-  ConnectResult,
-  ContextMenuItem,
-  DirListing,
-  EditEventPayload,
-  Entry,
-  Favorite,
-  FavoriteInput,
-  HostKeyPrompt,
-  IpcResult,
-  KnownFolders,
-  PreviewData,
-  SessionStatusEvent,
-  SizeTarget,
-  VolumeInfo,
-} from "../shared/types";
+} from "@shared/ipc/ipc.constants";
+import type { ConflictAction, ConflictPrompt, TransferJobSnapshot, TransferRequest } from "@shared/transfer/transfer.types";
+import type { ConnectProfile, ConnectResult, HostKeyPrompt, SessionStatusEvent } from "@shared/sftp/sftp.types";
+import type { ContextMenuItem, IpcResult } from "@shared/ipc/ipc.types";
+import type { DirListing, Entry, KnownFolders, PreviewData, SizeTarget, VolumeInfo } from "@shared/fs/fs.types";
+import type { Favorite, FavoriteInput } from "@shared/favorite/favorite.types";
 import { contextBridge, ipcRenderer } from "electron";
-import type { PalletApi } from "../shared/api";
-import type { Preferences } from "../shared/preferences";
+import type { EditEventPayload } from "@shared/edit/edit.types";
+import type { PalletApi } from "@shared/ipc/ipc-api.types";
+import type { Preferences } from "@shared/prefs/prefs.types";
 
 /** Error surfaced to the renderer with a stable machine-readable code. */
 export class PalletError extends Error {

@@ -1,19 +1,16 @@
-import * as hostKeys from "../services/host-key-store";
+import * as hostKeys from "../services/sftp/host-key-store";
 import { BrowserWindow, dialog, ipcMain } from "electron";
-import type { ConnectProfile, HostKeyPrompt, IpcResult, PreviewData, SizeTarget } from "../../shared/types";
-import { EditChannels, FolderSizeChannels, HostKeyChannels, SftpChannels, UiChannels } from "../../shared/ipc";
-import { type HostKeyDecisionInput, SessionManager } from "../services/session-manager";
+import type { ConnectProfile, HostKeyPrompt } from "@shared/sftp/sftp.types";
+import { EditChannels, FolderSizeChannels, HostKeyChannels, SftpChannels, UiChannels } from "@shared/ipc/ipc.constants";
+import { type HostKeyDecisionInput, SessionManager } from "../services/sftp/session-manager";
+import type { PreviewData, SizeTarget } from "@shared/fs/fs.types";
 import { EditSessions } from "../services/edit-sessions";
-import { FolderSizes } from "../services/folder-size";
-import type { SessionStatusEvent } from "../../shared/types";
-import { SftpService } from "../services/sftp-service";
+import { FolderSizes } from "../services/folder-size.service";
+import type { IpcResult } from "@shared/ipc/ipc.types";
+import type { SessionStatusEvent } from "@shared/sftp/sftp.types";
+import { SftpService } from "../services/sftp/sftp.service";
+import { broadcast } from "../utils/broadcast";
 import { randomUUID } from "crypto";
-
-function broadcast(channel: string, payload: unknown): void {
-  for (const win of BrowserWindow.getAllWindows()) {
-    win.webContents.send(channel, payload);
-  }
-}
 
 const pendingPrompts = new Map<string, (trust: boolean) => void>();
 

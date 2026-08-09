@@ -1,5 +1,5 @@
 import { BrowserWindow, type IpcMainInvokeEvent, Menu } from "electron";
-import type { ContextMenuItem } from "../../shared/types";
+import type { ContextMenuItem } from "@shared/ipc/ipc.types";
 
 /** Show a native context menu; resolves with the clicked item id, or null. */
 export function popupContextMenu(event: IpcMainInvokeEvent, items: ContextMenuItem[]): Promise<string | null> {

@@ -1,6 +1,6 @@
-import type { Appearance, Preferences } from "@shared/preferences";
+import type { Appearance, Preferences } from "@shared/prefs/prefs.types";
 import { ArrowUpDown, ChevronDown, ChevronUp, ChevronsUpDown, Contrast, Settings2 } from "lucide-react";
-import { MAX_CONCURRENCY, MIN_CONCURRENCY } from "@shared/preferences";
+import { MAX_CONCURRENCY, MIN_CONCURRENCY } from "@shared/prefs/prefs.constants";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@renderer/components/ui/select";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Input } from "@renderer/components/ui/input";

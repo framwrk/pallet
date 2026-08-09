@@ -6,7 +6,7 @@
 import { appendFileSync, mkdirSync, renameSync, statSync } from "fs";
 import { app } from "electron";
 import { join } from "path";
-import { redact } from "../../shared/redact";
+import { redact } from "@shared/redact/redact.utils";
 
 const MAX_BYTES = 5 * 1024 * 1024;
 

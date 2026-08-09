@@ -3,10 +3,11 @@
  * open it with the default app, poll for changes, and re-upload through the
  * same .pallet-part staging the transfer queue uses.
  */
-import { type TransferEndpoint, makeEndpoint } from "./transfer/endpoints";
+import { type TransferEndpoint, makeEndpoint } from "./transfer/transfer-endpoint";
 import { app, shell } from "electron";
 import { createWriteStream, promises as fs, unwatchFile, watchFile } from "fs";
-import type { SessionManager } from "./session-manager";
+import { PART_SUFFIX } from "@shared/transfer/transfer.constants";
+import type { SessionManager } from "./sftp/session-manager";
 import { join } from "path";
 import { pipeline } from "stream/promises";
 import { randomUUID } from "crypto";
@@ -87,7 +88,7 @@ export class EditSessions {
       return;
     }
     edit.uploading = true;
-    const partPath = edit.remotePath + ".pallet-part";
+    const partPath = edit.remotePath + PART_SUFFIX;
     try {
       const src = (await import("fs")).createReadStream(edit.localPath);
       const dst = await edit.endpoint.createWriteStream(partPath, edit.remoteMode);
