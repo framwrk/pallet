@@ -33,8 +33,8 @@ export default defineConfig(
       "sort-imports": "error",
     },
   },
-  // The renderer never constructs paths with Node's `path` (POSIX vs platform
-  // mismatch for remote paths). Use @shared/paths (localPath / remotePath).
+  // The renderer never constructs paths with Node's `path`, which cannot tell a
+  // remote path from a local one. Use @shared/paths (localPath / remotePath).
   {
     files: ["src/renderer/**/*.{ts,tsx}"],
     rules: {
@@ -42,7 +42,7 @@ export default defineConfig(
       "no-restricted-imports": [
         "error",
         {
-          paths: ["path", "node:path", "path/posix", "path/win32"].map((name) => ({
+          paths: ["path", "node:path", "path/posix"].map((name) => ({
             name,
             message: "Renderer code must use localPath/remotePath from @shared/paths instead.",
           })),

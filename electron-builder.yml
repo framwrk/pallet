@@ -12,13 +12,6 @@ files:
   - "!{INITIAL_PLAN.md,PROJECT_INFO.md}"
 asarUnpack:
   - resources/**
-win:
-  executableName: pallet
-nsis:
-  artifactName: ${name}-${version}-setup.${ext}
-  shortcutName: ${productName}
-  uninstallDisplayName: ${productName}
-  createDesktopShortcut: always
 mac:
   entitlementsInherit: build/entitlements.mac.plist
   # arm64 only for the beta. A universal build needs every native dependency
@@ -37,15 +30,6 @@ mac:
     - NSDownloadsFolderUsageDescription: Pallet browses and transfers files in your Downloads folder.
   notarize: false
 dmg:
-  artifactName: ${name}-${version}.${ext}
-linux:
-  target:
-    - AppImage
-    - snap
-    - deb
-  maintainer: electronjs.org
-  category: Utility
-appImage:
   artifactName: ${name}-${version}.${ext}
 npmRebuild: false
 publish:

@@ -1,9 +1,8 @@
 import { AppChannels, SettingsChannels } from "@shared/ipc/ipc.constants";
 import { BrowserWindow, Menu, app, ipcMain, shell } from "electron";
-import { electronApp, is, optimizer } from "@electron-toolkit/utils";
 import { installCrashHandlers, log, logFilePath } from "./services/logger";
+import { is, optimizer } from "@electron-toolkit/utils";
 import type { IpcResult } from "@shared/ipc/ipc.types";
-import icon from "../../resources/icon.png?asset";
 import { join } from "path";
 import { registerIpcHandlers } from "./ipc/register";
 import { sessionManager } from "./ipc/sftp";
@@ -18,7 +17,6 @@ function createWindow(): void {
     show: false,
     titleBarStyle: "hiddenInset",
     trafficLightPosition: { x: 18, y: 18 },
-    ...(process.platform === "linux" ? { icon } : {}),
     webPreferences: {
       preload: join(__dirname, "../preload/index.js"),
       sandbox: false,
@@ -65,7 +63,6 @@ function openSettingsWindow(): void {
     title: "Settings",
     titleBarStyle: "hiddenInset",
     trafficLightPosition: { x: 14, y: 14 },
-    ...(process.platform === "linux" ? { icon } : {}),
     webPreferences: {
       preload: join(__dirname, "../preload/index.js"),
       sandbox: false,
@@ -108,31 +105,28 @@ function buildMenu(): void {
   // accelerators fire from any window, and even while a text field has focus.
   const settingsItem: Electron.MenuItemConstructorOptions = {
     label: "Settings…",
-    accelerator: "CmdOrCtrl+,",
+    accelerator: "Cmd+,",
     click: () => openSettingsWindow(),
   };
-  const isMac = process.platform === "darwin";
 
   const template: Electron.MenuItemConstructorOptions[] = [
-    isMac
-      ? {
-          label: app.name,
-          submenu: [
-            { role: "about" },
-            { type: "separator" },
-            settingsItem,
-            { type: "separator" },
-            { role: "services" },
-            { type: "separator" },
-            { role: "hide" },
-            { role: "hideOthers" },
-            { role: "unhide" },
-            { type: "separator" },
-            { role: "quit" },
-          ],
-        }
-      : { label: "File", submenu: [settingsItem, { type: "separator" }, { role: "quit" }] },
-    ...(isMac ? [{ role: "fileMenu" } as Electron.MenuItemConstructorOptions] : []),
+    {
+      label: app.name,
+      submenu: [
+        { role: "about" },
+        { type: "separator" },
+        settingsItem,
+        { type: "separator" },
+        { role: "services" },
+        { type: "separator" },
+        { role: "hide" },
+        { role: "hideOthers" },
+        { role: "unhide" },
+        { type: "separator" },
+        { role: "quit" },
+      ],
+    },
+    { role: "fileMenu" },
     { role: "editMenu" },
     { role: "viewMenu" },
     { role: "windowMenu" },
@@ -154,7 +148,6 @@ function buildMenu(): void {
 }
 
 app.whenReady().then(() => {
-  electronApp.setAppUserModelId("com.framwrk.pallet");
   installCrashHandlers();
   log("app start", app.getVersion());
 
@@ -178,11 +171,10 @@ app.whenReady().then(() => {
   });
 });
 
-app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") {
-    app.quit();
-  }
-});
+// Pallet stays in the dock after its last window closes, and `activate` reopens
+// one. Subscribing at all is what makes that happen: with no listener, Electron
+// quits the app by default.
+app.on("window-all-closed", () => {});
 
 app.on("before-quit", () => {
   // Close SSH sessions cleanly; avoids half-open channels server-side.

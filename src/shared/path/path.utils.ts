@@ -1,12 +1,11 @@
 /**
  * Path utilities usable from any process, including the renderer.
  *
- * The renderer is banned (by lint rule) from importing Node's `path`, because
- * remote paths are always POSIX regardless of the local platform. `remotePath`
- * is strictly POSIX; `localPath` handles the local platform, which for Pallet
- * is macOS only, so both are slash-separated — but they stay separate modules
- * so the distinction survives if a Windows build ever happens, and so remote
- * semantics (no `~`, no drive letters) stay isolated.
+ * The renderer is banned (by lint rule) from importing Node's `path`, because a
+ * remote path is not a local path even when both are POSIX. `remotePath` and
+ * `localPath` are therefore separate objects with identical behaviour: the
+ * split keeps remote semantics (no `~`, no local filesystem) isolated, and
+ * makes every call site say which side of the connection it means.
  */
 
 function normalizeSegments(input: string): { abs: boolean; segs: string[] } {
@@ -80,7 +79,7 @@ export const remotePath = {
   isAbsolute: (p: string): boolean => p.startsWith("/"),
 };
 
-// macOS local paths are POSIX; kept as a distinct object on purpose (see header).
+// macOS local paths are POSIX; kept distinct from `remotePath` on purpose (see header).
 export const localPath = {
   join: posixJoin,
   normalize: posixNormalize,
