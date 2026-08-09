@@ -170,6 +170,7 @@ export function copySelection(id: PaneId): void {
 export async function paste(id: PaneId): Promise<void> {
   if (!clipboard || clipboard.names.length === 0) return;
   const pane = getState().panes[id];
+  if (pane.backend.kind === "none") return;
   const to: EndpointRef =
     pane.backend.kind === "sftp" ? { kind: "sftp", sessionId: pane.backend.sessionId } : { kind: "local" };
   try {

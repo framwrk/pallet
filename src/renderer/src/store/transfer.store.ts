@@ -98,6 +98,10 @@ export async function enqueuePaneCopy(
 ): Promise<void> {
   const panes = getState().panes;
   if (names.length === 0) return;
+  if (panes[fromPane].backend.kind === "none" || panes[toPane].backend.kind === "none") {
+    pushToast("Connect to a server first", "info");
+    return;
+  }
   try {
     await window.pallet.transfer.enqueue({
       from: endpointFor(fromPane),

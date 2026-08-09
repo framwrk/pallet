@@ -1,13 +1,12 @@
 import { COLOR_LABELS, LABEL_COLOR_CLASSES } from "@shared/favorite/favorite.constants";
 import { ChevronDown, ChevronRight, KeyRound, LockKeyhole, Star } from "lucide-react";
 import type { ColorLabel, Favorite, FavoriteInput } from "@shared/favorite/favorite.types";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { pushToast, setConnectOpen, useAppState } from "@/store/pane.store";
 import { Button } from "@/components/ui/button";
 import type { ConnectProfile } from "@shared/sftp/sftp.types";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-import { connectPane } from "@/store/sftp.store";
+import { connectRemote } from "@/store/sftp.store";
+import { pushToast } from "@/store/pane.store";
 import { saveFavorite } from "@/store/favorite.store";
 import { useState } from "react";
 
@@ -22,16 +21,24 @@ function Row({ label, children }: { label: string; children: React.ReactNode }):
 
 const inputCls = "h-7 text-[13px]";
 
-function ConnectForm({
-  paneId,
+/**
+ * Server fields, shared by Quick Connect (right pane) and Edit Favorite.
+ * `editing` switches it from connecting to saving; `prefill` only seeds it.
+ */
+export function ConnectForm({
   editing,
   prefill,
   defaultConcurrency,
+  autoFocus,
+  onClose,
 }: {
-  paneId: "left" | "right";
   editing: Favorite | null;
   prefill: Favorite | null;
   defaultConcurrency: number;
+  /** Whether the form takes focus on mount. */
+  autoFocus: boolean;
+  /** Omitted where there is nothing to dismiss the form back to. */
+  onClose?: () => void;
 }): React.JSX.Element {
   const seed = editing ?? prefill;
   const [name, setName] = useState(seed?.name ?? "");
@@ -108,7 +115,7 @@ function ConnectForm({
     setBusy(true);
     setError(null);
     try {
-      await connectPane(paneId, profile, localPathField.trim() || undefined);
+      await connectRemote(profile, localPathField.trim() || undefined);
     } catch (err) {
       setBusy(false);
       setError((err as Error).message);
@@ -124,7 +131,7 @@ function ConnectForm({
     const saved = await saveFavorite(favoriteInput(), enteredSecret());
     if (saved) {
       pushToast(close ? "Favorite saved" : `Added “${saved.name}” to Favorites`, "info");
-      if (close) setConnectOpen(false);
+      if (close) onClose?.();
     }
   }
 
@@ -157,7 +164,7 @@ function ConnectForm({
           onChange={(e) => setServer(e.target.value)}
           placeholder="example.com"
           spellCheck={false}
-          autoFocus={!seed}
+          autoFocus={autoFocus && !seed}
         />
       </Row>
       <Row label="Port">
@@ -205,7 +212,7 @@ function ConnectForm({
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             placeholder={secretPlaceholder}
-            autoFocus={!!seed}
+            autoFocus={autoFocus && !!seed}
           />
         </Row>
       ) : (
@@ -258,7 +265,7 @@ function ConnectForm({
           className={inputCls}
           value={localPathField}
           onChange={(e) => setLocalPathField(e.target.value)}
-          placeholder="Optional, opens in the other pane"
+          placeholder="Optional, opens in the left pane"
           spellCheck={false}
         />
       </Row>
@@ -330,17 +337,6 @@ function ConnectForm({
       {error && <p className="text-destructive text-xs">{error}</p>}
 
       <div className="mt-1 flex items-center gap-2">
-        {!editing && (
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            disabled={busy}
-            onClick={() => void doSaveFavorite(false)}
-          >
-            <Star data-icon="inline-start" /> Add to Favorites
-          </Button>
-        )}
         {busy && (
           <span className="text-muted-foreground flex items-center gap-2 text-xs">
             <span className="border-muted-foreground/40 border-t-foreground size-3 animate-spin rounded-full border" />
@@ -348,15 +344,28 @@ function ConnectForm({
           </span>
         )}
         <div className="ml-auto flex gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            disabled={busy}
-            onClick={() => setConnectOpen(false)}
-          >
-            Cancel
-          </Button>
+          {onClose && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={busy}
+              onClick={onClose}
+            >
+              Cancel
+            </Button>
+          )}
+          {!editing && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={busy}
+              onClick={() => void doSaveFavorite(false)}
+            >
+              <Star data-icon="inline-start" /> Add to Favorites
+            </Button>
+          )}
           <Button
             type="submit"
             size="sm"
@@ -367,32 +376,5 @@ function ConnectForm({
         </div>
       </div>
     </form>
-  );
-}
-
-export function ConnectDialog(): React.JSX.Element {
-  const app = useAppState();
-  const editing = app.editingFavorite;
-
-  return (
-    <Dialog
-      open={app.connectOpen}
-      onOpenChange={(open) => {
-        if (!open) setConnectOpen(false);
-      }}
-    >
-      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle>{editing ? "Edit Favorite" : "Connect to Server"}</DialogTitle>
-        </DialogHeader>
-        {/* Content unmounts when closed, so per-open state seeds correctly. */}
-        <ConnectForm
-          paneId={app.active}
-          editing={editing}
-          prefill={app.connectPrefill}
-          defaultConcurrency={app.defaultConcurrency}
-        />
-      </DialogContent>
-    </Dialog>
   );
 }

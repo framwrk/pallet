@@ -27,15 +27,15 @@ press **F5** to send it to the other pane. The rest of this document is detail.
 
 ## The window
 
-Pallet is a dual-pane file manager. Both panes start as local file browsers, and either one can be
-pointed at a remote server independently — so you can go local↔remote, local↔local, or
-remote↔remote.
+Pallet is a dual-pane file manager with a fixed layout: the **left pane is always your Mac** and the
+**right pane is always the server**. Until you connect one, the right pane shows
+[Quick Connect](#connecting-to-a-server) instead of a file list.
 
 | Region           | What it is                                                                                                                                  |
 | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Toolbar**      | Back, Forward, Refresh, New Folder, Move to Trash, Get Info. Acts on the **active pane**.                                                   |
 | **Sidebar**      | `Connect to Server`, then Devices (mounted volumes), Folders (Home, Desktop, Documents, Downloads, Movies, Music, Pictures), and Favorites. |
-| **Panes**        | Two side-by-side file lists, each with its own breadcrumb bar and status line.                                                              |
+| **Panes**        | Local on the left, server on the right, each with its own breadcrumb bar and status line.                                                  |
 | **Queue drawer** | Collapsible transfer queue along the bottom. Appears when you start a transfer.                                                             |
 | **Inspector**    | Right-hand info panel. Toggle with **⌘I** or **Space**.                                                                                     |
 
@@ -151,7 +151,9 @@ undoable; Trash is recoverable through Finder instead.
 
 ## Connecting to a server
 
-Press **⌘K**, or click **Connect to Server** at the top of the sidebar.
+**Quick Connect** fills the right pane whenever no server is attached to it — at launch, and again
+after you disconnect. To bring it back over a connected pane, press **⌘K** or click
+**Connect to Server** at the top of the sidebar; **Cancel** returns you to the file list.
 
 | Field                               | Notes                                                                                                                             |
 | ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
@@ -162,7 +164,7 @@ Press **⌘K**, or click **Connect to Server** at the top of the sidebar.
 | **Authenticate**                    | Toggle between **Password** and **Private Key**.                                                                                  |
 | **Password** / **Key + Passphrase** | Key auth takes a path to your private key; the passphrase field appears with it.                                                  |
 | **Remote Path**                     | Where to start browsing. Blank means your server-side home directory.                                                             |
-| **Local Path**                      | Optional. Sets the _other_ pane to this folder when you connect, so a favorite can restore both sides of a working setup at once. |
+| **Local Path**                      | Optional. Sets the _left_ pane to this folder when you connect, so a favorite can restore both sides of a working setup at once.  |
 | **Note**                            | Free text, shown when editing the favorite.                                                                                       |
 | **Color Label**                     | A dot for spotting the connection in a long favorites list.                                                                       |
 
@@ -181,7 +183,8 @@ the pane, marks the session _reconnecting_, and retries with backoff (1, 2, 4, 8
 running transfer auto-pauses and resumes on its own once the connection is back. You don't have to
 do anything.
 
-**Disconnect** by navigating the pane back to a local location, or closing the app.
+**Disconnect** with the **×** on the server chip in the right pane's breadcrumb bar. The pane goes
+back to Quick Connect.
 
 ---
 
@@ -206,7 +209,7 @@ Saved connections live in the FAVORITES section of the sidebar, each with its co
 
 | Action   | How                                        |
 | -------- | ------------------------------------------ |
-| Save one | **Add to Favorites** in the connect dialog |
+| Save one | **Add to Favorites** in Quick Connect      |
 | Connect  | Click it in the sidebar                    |
 | Edit     | Right-click → **Edit…**                    |
 | Delete   | Right-click → **Delete**                   |
@@ -350,7 +353,7 @@ you change it while Pallet is running.
 
 ### Transfers
 
-**Default concurrency** — 1–7, default 4. Seeds the connect dialog's concurrency field; it doesn't
+**Default concurrency** — 1–7, default 4. Seeds Quick Connect's concurrency field; it doesn't
 change connections that already exist.
 
 Changes save as you make them — there's no OK button — and apply to open windows immediately.

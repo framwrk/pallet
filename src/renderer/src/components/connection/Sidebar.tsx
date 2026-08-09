@@ -1,6 +1,6 @@
 import { CircleArrowDown, Dock, File, Film, HardDrive, Home, Image, Music, Plug, Server, Usb } from "lucide-react";
-import { type PaneId, navigate, setConnectOpen, setEditingFavorite, useAppState } from "@/store/pane.store";
 import { connectFavorite, favoriteContextMenu, reorderFavorites } from "@/store/favorite.store";
+import { navigate, openQuickConnect, setEditingFavorite, useAppState } from "@/store/pane.store";
 import { useRef, useState } from "react";
 import type { Favorite } from "@shared/favorite/favorite.types";
 import { LABEL_COLOR_CLASSES } from "@shared/favorite/favorite.constants";
@@ -14,13 +14,11 @@ function SidebarItem({
   icon: Icon,
   label,
   path,
-  activePaneId,
   currentPath,
 }: {
   icon: React.ComponentType<{ className?: string }>;
   label: string;
   path: string;
-  activePaneId: PaneId;
   currentPath: string;
 }): React.JSX.Element {
   return (
@@ -29,7 +27,7 @@ function SidebarItem({
         "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px]",
         currentPath === path && "bg-sidebar-accent font-medium",
       )}
-      onClick={() => void navigate(activePaneId, path)}
+      onClick={() => void navigate("left", path)}
     >
       <Icon className="size-4 shrink-0 text-sky-600 dark:text-sky-400" />
       <span className="truncate">{label}</span>
@@ -39,14 +37,12 @@ function SidebarItem({
 
 function FavoriteItem({
   favorite,
-  activePaneId,
   onDragStart,
   onDragOver,
   onDrop,
   dragTarget,
 }: {
   favorite: Favorite;
-  activePaneId: PaneId;
   onDragStart: () => void;
   onDragOver: (e: React.DragEvent) => void;
   onDrop: () => void;
@@ -62,10 +58,10 @@ function FavoriteItem({
         "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px]",
         dragTarget && "border-primary border-t-2",
       )}
-      onClick={() => void connectFavorite(activePaneId, favorite.id)}
+      onClick={() => void connectFavorite(favorite.id)}
       onContextMenu={(e) => {
         e.preventDefault();
-        void favoriteContextMenu(activePaneId, favorite).then((action) => {
+        void favoriteContextMenu(favorite).then((action) => {
           if (action === "edit") setEditingFavorite(favorite);
         });
       }}
@@ -82,9 +78,9 @@ function FavoriteItem({
 
 export function Sidebar(): React.JSX.Element {
   const app = useAppState();
-  const currentPath = app.panes[app.active].cwd;
+  // Devices and folders drive the left pane, so it is the one they highlight.
+  const common = { currentPath: app.panes.left.cwd };
   const kf = app.knownFolders;
-  const common = { activePaneId: app.active, currentPath };
   const dragIndex = useRef<number | null>(null);
   const [dropIndex, setDropIndex] = useState<number | null>(null);
 
@@ -103,7 +99,7 @@ export function Sidebar(): React.JSX.Element {
     <aside className="bg-sidebar m-2 mr-0 flex w-64 shrink-0 flex-col gap-3 overflow-y-auto rounded-lg p-2 pt-9">
       <button
         className="border-border text-sidebar-foreground hover:bg-sidebar-accent flex w-full items-center gap-2 rounded-md border border-dashed px-2 py-1.5 text-left text-[13px]"
-        onClick={() => setConnectOpen(true)}
+        onClick={() => openQuickConnect()}
         title="Connect to Server (⌘K)"
       >
         <Plug className="size-4 shrink-0 text-sky-600 dark:text-sky-400" />
@@ -175,7 +171,6 @@ export function Sidebar(): React.JSX.Element {
             <FavoriteItem
               key={favorite.id}
               favorite={favorite}
-              activePaneId={app.active}
               onDragStart={() => (dragIndex.current = i)}
               onDragOver={(e) => {
                 if (dragIndex.current != null) {

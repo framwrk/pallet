@@ -15,9 +15,9 @@ import {
   goUp,
   initApp,
   moveFocus,
+  openQuickConnect,
   refresh,
   selectAll,
-  setConnectOpen,
   setGoToOpen,
   setInspectorOpen,
   setShowHidden,
@@ -25,7 +25,7 @@ import {
 } from "@/store/pane.store";
 import { ConfirmDeleteDialog } from "@/components/browser/ConfirmDeleteDialog";
 import { ConflictDialog } from "@/components/transfer/ConflictDialog";
-import { ConnectDialog } from "@/components/connection/ConnectDialog";
+import { FavoriteDialog } from "@/components/connection/FavoriteDialog";
 import { GoToDialog } from "@/components/browser/GoToDialog";
 import { HostKeyDialog } from "@/components/connection/HostKeyDialog";
 import { Inspector } from "@/components/browser/Inspector";
@@ -50,7 +50,7 @@ function handleKeyDown(e: KeyboardEvent): void {
   const state = getState();
   if (
     state.goToOpen ||
-    state.connectOpen ||
+    state.editingFavorite !== null ||
     state.hostKeyPrompts.length > 0 ||
     state.confirmDelete !== null ||
     isEditableTarget(e.target)
@@ -143,7 +143,7 @@ function handleKeyDown(e: KeyboardEvent): void {
       return;
     case "k":
       e.preventDefault();
-      setConnectOpen(true);
+      openQuickConnect();
       return;
     case "i":
       e.preventDefault();
@@ -206,7 +206,7 @@ function App(): React.JSX.Element {
         </div>
         <QueueDrawer />
         <GoToDialog />
-        <ConnectDialog />
+        <FavoriteDialog />
         <HostKeyDialog />
         <ConflictDialog />
         <ConfirmDeleteDialog />

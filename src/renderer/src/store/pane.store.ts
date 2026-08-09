@@ -5,10 +5,13 @@ import { DEFAULT_PREFERENCES } from "@shared/prefs/prefs.constants";
 import type { Favorite } from "@shared/favorite/favorite.types";
 import { useSyncExternalStore } from "react";
 
+/** Left is always the local disk, right is always the server (§3.1). */
 export type PaneId = "left" | "right";
 
 export type PaneBackend =
   | { kind: "local" }
+  /** The right pane before a session exists; it shows Quick Connect instead. */
+  | { kind: "none" }
   | {
       kind: "sftp";
       sessionId: string;
@@ -69,9 +72,10 @@ export interface AppState {
   volumes: VolumeInfo[];
   knownFolders: KnownFolders | null;
   goToOpen: boolean;
-  connectOpen: boolean;
-  /** Prefill for the connect dialog (retry without stored secret). */
-  connectPrefill: Favorite | null;
+  /** Quick Connect fills the right pane; open at launch and after disconnect. */
+  quickConnectOpen: boolean;
+  /** Prefill for Quick Connect (retry a favorite without a stored secret). */
+  quickConnectPrefill: Favorite | null;
   /** Favorite being edited; the dialog switches to edit mode. */
   editingFavorite: Favorite | null;
   favorites: Favorite[];
@@ -82,9 +86,9 @@ export interface AppState {
   confirmDelete: { paneId: PaneId; names: string[] } | null;
 }
 
-function initialPane(): PaneState {
+function initialPane(backend: PaneBackend): PaneState {
   return {
-    backend: { kind: "local" },
+    backend,
     cwd: "",
     entries: [],
     availBytes: null,
@@ -103,7 +107,7 @@ function initialPane(): PaneState {
 
 let state: AppState = {
   active: "left",
-  panes: { left: initialPane(), right: initialPane() },
+  panes: { left: initialPane({ kind: "local" }), right: initialPane({ kind: "none" }) },
   showHidden: DEFAULT_PREFERENCES.showHidden,
   defaultConcurrency: DEFAULT_PREFERENCES.defaultConcurrency,
   calculateFolderSizes: DEFAULT_PREFERENCES.calculateFolderSizes,
@@ -111,8 +115,8 @@ let state: AppState = {
   volumes: [],
   knownFolders: null,
   goToOpen: false,
-  connectOpen: false,
-  connectPrefill: null,
+  quickConnectOpen: true,
+  quickConnectPrefill: null,
   editingFavorite: null,
   favorites: [],
   hostKeyPrompts: [],
@@ -160,8 +164,10 @@ const generation: Record<PaneId, number> = { left: 0, right: 0 };
 export type NavigateMode = "push" | "replace" | "none";
 
 export async function navigate(id: PaneId, path: string, mode: NavigateMode = "push"): Promise<void> {
-  const gen = ++generation[id];
   const pane = state.panes[id];
+  // Nothing to list until the right pane has a session.
+  if (pane.backend.kind === "none") return;
+  const gen = ++generation[id];
   const samePath = pane.cwd === path;
   setPane(id, { loading: true, ...(samePath ? {} : { error: null }) });
   try {
@@ -271,12 +277,17 @@ export function setGoToOpen(open: boolean): void {
   setApp({ goToOpen: open });
 }
 
-export function setConnectOpen(open: boolean, prefill: Favorite | null = null): void {
-  setApp({ connectOpen: open, connectPrefill: open ? prefill : null, editingFavorite: null });
+/** Show Quick Connect in the right pane and make that pane the active one. */
+export function openQuickConnect(prefill: Favorite | null = null): void {
+  setApp({ quickConnectOpen: true, quickConnectPrefill: prefill, active: "right" });
+}
+
+export function closeQuickConnect(): void {
+  setApp({ quickConnectOpen: false, quickConnectPrefill: null });
 }
 
 export function setEditingFavorite(favorite: Favorite | null): void {
-  setApp({ editingFavorite: favorite, connectOpen: favorite !== null, connectPrefill: null });
+  setApp({ editingFavorite: favorite });
 }
 
 export function setFavorites(favorites: Favorite[]): void {
@@ -291,10 +302,13 @@ export function setConfirmDelete(pending: { paneId: PaneId; names: string[] } | 
   setApp({ confirmDelete: pending });
 }
 
-/** Swap a pane's backend; history is per-backend, so it resets. */
+/** Swap a pane's backend; the listing and history belong to the old one. */
 export function setBackend(id: PaneId, backend: PaneBackend): void {
   setPane(id, {
     backend,
+    cwd: "",
+    entries: [],
+    availBytes: null,
     history: [],
     historyIndex: -1,
     selected: new Set(),
@@ -306,12 +320,10 @@ export function setBackend(id: PaneId, backend: PaneBackend): void {
 }
 
 export function updateSessionStatus(sessionId: string, status: SessionStatus, detail?: string): void {
-  for (const id of ["left", "right"] as const) {
-    const backend = state.panes[id].backend;
-    if (backend.kind === "sftp" && backend.sessionId === sessionId) {
-      setPane(id, { backend: { ...backend, status, statusDetail: detail } });
-      if (status === "connected") refresh(id);
-    }
+  const backend = state.panes.right.backend;
+  if (backend.kind === "sftp" && backend.sessionId === sessionId) {
+    setPane("right", { backend: { ...backend, status, statusDetail: detail } });
+    if (status === "connected") refresh("right");
   }
 }
 
@@ -430,7 +442,7 @@ export async function initApp(): Promise<void> {
       calculateRemoteFolderSizes: next.calculateRemoteFolderSizes,
     }),
   );
-  await Promise.all([navigate("left", home, "replace"), navigate("right", home, "replace")]);
+  await navigate("left", home, "replace");
 }
 
 export function loadVolumes(): void {

@@ -1,6 +1,6 @@
 /** Favorites CRUD + connect-by-favorite (M4). */
 import type { Favorite, FavoriteInput } from "@shared/favorite/favorite.types";
-import { type PaneId, getState, navigate, otherPane, pushToast, setBackend, setConnectOpen, setFavorites } from "./pane.store";
+import { closeQuickConnect, getState, navigate, openQuickConnect, pushToast, setBackend, setFavorites } from "./pane.store";
 
 export async function loadFavorites(): Promise<void> {
   try {
@@ -39,31 +39,29 @@ export async function reorderFavorites(ids: string[]): Promise<void> {
   await loadFavorites();
 }
 
-/** Connect the pane using the favorite's stored secret (main-side). */
-export async function connectFavorite(id: PaneId, favoriteId: string): Promise<void> {
+/** Connect the right pane using the favorite's stored secret (main-side). */
+export async function connectFavorite(favoriteId: string): Promise<void> {
   const favorite = getState().favorites.find((f) => f.id === favoriteId);
   try {
     const result = await window.pallet.favorites.connect(favoriteId);
-    setBackend(id, {
+    setBackend("right", {
       kind: "sftp",
       sessionId: result.sessionId,
       host: result.favorite.host,
       username: result.favorite.username,
       status: "connected",
     });
-    await navigate(id, result.initialPath, "replace");
+    await navigate("right", result.initialPath, "replace");
+    closeQuickConnect();
     if (result.favorite.localPath) {
-      const other = otherPane(id);
-      if (getState().panes[other].backend.kind === "local") {
-        await navigate(other, result.favorite.localPath);
-      }
+      await navigate("left", result.favorite.localPath);
     }
     await loadFavorites(); // last-used ordering may have changed
   } catch (err) {
     const e = err as Error & { code?: string };
     if (e.code === "ENOSECRET" && favorite) {
-      // No stored secret: open the dialog prefilled so the user can type it.
-      setConnectOpen(true, favorite);
+      // No stored secret: show Quick Connect prefilled so the user can type it.
+      openQuickConnect(favorite);
       pushToast("Enter the password to connect", "info");
     } else {
       pushToast(e.message);
@@ -71,7 +69,7 @@ export async function connectFavorite(id: PaneId, favoriteId: string): Promise<v
   }
 }
 
-export async function favoriteContextMenu(paneId: PaneId, favorite: Favorite): Promise<"edit" | null> {
+export async function favoriteContextMenu(favorite: Favorite): Promise<"edit" | null> {
   const choice = await window.pallet.ui.contextMenu([
     { id: "connect", label: "Connect" },
     { type: "separator" },
@@ -80,7 +78,7 @@ export async function favoriteContextMenu(paneId: PaneId, favorite: Favorite): P
   ]);
   switch (choice) {
     case "connect":
-      void connectFavorite(paneId, favorite.id);
+      void connectFavorite(favorite.id);
       return null;
     case "edit":
       return "edit";

@@ -1,13 +1,12 @@
 /** Renderer-side SFTP session flow: connect/disconnect panes, events (M3). */
 import {
-  type PaneId,
+  closeQuickConnect,
   getState,
   navigate,
-  otherPane,
+  openQuickConnect,
   pushHostKeyPrompt,
   pushToast,
   setBackend,
-  setConnectOpen,
   updateSessionStatus,
 } from "./pane.store";
 import type { ConnectProfile } from "@shared/sftp/sftp.types";
@@ -34,40 +33,35 @@ export function initSftpEvents(): void {
   });
 }
 
-export async function connectPane(id: PaneId, profile: ConnectProfile, otherPaneLocalPath?: string): Promise<void> {
+/** The server always lands in the right pane; `localPath` steers the left one. */
+export async function connectRemote(profile: ConnectProfile, localPath?: string): Promise<void> {
   const result = await window.pallet.sftp.connect(profile);
-  setConnectOpen(false);
-  setBackend(id, {
+  setBackend("right", {
     kind: "sftp",
     sessionId: result.sessionId,
     host: profile.host,
     username: profile.username,
     status: "connected",
   });
-  await navigate(id, result.initialPath, "replace");
-  if (otherPaneLocalPath) {
-    const other = otherPane(id);
-    if (getState().panes[other].backend.kind === "local") {
-      await navigate(other, otherPaneLocalPath);
-    }
-  }
+  await navigate("right", result.initialPath, "replace");
+  closeQuickConnect();
+  if (localPath) await navigate("left", localPath);
 }
 
-export async function disconnectPane(id: PaneId): Promise<void> {
-  const backend = getState().panes[id].backend;
+export async function disconnectRemote(): Promise<void> {
+  const backend = getState().panes.right.backend;
   if (backend.kind !== "sftp") return;
   try {
     await window.pallet.sftp.disconnect(backend.sessionId);
   } catch {
-    // Session may already be gone; still fall back to local.
+    // Session may already be gone; the pane goes back to Quick Connect either way.
   }
-  setBackend(id, { kind: "local" });
-  const home = await window.pallet.fs.homeDir();
-  await navigate(id, home, "replace");
+  setBackend("right", { kind: "none" });
+  openQuickConnect();
 }
 
-export function reconnectPane(id: PaneId): void {
-  const backend = getState().panes[id].backend;
+export function reconnectRemote(): void {
+  const backend = getState().panes.right.backend;
   if (backend.kind !== "sftp") return;
   window.pallet.sftp.reconnect(backend.sessionId).catch((err) => pushToast(err.message));
 }

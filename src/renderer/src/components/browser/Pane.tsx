@@ -1,9 +1,10 @@
 import { AlertTriangle, ChevronDown, ChevronRight, ChevronUp, CircleX, RefreshCw, Server } from "lucide-react";
 import { type PaneBackend, type PaneId, navigate, pathLib, setActive, setSort, useAppState } from "@/store/pane.store";
-import { disconnectPane, reconnectPane } from "@/store/sftp.store";
+import { disconnectRemote, reconnectRemote } from "@/store/sftp.store";
 import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { FileList } from "./FileList";
+import { QuickConnect } from "@/components/connection/QuickConnect";
 import type { SortKey } from "@shared/fs/fs.types";
 import { cn } from "@/lib/utils";
 import { formatBytes } from "@/lib/format.utils";
@@ -130,13 +131,28 @@ export function Pane({ paneId }: { paneId: PaneId }): React.JSX.Element {
     return selPart + avail;
   }, [visible.length, pane.selected.size, pane.availBytes]);
 
+  const shell = cn(
+    "bg-background relative flex min-w-0 flex-1 flex-col overflow-hidden",
+    isActive &&
+      "after:bg-primary after:pointer-events-none after:absolute after:top-0 after:right-2 after:left-2 after:h-1 after:rounded-full",
+  );
+
+  // The right pane has no listing to show until a server is connected.
+  if (paneId === "right" && app.quickConnectOpen) {
+    return (
+      <section
+        className={shell}
+        onMouseDownCapture={() => setActive(paneId)}
+        data-pane={paneId}
+      >
+        <QuickConnect />
+      </section>
+    );
+  }
+
   return (
     <section
-      className={cn(
-        "bg-background relative flex min-w-0 flex-1 flex-col overflow-hidden",
-        isActive &&
-          "after:bg-primary after:pointer-events-none after:absolute after:top-0 after:right-2 after:left-2 after:h-1 after:rounded-full",
-      )}
+      className={shell}
       onMouseDownCapture={() => setActive(paneId)}
       data-pane={paneId}
     >
@@ -151,7 +167,7 @@ export function Pane({ paneId }: { paneId: PaneId }): React.JSX.Element {
             <button
               className="hover:bg-primary/20 rounded-full p-0.5"
               aria-label="Disconnect"
-              onClick={() => void disconnectPane(paneId)}
+              onClick={() => void disconnectRemote()}
             >
               <CircleX className="size-3.5" />
             </button>
@@ -225,14 +241,14 @@ export function Pane({ paneId }: { paneId: PaneId }): React.JSX.Element {
                 <div className="flex gap-2">
                   <Button
                     size="xs"
-                    onClick={() => reconnectPane(paneId)}
+                    onClick={() => reconnectRemote()}
                   >
                     <RefreshCw data-icon="inline-start" /> Reconnect
                   </Button>
                   <Button
                     size="xs"
                     variant="outline"
-                    onClick={() => void disconnectPane(paneId)}
+                    onClick={() => void disconnectRemote()}
                   >
                     Disconnect
                   </Button>
