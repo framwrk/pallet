@@ -106,6 +106,9 @@ export function knownFolders(): KnownFolders {
     desktop: join(home, "Desktop"),
     documents: join(home, "Documents"),
     downloads: join(home, "Downloads"),
+    movies: join(home, "Movies"),
+    music: join(home, "Music"),
+    pictures: join(home, "Pictures"),
   };
 }
 

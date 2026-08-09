@@ -31,13 +31,13 @@ Pallet is a dual-pane file manager. Both panes start as local file browsers, and
 pointed at a remote server independently — so you can go local↔remote, local↔local, or
 remote↔remote.
 
-| Region           | What it is                                                                                                        |
-| ---------------- | ----------------------------------------------------------------------------------------------------------------- |
-| **Toolbar**      | Back, Forward, Refresh, New Folder, Move to Trash, Get Info. Acts on the **active pane**.                         |
-| **Sidebar**      | `Connect to Server`, then Devices (mounted volumes), Places (Home, Desktop, Documents, Downloads), and Favorites. |
-| **Panes**        | Two side-by-side file lists, each with its own breadcrumb bar and status line.                                    |
-| **Queue drawer** | Collapsible transfer queue along the bottom. Appears when you start a transfer.                                   |
-| **Inspector**    | Right-hand info panel. Toggle with **⌘I** or **Space**.                                                           |
+| Region           | What it is                                                                                                                                  |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Toolbar**      | Back, Forward, Refresh, New Folder, Move to Trash, Get Info. Acts on the **active pane**.                                                   |
+| **Sidebar**      | `Connect to Server`, then Devices (mounted volumes), Folders (Home, Desktop, Documents, Downloads, Movies, Music, Pictures), and Favorites. |
+| **Panes**        | Two side-by-side file lists, each with its own breadcrumb bar and status line.                                                              |
+| **Queue drawer** | Collapsible transfer queue along the bottom. Appears when you start a transfer.                                                             |
+| **Inspector**    | Right-hand info panel. Toggle with **⌘I** or **Space**.                                                                                     |
 
 **The active pane** is the one with the accent-colored top border. Every toolbar button and keyboard
 shortcut applies to it. Click a pane or press **⇥** to switch. Keyboard focus and the active pane are

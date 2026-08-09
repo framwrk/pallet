@@ -28,6 +28,9 @@ mac:
   extendInfo:
     - NSDocumentsFolderUsageDescription: Pallet browses and transfers files in your Documents folder.
     - NSDownloadsFolderUsageDescription: Pallet browses and transfers files in your Downloads folder.
+    - NSMoviesFolderUsageDescription: Pallet browses and transfers files in your Movies folder.
+    - NSMusicFolderUsageDescription: Pallet browses and transfers files in your Music folder.
+    - NSPicturesFolderUsageDescription: Pallet browses and transfers files in your Pictures folder.
   notarize: false
 dmg:
   artifactName: ${name}-${version}.${ext}

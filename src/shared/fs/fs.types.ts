@@ -42,6 +42,9 @@ export interface KnownFolders {
   desktop: string;
   documents: string;
   downloads: string;
+  movies: string;
+  music: string;
+  pictures: string;
 }
 
 /** Which filesystem a folder-size request refers to. */

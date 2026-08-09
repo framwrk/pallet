@@ -1,4 +1,4 @@
-import { CircleArrowDown, Dock, File, HardDrive, Home, Plug, Server, Usb } from "lucide-react";
+import { CircleArrowDown, Dock, File, Film, HardDrive, Home, Image, Music, Plug, Server, Usb } from "lucide-react";
 import { type PaneId, navigate, setConnectOpen, setEditingFavorite, useAppState } from "@/store/pane.store";
 import { connectFavorite, favoriteContextMenu, reorderFavorites } from "@/store/favorite.store";
 import { useRef, useState } from "react";
@@ -123,7 +123,7 @@ export function Sidebar(): React.JSX.Element {
       </div>
       {kf && (
         <div>
-          <SectionTitle>Places</SectionTitle>
+          <SectionTitle>Folders</SectionTitle>
           <SidebarItem
             icon={Home}
             label="Home"
@@ -146,6 +146,24 @@ export function Sidebar(): React.JSX.Element {
             icon={CircleArrowDown}
             label="Downloads"
             path={kf.downloads}
+            {...common}
+          />
+          <SidebarItem
+            icon={Film}
+            label="Movies"
+            path={kf.movies}
+            {...common}
+          />
+          <SidebarItem
+            icon={Music}
+            label="Music"
+            path={kf.music}
+            {...common}
+          />
+          <SidebarItem
+            icon={Image}
+            label="Pictures"
+            path={kf.pictures}
             {...common}
           />
         </div>
