@@ -1,0 +1,3 @@
+ignorePatterns = [
+    "src/renderer/src/components/ui/**", 
+]
