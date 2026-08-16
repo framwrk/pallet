@@ -1,6 +1,6 @@
 # Pallet — Features
 
-Everything Pallet v0.1.0 can do, and how to do it.
+Probably everything Pallet can do, and how to do it.
 
 If you just want to get moving: launch the app, press **⌘K** to connect to a server, click a file,
 press **F5** to send it to the other pane. The rest of this document is detail.
@@ -35,7 +35,7 @@ Pallet is a dual-pane file manager with a fixed layout: the **left pane is alway
 | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Toolbar**      | Back, Forward, Refresh, New Folder, Move to Trash, Get Info. Acts on the **active pane**.                                                   |
 | **Sidebar**      | `Connect to Server`, then Devices (mounted volumes), Folders (Home, Desktop, Documents, Downloads, Movies, Music, Pictures), and Favorites. |
-| **Panes**        | Local on the left, server on the right, each with its own breadcrumb bar and status line.                                                  |
+| **Panes**        | Local on the left, server on the right, each with its own breadcrumb bar and status line.                                                   |
 | **Queue drawer** | Collapsible transfer queue along the bottom. Appears when you start a transfer.                                                             |
 | **Inspector**    | Right-hand info panel. Toggle with **⌘I** or **Space**.                                                                                     |
 
@@ -155,18 +155,18 @@ undoable; Trash is recoverable through Finder instead.
 after you disconnect. To bring it back over a connected pane, press **⌘K** or click
 **Connect to Server** at the top of the sidebar; **Cancel** returns you to the file list.
 
-| Field                               | Notes                                                                                                                             |
-| ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| **Protocol**                        | SFTP. It's the only one in this release.                                                                                          |
-| **Server**                          | Hostname or IP.                                                                                                                   |
-| **Port**                            | Defaults to 22.                                                                                                                   |
-| **Username**                        |                                                                                                                                   |
-| **Authenticate**                    | Toggle between **Password** and **Private Key**.                                                                                  |
-| **Password** / **Key + Passphrase** | Key auth takes a path to your private key; the passphrase field appears with it.                                                  |
-| **Remote Path**                     | Where to start browsing. Blank means your server-side home directory.                                                             |
-| **Local Path**                      | Optional. Sets the _left_ pane to this folder when you connect, so a favorite can restore both sides of a working setup at once.  |
-| **Note**                            | Free text, shown when editing the favorite.                                                                                       |
-| **Color Label**                     | A dot for spotting the connection in a long favorites list.                                                                       |
+| Field                               | Notes                                                                                                                            |
+| ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| **Protocol**                        | SFTP. It's the only one in this release.                                                                                         |
+| **Server**                          | Hostname or IP.                                                                                                                  |
+| **Port**                            | Defaults to 22.                                                                                                                  |
+| **Username**                        |                                                                                                                                  |
+| **Authenticate**                    | Toggle between **Password** and **Private Key**.                                                                                 |
+| **Password** / **Key + Passphrase** | Key auth takes a path to your private key; the passphrase field appears with it.                                                 |
+| **Remote Path**                     | Where to start browsing. Blank means your server-side home directory.                                                            |
+| **Local Path**                      | Optional. Sets the _left_ pane to this folder when you connect, so a favorite can restore both sides of a working setup at once. |
+| **Note**                            | Free text, shown when editing the favorite.                                                                                      |
+| **Color Label**                     | A dot for spotting the connection in a long favorites list.                                                                      |
 
 **Show Advanced** reveals three more:
 
@@ -207,13 +207,13 @@ override it unless you know why the key changed.
 
 Saved connections live in the FAVORITES section of the sidebar, each with its color dot.
 
-| Action   | How                                        |
-| -------- | ------------------------------------------ |
-| Save one | **Add to Favorites** in Quick Connect      |
-| Connect  | Click it in the sidebar                    |
-| Edit     | Right-click → **Edit…**                    |
-| Delete   | Right-click → **Delete**                   |
-| Reorder  | Drag it up or down the list                |
+| Action   | How                                   |
+| -------- | ------------------------------------- |
+| Save one | **Add to Favorites** in Quick Connect |
+| Connect  | Click it in the sidebar               |
+| Edit     | Right-click → **Edit…**               |
+| Delete   | Right-click → **Delete**              |
+| Reorder  | Drag it up or down the list           |
 
 Favorites are stored in SQLite on your machine, alongside your settings. **Passwords and key
 passphrases never go in the database** — they're encrypted through macOS Keychain via Electron's
