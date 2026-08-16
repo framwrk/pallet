@@ -54,9 +54,14 @@ CREATE TABLE IF NOT EXISTS preferences (
 );
 `;
 
+/** Where the file lives, for anyone who wants to open it with their own client. */
+export function databasePath(): string {
+  return join(app.getPath("userData"), "pallet.db");
+}
+
 export function getDb(): Database.Database {
   if (!db) {
-    db = new Database(join(app.getPath("userData"), "pallet.db"));
+    db = new Database(databasePath());
     db.pragma("journal_mode = WAL");
     db.exec(SCHEMA);
   }

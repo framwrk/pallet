@@ -112,6 +112,7 @@ const pallet: PalletApi = {
       invoke(AppChannels.checkForUpdate),
     openExternal: (url: string): Promise<void> => invoke(AppChannels.openExternal, url),
     revealLog: (): Promise<void> => invoke(AppChannels.revealLog),
+    databasePath: (): Promise<string> => invoke(AppChannels.databasePath),
     onUpdateAvailable: (cb: (info: { version: string; url: string; prerelease: boolean }) => void): (() => void) =>
       subscribe(AppChannels.updateAvailable, cb),
   },

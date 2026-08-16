@@ -88,6 +88,8 @@ export interface PalletApi {
     checkForUpdate(): Promise<{ version: string; url: string; prerelease: boolean } | null>;
     openExternal(url: string): Promise<void>;
     revealLog(): Promise<void>;
+    /** Absolute path of the SQLite file, so it can be opened outside Pallet. */
+    databasePath(): Promise<string>;
     onUpdateAvailable(cb: (info: { version: string; url: string; prerelease: boolean }) => void): () => void;
   };
   folderSize: {

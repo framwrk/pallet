@@ -1,14 +1,15 @@
 import type { Appearance, Preferences } from "@shared/prefs/prefs.types";
-import { ArrowUpDown, ChevronDown, ChevronUp, ChevronsUpDown, Contrast, Settings2 } from "lucide-react";
+import { ArrowUpDown, ChevronDown, ChevronUp, ChevronsUpDown, Cog, Contrast, Settings2 } from "lucide-react";
 import { MAX_CONCURRENCY, MIN_CONCURRENCY } from "@shared/prefs/prefs.constants";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@renderer/components/ui/select";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Button } from "@renderer/components/ui/button";
 import { Input } from "@renderer/components/ui/input";
 import type { LucideIcon } from "lucide-react";
 import { Switch } from "@renderer/components/ui/switch";
 import { cn } from "@renderer/lib/utils";
 
-type TabId = "general" | "appearance" | "transfers";
+type TabId = "general" | "appearance" | "transfers" | "advanced";
 
 /** Kept in sync with the toolbar's own height; the window sizes off it. */
 const TOOLBAR_HEIGHT = 62;
@@ -17,6 +18,7 @@ const TABS: { id: TabId; label: string; icon: LucideIcon }[] = [
   { id: "general", label: "General", icon: Settings2 },
   { id: "appearance", label: "Appearance", icon: Contrast },
   { id: "transfers", label: "Transfers", icon: ArrowUpDown },
+  { id: "advanced", label: "Advanced", icon: Cog },
 ];
 
 const APPEARANCES: Record<Appearance, string> = {
@@ -26,11 +28,11 @@ const APPEARANCES: Record<Appearance, string> = {
 };
 
 /** One inset group of rows, with the footnote that explains them below it. */
-function Group({ footnote, children }: { footnote: string; children: React.ReactNode }): React.JSX.Element {
+function Group({ footnote, children }: { footnote?: string; children: React.ReactNode }): React.JSX.Element {
   return (
     <div>
       <div className="bg-card overflow-hidden rounded-lg border">{children}</div>
-      <p className="text-muted-foreground mt-1.5 px-3 text-[11px] leading-snug">{footnote}</p>
+      {footnote && <p className="text-muted-foreground mt-1.5 px-3 text-[11px] leading-snug">{footnote}</p>}
     </div>
   );
 }
@@ -97,6 +99,8 @@ export function Settings(): React.JSX.Element {
   const [prefs, setPrefs] = useState<Preferences | null>(null);
   // Held separately so a half-typed number doesn't fight the stored value.
   const [concurrencyText, setConcurrencyText] = useState("");
+  const [dbPath, setDbPath] = useState("");
+  const [copied, setCopied] = useState(false);
   const bodyRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
@@ -105,6 +109,7 @@ export function Settings(): React.JSX.Element {
       setConcurrencyText(String(next.defaultConcurrency));
     }
     void window.pallet.prefs.get().then(adopt);
+    void window.pallet.app.databasePath().then(setDbPath);
     return window.pallet.prefs.onChange(adopt);
   }, []);
 
@@ -138,6 +143,13 @@ export function Settings(): React.JSX.Element {
     setConcurrencyText(value);
     const n = Number.parseInt(value, 10);
     if (Number.isInteger(n) && n >= MIN_CONCURRENCY && n <= MAX_CONCURRENCY) save({ defaultConcurrency: n });
+  }
+
+  function copyDbPath(): void {
+    void navigator.clipboard.writeText(dbPath).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    });
   }
 
   function stepConcurrency(delta: number): void {
@@ -249,7 +261,7 @@ export function Settings(): React.JSX.Element {
               </Select>
             </Row>
           </Group>
-        ) : (
+        ) : tab === "transfers" ? (
           <Group footnote="Seeds the parallel transfer channels field when you connect to a server.">
             <Row label="Default concurrency">
               <div className="flex items-center gap-1.5">
@@ -268,7 +280,34 @@ export function Settings(): React.JSX.Element {
               </div>
             </Row>
           </Group>
-        )}
+        ) : tab === "advanced" ? (
+          <Group footnote="Favorites, known host keys, and transfer history live in this SQLite file — any SQLite client can open it. Quit Pallet before writing to it.">
+            <Row label="Database Path">
+              <div className="flex min-w-0 gap-2">
+                <span
+                  title={dbPath}
+                  className="text-muted-foreground min-w-0 truncate font-mono text-[11px] select-text"
+                >
+                  {/* {dbPath} */}
+                </span>
+                <Button
+                  size="xs"
+                  variant="outline"
+                  onClick={copyDbPath}
+                >
+                  {copied ? "Copied" : "Copy"}
+                </Button>
+                <Button
+                  size="xs"
+                  variant="outline"
+                  onClick={() => void window.pallet.fs.reveal(dbPath)}
+                >
+                  Reveal
+                </Button>
+              </div>
+            </Row>
+          </Group>
+        ) : null}
       </main>
     </div>
   );

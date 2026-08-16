@@ -4,6 +4,7 @@ import { AppChannels, FsChannels, UiChannels } from "@shared/ipc/ipc.constants";
 import type { ContextMenuItem, IpcResult } from "@shared/ipc/ipc.types";
 import { app, ipcMain, shell } from "electron";
 import { checkForUpdate } from "../services/update-checker";
+import { databasePath } from "../services/database";
 import { logFilePath } from "../services/logger";
 import { popupContextMenu } from "../services/context-menu";
 import { registerFavoriteHandlers } from "./favorite";
@@ -67,6 +68,7 @@ export function registerIpcHandlers(): void {
     return shell.openExternal(url);
   });
   handle(AppChannels.revealLog, () => shell.showItemInFolder(logFilePath()));
+  handle(AppChannels.databasePath, () => databasePath());
 
   // Context menu needs the sender to anchor the popup, so it bypasses handle().
   ipcMain.handle(UiChannels.contextMenu, async (event, items: ContextMenuItem[]) => {

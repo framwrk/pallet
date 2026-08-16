@@ -50,6 +50,7 @@ export const AppChannels = {
   openExternal: "app:openExternal",
   version: "app:version",
   revealLog: "app:revealLog",
+  databasePath: "app:databasePath",
   /** main → renderer: a newer release exists. */
   updateAvailable: "app:updateAvailable",
 } as const;
