@@ -1,6 +1,6 @@
 {
   "name": "pallet",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "A free and open-source macOS SSH/SFTP file manager",
   "license": "Apache-2.0",
   "repository": {
