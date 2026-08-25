@@ -16,7 +16,7 @@ export function QuickConnect(): React.JSX.Element {
     <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-6 py-10">
       <div className="mx-auto flex w-full max-w-md flex-col gap-6">
         <div className="flex flex-col items-center gap-3">
-          <EthernetPort className="size-10 text-emerald-500" />
+          <EthernetPort className="text-primary size-10" />
           <h2 className="text-lg font-medium">Connect via SFTP</h2>
         </div>
         {/* Keyed so a favorite prefill reseeds the fields. */}

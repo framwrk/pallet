@@ -213,7 +213,7 @@ export function Pane({ paneId }: { paneId: PaneId }): React.JSX.Element {
       <div className="relative flex min-h-0 flex-1 flex-col">
         {pane.error ? (
           <div className="flex flex-1 flex-col items-center justify-center gap-2 p-6 text-center">
-            <AlertTriangle className="size-6 text-amber-500" />
+            <AlertTriangle className="text-caution size-6" />
             <p className="text-muted-foreground text-sm">{pane.error}</p>
           </div>
         ) : visible.length === 0 && !pane.loading && pane.cwd ? (

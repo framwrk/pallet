@@ -33,7 +33,7 @@ export function HostKeyDialog(): React.JSX.Element | null {
             {mismatch ? (
               <ShieldAlert className="text-destructive size-5" />
             ) : (
-              <ShieldQuestion className="size-5 text-amber-500" />
+              <ShieldQuestion className="text-caution size-5" />
             )}
             {mismatch ? "Host Key Changed" : "Unknown Host"}
           </DialogTitle>

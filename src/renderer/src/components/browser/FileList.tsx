@@ -224,7 +224,7 @@ export function FileList({ paneId, pane, visible, isActive }: FileListProps): Re
               <span className="flex min-w-0 items-center gap-2">
                 {dirLike ? (
                   <Folder
-                    className={cn("size-4 shrink-0", selected && isActive ? "text-primary-foreground" : "text-sky-500")}
+                    className={cn("size-4 shrink-0", selected && isActive ? "text-primary-foreground" : "text-primary")}
                     fill="currentColor"
                     strokeWidth={0}
                   />

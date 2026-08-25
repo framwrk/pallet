@@ -240,7 +240,7 @@ export function Inspector(): React.JSX.Element | null {
           <div className="flex items-center gap-2">
             {isDirLike(entry) ? (
               <Folder
-                className="size-8 text-sky-500"
+                className="text-primary size-8"
                 fill="currentColor"
                 strokeWidth={0}
               />

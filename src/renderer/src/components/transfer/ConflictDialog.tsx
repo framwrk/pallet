@@ -39,7 +39,7 @@ export function ConflictDialog(): React.JSX.Element | null {
       >
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <FileWarning className="size-5 text-amber-500" />
+            <FileWarning className="text-caution size-5" />
             An item named “{prompt.relPath.split("/").pop()}” already exists
           </DialogTitle>
         </DialogHeader>

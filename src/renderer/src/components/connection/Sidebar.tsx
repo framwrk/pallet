@@ -29,7 +29,7 @@ function SidebarItem({
       )}
       onClick={() => void navigate("left", path)}
     >
-      <Icon className="size-4 shrink-0 text-sky-600 dark:text-sky-400" />
+      <Icon className="text-primary size-4 shrink-0" />
       <span className="truncate">{label}</span>
     </button>
   );
@@ -67,7 +67,7 @@ function FavoriteItem({
       }}
       title={`${favorite.username}@${favorite.host}:${favorite.port}${favorite.note ? ` — ${favorite.note}` : ""}`}
     >
-      <Server className="size-4 shrink-0 text-sky-600 dark:text-sky-400" />
+      <Server className="text-primary size-4 shrink-0" />
       <span className="truncate">{favorite.name}</span>
       {favorite.colorLabel !== "none" && (
         <span className={cn("ml-auto size-2.5 shrink-0 rounded-full", LABEL_COLOR_CLASSES[favorite.colorLabel])} />
@@ -102,7 +102,7 @@ export function Sidebar(): React.JSX.Element {
         onClick={() => openQuickConnect()}
         title="Connect to Server (⌘K)"
       >
-        <Plug className="size-4 shrink-0 text-sky-600 dark:text-sky-400" />
+        <Plug className="text-primary size-4 shrink-0" />
         <span className="truncate">Connect to Server</span>
       </button>
       <div>

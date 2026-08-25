@@ -10,11 +10,11 @@ export const COLOR_LABELS: readonly ColorLabel[] = ["none", "red", "orange", "ye
  */
 export const LABEL_COLOR_CLASSES: Record<ColorLabel, string> = {
   none: "bg-transparent border border-border",
-  red: "bg-red-500",
-  orange: "bg-orange-500",
-  yellow: "bg-yellow-400",
-  green: "bg-green-500",
-  blue: "bg-blue-500",
-  purple: "bg-purple-500",
-  gray: "bg-gray-400",
+  red: "bg-favorite-label-red",
+  orange: "bg-favorite-label-orange",
+  yellow: "bg-favorite-label-yellow",
+  green: "bg-favorite-label-green",
+  blue: "bg-favorite-label-blue",
+  purple: "bg-favorite-label-purple",
+  gray: "bg-favorite-label-gray",
 };
