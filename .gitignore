@@ -18,5 +18,9 @@ out
 *.log*
 
 
-# other files
+# AI stuff
+.agents/
+.claude/
+.codex/
 CLAUDE.md
+AGENTS.md
