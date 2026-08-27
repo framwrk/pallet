@@ -22,5 +22,6 @@ out
 .agents/
 .claude/
 .codex/
+.impeccable/
 CLAUDE.md
 AGENTS.md
