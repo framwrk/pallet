@@ -55,6 +55,28 @@ bun run lint
 bun run typecheck
 ```
 
+### Local test server
+
+Docker is required. Start the local SFTP server in the background with:
+
+```bash
+bun run server
+```
+
+Connect from Pallet with these test-only credentials:
+
+| Field       | Value          |
+| ----------- | -------------- |
+| Server      | `localhost`    |
+| Port        | `2222`         |
+| Username    | `pallet`       |
+| Password    | `pallet`       |
+| Remote Path | `/home/pallet` |
+
+The SSH host keys persist across container rebuilds so Pallet's trusted-host entry remains valid.
+Use `PALLET_TEST_SERVER_PORT` to override the host port or `PALLET_TEST_PASSWORD` to override the
+password. Stop and remove the server with `bun run server:stop`.
+
 ## License
 
 [Apache License 2.0](LICENSE).

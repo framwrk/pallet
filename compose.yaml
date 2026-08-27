@@ -1,0 +1,19 @@
+services:
+  sftp:
+    build:
+      context: ./test-server
+    environment:
+      PALLET_TEST_PASSWORD: "${PALLET_TEST_PASSWORD:-pallet}"
+    ports:
+      - "${PALLET_TEST_SERVER_PORT:-2222}:22"
+    volumes:
+      - test-server-host-keys:/etc/ssh/host-keys
+    healthcheck:
+      test: ["CMD", "pidof", "sshd"]
+      interval: 2s
+      timeout: 2s
+      retries: 10
+      start_period: 2s
+
+volumes:
+  test-server-host-keys:

@@ -21,6 +21,8 @@
     "typecheck": "bun run typecheck:node && bun run typecheck:web",
     "start": "electron-vite preview",
     "dev": "electron-vite dev",
+    "server": "docker compose up --build --detach --wait",
+    "server:stop": "docker compose down",
     "build": "bun run typecheck && electron-vite build",
     "rebuild": "electron-rebuild --only better-sqlite3",
     "build:unpack": "bun run build && electron-builder --dir",
