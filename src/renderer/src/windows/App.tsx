@@ -22,9 +22,11 @@ import {
   setInspectorOpen,
   setShowHidden,
   switchPane,
+  useAppState,
 } from "@/store/pane.store";
 import { ConfirmDeleteDialog } from "@/components/browser/ConfirmDeleteDialog";
 import { ConflictDialog } from "@/components/transfer/ConflictDialog";
+import { ConnectDialog } from "@/components/connection/QuickConnect";
 import { FavoriteDialog } from "@/components/connection/FavoriteDialog";
 import { GoToDialog } from "@/components/browser/GoToDialog";
 import { HostKeyDialog } from "@/components/connection/HostKeyDialog";
@@ -50,6 +52,7 @@ function handleKeyDown(e: KeyboardEvent): void {
   const state = getState();
   if (
     state.goToOpen ||
+    state.quickConnectOpen ||
     state.editingFavorite !== null ||
     state.hostKeyPrompts.length > 0 ||
     state.confirmDelete !== null ||
@@ -181,6 +184,9 @@ function handleKeyDown(e: KeyboardEvent): void {
 }
 
 function App(): React.JSX.Element {
+  const app = useAppState();
+  const hasRemotePane = app.panes.right.backend.kind === "sftp";
+
   useEffect(() => {
     initSftpEvents();
     initTransferEvents();
@@ -200,11 +206,16 @@ function App(): React.JSX.Element {
         <Toolbar />
         <div className="flex min-h-0 flex-1">
           <Pane paneId="left" />
-          <div className="bg-border w-px shrink-0" />
-          <Pane paneId="right" />
+          {hasRemotePane && (
+            <>
+              <div className="bg-border w-px shrink-0" />
+              <Pane paneId="right" />
+            </>
+          )}
           <Inspector />
         </div>
         <QueueDrawer />
+        <ConnectDialog />
         <GoToDialog />
         <FavoriteDialog />
         <HostKeyDialog />

@@ -3,9 +3,9 @@ import {
   closeQuickConnect,
   getState,
   navigate,
-  openQuickConnect,
   pushHostKeyPrompt,
   pushToast,
+  setActive,
   setBackend,
   updateSessionStatus,
 } from "./pane.store";
@@ -35,7 +35,19 @@ export function initSftpEvents(): void {
 
 /** The server always lands in the right pane; `localPath` steers the left one. */
 export async function connectRemote(profile: ConnectProfile, localPath?: string): Promise<void> {
+  const previousBackend = getState().panes.right.backend;
   const result = await window.pallet.sftp.connect(profile);
+
+  // Keep the current workspace intact while connecting. Once the replacement
+  // succeeds, retire the old session before mounting the new one.
+  if (previousBackend.kind === "sftp" && previousBackend.sessionId !== result.sessionId) {
+    try {
+      await window.pallet.sftp.disconnect(previousBackend.sessionId);
+    } catch {
+      // The new session is healthy; a stale old session must not block it.
+    }
+  }
+
   setBackend("right", {
     kind: "sftp",
     sessionId: result.sessionId,
@@ -43,6 +55,7 @@ export async function connectRemote(profile: ConnectProfile, localPath?: string)
     username: profile.username,
     status: "connected",
   });
+  setActive("right");
   await navigate("right", result.initialPath, "replace");
   closeQuickConnect();
   if (localPath) await navigate("left", localPath);
@@ -54,10 +67,11 @@ export async function disconnectRemote(): Promise<void> {
   try {
     await window.pallet.sftp.disconnect(backend.sessionId);
   } catch {
-    // Session may already be gone; the pane goes back to Quick Connect either way.
+    // Session may already be gone; the remote pane closes either way.
   }
   setBackend("right", { kind: "none" });
-  openQuickConnect();
+  setActive("left");
+  closeQuickConnect();
 }
 
 export function reconnectRemote(): void {

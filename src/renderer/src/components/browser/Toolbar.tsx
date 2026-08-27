@@ -38,10 +38,7 @@ function ToolButtonGroup({ children }: { children: React.ReactNode }): React.JSX
 export function Toolbar(): React.JSX.Element {
   const app = useAppState();
   const pane = app.panes[app.active];
-  // A pane showing Quick Connect has no directory to name.
-  const showingQuickConnect = app.active === "right" && app.quickConnectOpen;
   const folderTitle = pane.cwd === "/" ? "Macintosh HD" : localPath.basename(pane.cwd || "");
-  const title = showingQuickConnect ? "Quick Connect" : folderTitle;
 
   return (
     <header className="flex h-11 shrink-0 items-center gap-4 px-2 [-webkit-app-region:drag]">
@@ -59,7 +56,7 @@ export function Toolbar(): React.JSX.Element {
           disabled={pane.historyIndex >= pane.history.length - 1}
         />
       </ToolButtonGroup>
-      <div className="flex-1 truncate text-[13px] font-semibold">{title}</div>
+      <div className="flex-1 truncate text-[13px] font-semibold">{folderTitle}</div>
       <ToolButtonGroup>
         <ToolButton
           icon={RotateCw}

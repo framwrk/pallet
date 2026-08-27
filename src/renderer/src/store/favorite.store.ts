@@ -1,6 +1,15 @@
 /** Favorites CRUD + connect-by-favorite (M4). */
 import type { Favorite, FavoriteInput } from "@shared/favorite/favorite.types";
-import { closeQuickConnect, getState, navigate, openQuickConnect, pushToast, setBackend, setFavorites } from "./pane.store";
+import {
+  closeQuickConnect,
+  getState,
+  navigate,
+  openQuickConnect,
+  pushToast,
+  setActive,
+  setBackend,
+  setFavorites,
+} from "./pane.store";
 
 export async function loadFavorites(): Promise<void> {
   try {
@@ -42,8 +51,16 @@ export async function reorderFavorites(ids: string[]): Promise<void> {
 /** Connect the right pane using the favorite's stored secret (main-side). */
 export async function connectFavorite(favoriteId: string): Promise<void> {
   const favorite = getState().favorites.find((f) => f.id === favoriteId);
+  const previousBackend = getState().panes.right.backend;
   try {
     const result = await window.pallet.favorites.connect(favoriteId);
+    if (previousBackend.kind === "sftp" && previousBackend.sessionId !== result.sessionId) {
+      try {
+        await window.pallet.sftp.disconnect(previousBackend.sessionId);
+      } catch {
+        // The favorite connected successfully, so stale cleanup must not block it.
+      }
+    }
     setBackend("right", {
       kind: "sftp",
       sessionId: result.sessionId,
@@ -51,6 +68,7 @@ export async function connectFavorite(favoriteId: string): Promise<void> {
       username: result.favorite.username,
       status: "connected",
     });
+    setActive("right");
     await navigate("right", result.initialPath, "replace");
     closeQuickConnect();
     if (result.favorite.localPath) {

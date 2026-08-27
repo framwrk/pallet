@@ -10,7 +10,7 @@ export type PaneId = "left" | "right";
 
 export type PaneBackend =
   | { kind: "local" }
-  /** The right pane before a session exists; it shows Quick Connect instead. */
+  /** The right pane before a session exists; it is hidden until connected. */
   | { kind: "none" }
   | {
       kind: "sftp";
@@ -72,9 +72,9 @@ export interface AppState {
   volumes: VolumeInfo[];
   knownFolders: KnownFolders | null;
   goToOpen: boolean;
-  /** Quick Connect fills the right pane; open at launch and after disconnect. */
+  /** Whether the modal connection form is open. */
   quickConnectOpen: boolean;
-  /** Prefill for Quick Connect (retry a favorite without a stored secret). */
+  /** Prefill for the connection dialog (retry a favorite without a stored secret). */
   quickConnectPrefill: Favorite | null;
   /** Favorite being edited; the dialog switches to edit mode. */
   editingFavorite: Favorite | null;
@@ -115,7 +115,7 @@ let state: AppState = {
   volumes: [],
   knownFolders: null,
   goToOpen: false,
-  quickConnectOpen: true,
+  quickConnectOpen: false,
   quickConnectPrefill: null,
   editingFavorite: null,
   favorites: [],
@@ -255,6 +255,7 @@ export function otherPane(id: PaneId): PaneId {
 }
 
 export function switchPane(): void {
+  if (state.panes.right.backend.kind === "none") return;
   setApp({ active: otherPane(state.active) });
 }
 
@@ -277,9 +278,9 @@ export function setGoToOpen(open: boolean): void {
   setApp({ goToOpen: open });
 }
 
-/** Show Quick Connect in the right pane and make that pane the active one. */
+/** Open the connection dialog without disturbing the active workspace pane. */
 export function openQuickConnect(prefill: Favorite | null = null): void {
-  setApp({ quickConnectOpen: true, quickConnectPrefill: prefill, active: "right" });
+  setApp({ quickConnectOpen: true, quickConnectPrefill: prefill });
 }
 
 export function closeQuickConnect(): void {

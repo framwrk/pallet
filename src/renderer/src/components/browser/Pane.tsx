@@ -4,7 +4,6 @@ import { disconnectRemote, reconnectRemote } from "@/store/sftp.store";
 import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { FileList } from "./FileList";
-import { QuickConnect } from "@/components/connection/QuickConnect";
 import type { SortKey } from "@shared/fs/fs.types";
 import { cn } from "@/lib/utils";
 import { formatBytes } from "@/lib/format.utils";
@@ -136,19 +135,6 @@ export function Pane({ paneId }: { paneId: PaneId }): React.JSX.Element {
     isActive &&
       "after:bg-primary after:pointer-events-none after:absolute after:top-0 after:right-2 after:left-2 after:h-1 after:rounded-full",
   );
-
-  // The right pane has no listing to show until a server is connected.
-  if (paneId === "right" && app.quickConnectOpen) {
-    return (
-      <section
-        className={shell}
-        onMouseDownCapture={() => setActive(paneId)}
-        data-pane={paneId}
-      >
-        <QuickConnect />
-      </section>
-    );
-  }
 
   return (
     <section

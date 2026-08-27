@@ -1,34 +1,45 @@
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { closeQuickConnect, useAppState } from "@/store/pane.store";
 import { ConnectForm } from "./ConnectForm";
 import { EthernetPort } from "lucide-react";
 
 /**
- * Fills the right pane whenever there is no server to browse: at launch, after
- * a disconnect, or when a favorite needs its password typed in.
+ * Opens over the workspace from Connect to Server, Command-K, or a favorite
+ * that needs credentials. The current session remains visible until replaced.
  */
-export function QuickConnect(): React.JSX.Element {
+export function ConnectDialog(): React.JSX.Element {
   const app = useAppState();
   const prefill = app.quickConnectPrefill;
-  // Only offer a way out when there is a live session behind the form.
-  const dismissable = app.panes.right.backend.kind === "sftp";
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-6 py-10">
-      <div className="mx-auto flex w-full max-w-md flex-col gap-6">
-        <div className="flex flex-col items-center gap-3">
-          <EthernetPort className="text-primary size-10" />
-          <h2 className="text-lg font-medium">Connect via SFTP</h2>
-        </div>
+    <Dialog
+      open={app.quickConnectOpen}
+      onOpenChange={(open) => {
+        if (!open) closeQuickConnect();
+      }}
+    >
+      <DialogContent className="max-h-[85vh] overflow-y-auto p-4 sm:max-w-lg">
+        <DialogHeader className="pr-10">
+          <div className="flex items-center gap-3">
+            <div className="bg-primary/12 text-primary flex size-9 shrink-0 items-center justify-center rounded-[10px]">
+              <EthernetPort className="size-4.5" />
+            </div>
+            <div className="min-w-0">
+              <DialogTitle className="text-sm font-semibold tracking-[-0.01em]">Connect to a server</DialogTitle>
+              <DialogDescription className="mt-0.5 text-[11px]">Secure File Transfer</DialogDescription>
+            </div>
+          </div>
+        </DialogHeader>
         {/* Keyed so a favorite prefill reseeds the fields. */}
         <ConnectForm
           key={prefill?.id ?? "new"}
           editing={null}
           prefill={prefill}
           defaultConcurrency={app.defaultConcurrency}
-          autoFocus={prefill !== null}
-          onClose={dismissable ? closeQuickConnect : undefined}
+          autoFocus
+          onClose={closeQuickConnect}
         />
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }
