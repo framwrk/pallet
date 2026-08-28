@@ -5,7 +5,8 @@
  *
  * Paths are POSIX on both sides (macOS local paths are POSIX).
  */
-import type { Readable, Writable } from "stream";
+import { type FileInfo, FileType, type Client as FtpClient } from "basic-ftp";
+import { PassThrough, type Readable, Writable } from "stream";
 import { createReadStream, createWriteStream, promises as fs } from "fs";
 import { isDirMode, isSymlinkMode } from "../../utils/file-mode";
 import type { SFTPWrapper } from "ssh2";
@@ -315,6 +316,181 @@ class SftpEndpoint implements TransferEndpoint {
   }
 }
 
+// --- ftp / explicit ftps ----------------------------------------------------
+
+interface FtpLease {
+  client: FtpClient;
+  release: (broken?: boolean) => void;
+}
+
+function ftpEndpointStat(info: FileInfo): EndpointStat {
+  const type = info.type === FileType.Directory ? 0o040000 : info.type === FileType.SymbolicLink ? 0o120000 : 0o100000;
+  const permissions = info.permissions;
+  const mode =
+    type |
+    (permissions ? (permissions.user << 6) | (permissions.group << 3) | permissions.world : info.isDirectory ? 0o755 : 0o644);
+  return {
+    size: info.size ?? 0,
+    mtimeMs: info.modifiedAt?.getTime() ?? 0,
+    mode,
+    isDir: info.isDirectory,
+    isSymlink: info.isSymbolicLink,
+  };
+}
+
+function checkFtpPath(path: string): void {
+  if (/[\r\n]/.test(path)) throw new Error("Invalid FTP path");
+}
+
+class FtpEndpoint implements TransferEndpoint {
+  kind = "sftp" as const;
+  private metaLease: FtpLease | null = null;
+  private metaTail: Promise<void> = Promise.resolve();
+
+  constructor(
+    private sessions: SessionManager,
+    private sessionId: string,
+  ) {}
+
+  private async meta(): Promise<FtpClient> {
+    if (!this.metaLease || this.metaLease.client.closed) {
+      this.metaLease?.release(true);
+      this.metaLease = await this.sessions.acquireFtpClient(this.sessionId);
+    }
+    return this.metaLease.client;
+  }
+
+  private withMeta<T>(fn: (client: FtpClient) => Promise<T>): Promise<T> {
+    const operation = this.metaTail.catch(() => {}).then(async () => fn(await this.meta()));
+    this.metaTail = operation.then(
+      () => undefined,
+      () => undefined,
+    );
+    return operation.catch((err) => {
+      if (this.metaLease?.client.closed) {
+        this.metaLease.release(true);
+        this.metaLease = null;
+      }
+      throw err;
+    });
+  }
+
+  async statOrNull(p: string): Promise<EndpointStat | null> {
+    checkFtpPath(p);
+    if (p === "/") return { size: 0, mtimeMs: 0, mode: 0o040755, isDir: true, isSymlink: false };
+    const slash = p.lastIndexOf("/");
+    const parent = slash <= 0 ? "/" : p.slice(0, slash);
+    const name = p.slice(slash + 1);
+    return this.withMeta(async (ftp) => {
+      try {
+        const info = (await ftp.list(parent)).find((entry) => entry.name === name);
+        return info ? ftpEndpointStat(info) : null;
+      } catch {
+        return null;
+      }
+    });
+  }
+
+  listNames(dir: string): Promise<string[]> {
+    checkFtpPath(dir);
+    return this.withMeta(async (ftp) => {
+      try {
+        return (await ftp.list(dir)).map((entry) => entry.name);
+      } catch {
+        return [];
+      }
+    });
+  }
+
+  listEntries(dir: string): Promise<{ name: string; stat: EndpointStat }[]> {
+    checkFtpPath(dir);
+    return this.withMeta(async (ftp) =>
+      (await ftp.list(dir)).map((entry) => ({ name: entry.name, stat: ftpEndpointStat(entry) })),
+    );
+  }
+
+  async mkdirp(p: string): Promise<void> {
+    checkFtpPath(p);
+    await this.withMeta((ftp) => ftp.ensureDir(p));
+  }
+
+  async createReadStream(p: string): Promise<Readable> {
+    checkFtpPath(p);
+    const lease = await this.sessions.acquireFtpClient(this.sessionId);
+    const output = new PassThrough();
+    void lease.client.downloadTo(output, p).then(
+      () => lease.release(),
+      (err) => {
+        output.destroy(err as Error);
+        lease.release(true);
+      },
+    );
+    return output;
+  }
+
+  async createWriteStream(p: string): Promise<Writable> {
+    checkFtpPath(p);
+    const lease = await this.sessions.acquireFtpClient(this.sessionId);
+    const input = new PassThrough();
+    const uploaded = lease.client.uploadFrom(input, p);
+    const output = new Writable({
+      write(chunk, encoding, callback) {
+        if (input.write(chunk, encoding)) callback();
+        else input.once("drain", callback);
+      },
+      final(callback) {
+        input.end();
+        uploaded.then(
+          () => callback(),
+          (err) => callback(err as Error),
+        );
+      },
+      destroy(err, callback) {
+        input.destroy(err ?? undefined);
+        callback(err);
+      },
+    });
+    uploaded.then(
+      () => lease.release(),
+      (err) => {
+        output.destroy(err as Error);
+        lease.release(true);
+      },
+    );
+    return output;
+  }
+
+  setMeta(p: string, meta: { mtimeMs: number; mode?: number }): Promise<void> {
+    checkFtpPath(p);
+    return this.withMeta(async (ftp) => {
+      const stamp = new Date(meta.mtimeMs).toISOString().replace(/[-:T]/g, "").slice(0, 14);
+      await ftp.sendIgnoringError(`MFMT ${stamp} ${p}`);
+      if (meta.mode != null) await ftp.sendIgnoringError(`SITE CHMOD ${(meta.mode & 0o7777).toString(8)} ${p}`);
+    });
+  }
+
+  renameReplacing(from: string, to: string): Promise<void> {
+    checkFtpPath(from);
+    checkFtpPath(to);
+    return this.withMeta(async (ftp) => {
+      await ftp.remove(to, true);
+      await ftp.rename(from, to);
+    });
+  }
+
+  removeFile(p: string): Promise<void> {
+    checkFtpPath(p);
+    return this.withMeta(async (ftp) => {
+      await ftp.remove(p, true);
+    });
+  }
+
+  dispose(): void {
+    this.metaLease?.release();
+    this.metaLease = null;
+  }
+}
+
 /** Release the channel lease when the stream finishes or dies. */
 function hookRelease(stream: Readable | Writable, lease: Lease): void {
   let done = false;
@@ -332,5 +508,8 @@ export function makeEndpoint(
   sessions: SessionManager,
   ref: { kind: "local" } | { kind: "sftp"; sessionId: string },
 ): TransferEndpoint {
-  return ref.kind === "local" ? new LocalEndpoint() : new SftpEndpoint(sessions, ref.sessionId);
+  if (ref.kind === "local") return new LocalEndpoint();
+  return sessions.protocol(ref.sessionId) === "sftp"
+    ? new SftpEndpoint(sessions, ref.sessionId)
+    : new FtpEndpoint(sessions, ref.sessionId);
 }

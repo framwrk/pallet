@@ -1,6 +1,6 @@
 ---
 name: Pallet
-description: A modern macOS glass workbench for dependable SFTP file operations.
+description: A modern macOS glass workbench for dependable remote file operations.
 colors:
   accent-dark: "#0A84FF"
   accent-light: "#007AFF"

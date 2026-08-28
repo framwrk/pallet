@@ -15,5 +15,40 @@ services:
       retries: 10
       start_period: 2s
 
+  ftp:
+    build:
+      context: ./test-server
+    environment:
+      PALLET_TEST_PASSWORD: "${PALLET_TEST_PASSWORD:-pallet}"
+      PALLET_TEST_PROTOCOL: ftp
+    ports:
+      - "${PALLET_TEST_FTP_PORT:-2121}:21"
+      - "30000-30009:30000-30009"
+    healthcheck:
+      test: ["CMD", "pidof", "pure-ftpd"]
+      interval: 2s
+      timeout: 2s
+      retries: 10
+      start_period: 2s
+
+  ftps:
+    build:
+      context: ./test-server
+    environment:
+      PALLET_TEST_PASSWORD: "${PALLET_TEST_PASSWORD:-pallet}"
+      PALLET_TEST_PROTOCOL: ftps
+    ports:
+      - "${PALLET_TEST_FTPS_PORT:-2122}:21"
+      - "30100-30109:30100-30109"
+    volumes:
+      - test-server-ftps-certificate:/etc/pure-ftpd/certs
+    healthcheck:
+      test: ["CMD", "pidof", "pure-ftpd"]
+      interval: 2s
+      timeout: 2s
+      retries: 10
+      start_period: 2s
+
 volumes:
   test-server-host-keys:
+  test-server-ftps-certificate:

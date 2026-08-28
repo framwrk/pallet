@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS favorites (
   auth_method TEXT NOT NULL,
   secret_stored INTEGER NOT NULL DEFAULT 0,
   private_key_path TEXT,
+  tls_reject_unauthorized INTEGER NOT NULL DEFAULT 1,
   remote_path TEXT,
   local_path TEXT,
   note TEXT,
@@ -64,6 +65,12 @@ export function getDb(): Database.Database {
     db = new Database(databasePath());
     db.pragma("journal_mode = WAL");
     db.exec(SCHEMA);
+    const favoriteColumns = new Set(
+      (db.prepare("PRAGMA table_info(favorites)").all() as { name: string }[]).map((column) => column.name),
+    );
+    if (!favoriteColumns.has("tls_reject_unauthorized")) {
+      db.exec("ALTER TABLE favorites ADD COLUMN tls_reject_unauthorized INTEGER NOT NULL DEFAULT 1");
+    }
   }
   return db;
 }

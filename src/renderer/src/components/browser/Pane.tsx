@@ -146,7 +146,7 @@ export function Pane({ paneId }: { paneId: PaneId }): React.JSX.Element {
         {pane.backend.kind === "sftp" && (
           <span
             className="bg-primary/10 text-primary flex shrink-0 items-center gap-1 rounded-full py-0.5 pr-0.5 pl-2 text-[11px] font-medium"
-            title={`${pane.backend.username}@${pane.backend.host} — click × to disconnect`}
+            title={`${pane.backend.protocol.toUpperCase()} — ${pane.backend.username}@${pane.backend.host} — click × to disconnect`}
           >
             <Server className="size-3" />
             {pane.backend.host}

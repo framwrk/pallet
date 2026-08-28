@@ -35,19 +35,23 @@ async function connectFavorite(id: string): Promise<ConnectResult & { favorite: 
       throw err;
     }
     profile = {
+      protocol: favorite.protocol,
       host: favorite.host,
       port: favorite.port,
       username: favorite.username,
       auth: { method: "password", password: secret },
+      ...(favorite.protocol === "ftps" ? { tlsRejectUnauthorized: favorite.tlsRejectUnauthorized !== false } : {}),
       ...(favorite.remotePath ? { remotePath: favorite.remotePath } : {}),
     };
   } else {
+    if (favorite.protocol !== "sftp") throw new Error("FTP and FTPS favorites require password authentication");
     if (!favorite.privateKeyPath) {
       const err: NodeJS.ErrnoException = new Error("Favorite has no private key path");
       err.code = "ENOSECRET";
       throw err;
     }
     profile = {
+      protocol: favorite.protocol,
       host: favorite.host,
       port: favorite.port,
       username: favorite.username,

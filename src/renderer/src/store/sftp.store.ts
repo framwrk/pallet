@@ -50,6 +50,7 @@ export async function connectRemote(profile: ConnectProfile, localPath?: string)
 
   setBackend("right", {
     kind: "sftp",
+    protocol: profile.protocol ?? "sftp",
     sessionId: result.sessionId,
     host: profile.host,
     username: profile.username,

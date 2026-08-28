@@ -63,6 +63,7 @@ export async function connectFavorite(favoriteId: string): Promise<void> {
     }
     setBackend("right", {
       kind: "sftp",
+      protocol: result.favorite.protocol,
       sessionId: result.sessionId,
       host: result.favorite.host,
       username: result.favorite.username,

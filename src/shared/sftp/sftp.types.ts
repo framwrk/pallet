@@ -6,7 +6,11 @@
 
 export type AuthSpec = { method: "password"; password: string } | { method: "key"; keyPath: string; passphrase?: string };
 
+/** Remote connection protocol. Missing values from older callers mean SFTP. */
+export type ConnectionProtocol = "sftp" | "ftp" | "ftps";
+
 export interface ConnectProfile {
+  protocol?: ConnectionProtocol;
   host: string;
   port: number;
   username: string;
@@ -18,6 +22,8 @@ export interface ConnectProfile {
   compression?: boolean;
   /** Max concurrent transfer channels for this session (1–8). */
   concurrency?: number;
+  /** Whether FTPS validates the server certificate. Defaults to true. */
+  tlsRejectUnauthorized?: boolean;
 }
 
 export type SessionStatus = "connecting" | "connected" | "reconnecting" | "disconnected";

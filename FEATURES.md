@@ -157,24 +157,26 @@ after you disconnect. To bring it back over a connected pane, press **⌘K** or 
 
 | Field                               | Notes                                                                                                                            |
 | ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| **Protocol**                        | SFTP. It's the only one in this release.                                                                                         |
+| **Protocol**                        | SFTP, FTP, or explicit FTPS. SFTP is selected by default.                                                                        |
 | **Server**                          | Hostname or IP.                                                                                                                  |
-| **Port**                            | Defaults to 22.                                                                                                                  |
+| **Port**                            | Defaults to 22 for SFTP and 21 for FTP/FTPS; custom ports are preserved when switching protocols.                                |
 | **Username**                        |                                                                                                                                  |
-| **Authenticate**                    | Toggle between **Password** and **Private Key**.                                                                                 |
+| **Authenticate**                    | Password for every protocol; **Private Key** is also available for SFTP.                                                         |
 | **Password** / **Key + Passphrase** | Key auth takes a path to your private key; the passphrase field appears with it.                                                 |
 | **Remote Path**                     | Where to start browsing. Blank means your server-side home directory.                                                            |
 | **Local Path**                      | Optional. Sets the _left_ pane to this folder when you connect, so a favorite can restore both sides of a working setup at once. |
 | **Note**                            | Free text, shown when editing the favorite.                                                                                      |
 | **Color Label**                     | A dot for spotting the connection in a long favorites list.                                                                      |
 
-**Show Advanced** reveals three more:
+**Options** reveals connection-specific controls:
 
-- **Keepalive (s)** — how often to ping an idle connection. Default 15.
+- **Keepalive (s)** — SFTP only; how often to ping an idle connection. Default 15.
 - **Concurrency** — parallel transfer channels, 1–7. Seeded from **Default concurrency** in
   [Settings](#settings), which starts at 4. Raise it for many small files; lower it if your server
   limits sessions. (Values outside the range are clamped rather than rejected.)
-- **Compression** — negotiates zlib. Worth turning on over a slow link, a waste of CPU on a fast one.
+- **Compression** — SFTP only; negotiates zlib. Useful on slow links at the cost of CPU.
+- **Verify TLS certificate** — FTPS only and enabled by default. Disable it only for a trusted
+  private or test server using a self-signed certificate.
 
 Click **Connect** to connect once, or **Add to Favorites** to save the settings for next time.
 
@@ -445,8 +447,7 @@ Deliberate omissions for the beta, not bugs:
 - **Search** — a good remote search needs server-side `find` with cancellation; a bad one is worse
   than none.
 - **Directory tree sidebar, grid/column views, tabs, Finder tags**
-- **FTP/FTPS, S3, SMB** — the transfer layer is written against two backends already, so a second
-  protocol is a known quantity, just not this release.
+- **S3 and SMB** — additional remote-storage protocols are not in this release.
 - **Folder sync / mirror**
 - **Archive preview**
 - **Custom themes** — light and dark, following the system or pinned in Settings, and that's it.

@@ -14,6 +14,7 @@
  * size and mode.
  */
 import { type Dirent, promises as fs } from "fs";
+import type { FileInfo } from "basic-ftp";
 import type { SFTPWrapper } from "ssh2";
 import type { SessionManager } from "./sftp/session-manager";
 import type { SizeTarget } from "@shared/fs/fs.types";
@@ -164,6 +165,36 @@ async function walkRemote(sessions: SessionManager, sessionId: string, root: str
   }
 }
 
+async function walkFtp(sessions: SessionManager, sessionId: string, root: string): Promise<number> {
+  const { client, release } = await sessions.acquireFtpClient(sessionId);
+  let broken = false;
+  try {
+    let total = 0;
+    const stack = [root];
+    while (stack.length > 0) {
+      const dir = stack.pop()!;
+      let list: FileInfo[];
+      try {
+        list = await client.list(dir);
+      } catch (err) {
+        if (client.closed) {
+          broken = true;
+          throw err;
+        }
+        continue;
+      }
+      for (const child of list) {
+        const full = remotePath.join(dir, child.name);
+        if (child.isDirectory) stack.push(full);
+        else total += child.size ?? 0;
+      }
+    }
+    return total;
+  } finally {
+    release(broken);
+  }
+}
+
 export class FolderSizes {
   private cache = new Map<string, number>();
   private inflight = new Map<string, Promise<number | null>>();
@@ -218,6 +249,7 @@ export class FolderSizes {
   private async compute(target: SizeTarget, path: string): Promise<number> {
     if (target.kind === "local") return walkLocal(path);
     const { sessionId } = target;
+    if (this.sessions.protocol(sessionId) !== "sftp") return walkFtp(this.sessions, sessionId, path);
     if (this.sessions.duApparentBytes(sessionId) !== false) {
       const total = await tryDu(this.sessions, sessionId, path);
       this.sessions.setDuApparentBytes(sessionId, total !== null);

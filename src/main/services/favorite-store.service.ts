@@ -6,12 +6,14 @@ import { randomUUID } from "crypto";
 interface Row {
   id: string;
   name: string;
+  protocol: string;
   host: string;
   port: number;
   username: string;
   auth_method: string;
   secret_stored: number;
   private_key_path: string | null;
+  tls_reject_unauthorized: number;
   remote_path: string | null;
   local_path: string | null;
   note: string | null;
@@ -25,13 +27,14 @@ function fromRow(row: Row): Favorite {
   return {
     id: row.id,
     name: row.name,
-    protocol: "sftp",
+    protocol: row.protocol === "ftp" || row.protocol === "ftps" ? row.protocol : "sftp",
     host: row.host,
     port: row.port,
     username: row.username,
     authMethod: row.auth_method === "key" ? "key" : "password",
     secretStored: row.secret_stored === 1,
     ...(row.private_key_path ? { privateKeyPath: row.private_key_path } : {}),
+    tlsRejectUnauthorized: row.tls_reject_unauthorized !== 0,
     ...(row.remote_path ? { remotePath: row.remote_path } : {}),
     ...(row.local_path ? { localPath: row.local_path } : {}),
     ...(row.note ? { note: row.note } : {}),
@@ -69,9 +72,12 @@ export function saveFavorite(input: FavoriteInput, secret?: string | null): Favo
   const db = getDb();
   const existing = input.id ? getFavorite(input.id) : null;
   const id = existing?.id ?? randomUUID();
+  const protocol = input.protocol === "ftp" || input.protocol === "ftps" ? input.protocol : "sftp";
+  const authMethod = protocol === "sftp" && input.authMethod === "key" ? "key" : "password";
+  const privateKeyPath = authMethod === "key" ? (input.privateKeyPath ?? null) : null;
 
   let secretStored = existing?.secretStored ?? false;
-  if (secret === null) {
+  if (secret === null || (secret === undefined && existing && existing.authMethod !== authMethod)) {
     deleteSecret(id);
     secretStored = false;
   } else if (typeof secret === "string" && secret.length > 0) {
@@ -81,17 +87,19 @@ export function saveFavorite(input: FavoriteInput, secret?: string | null): Favo
 
   if (existing) {
     db.prepare(
-      `UPDATE favorites SET name=?, host=?, port=?, username=?, auth_method=?,
-         secret_stored=?, private_key_path=?, remote_path=?, local_path=?,
+      `UPDATE favorites SET name=?, protocol=?, host=?, port=?, username=?, auth_method=?,
+         secret_stored=?, private_key_path=?, tls_reject_unauthorized=?, remote_path=?, local_path=?,
          note=?, color_label=? WHERE id=?`,
     ).run(
       input.name,
+      protocol,
       input.host,
       input.port,
       input.username,
-      input.authMethod,
+      authMethod,
       secretStored ? 1 : 0,
-      input.privateKeyPath ?? null,
+      privateKeyPath,
+      input.tlsRejectUnauthorized === false ? 0 : 1,
       input.remotePath ?? null,
       input.localPath ?? null,
       input.note ?? null,
@@ -102,18 +110,20 @@ export function saveFavorite(input: FavoriteInput, secret?: string | null): Favo
     db.prepare(
       `INSERT INTO favorites
          (id, name, protocol, host, port, username, auth_method, secret_stored,
-          private_key_path, remote_path, local_path, note, color_label,
+          private_key_path, tls_reject_unauthorized, remote_path, local_path, note, color_label,
           sort_order, created_at)
-       VALUES (?, ?, 'sftp', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)`,
     ).run(
       id,
       input.name,
+      protocol,
       input.host,
       input.port,
       input.username,
-      input.authMethod,
+      authMethod,
       secretStored ? 1 : 0,
-      input.privateKeyPath ?? null,
+      privateKeyPath,
+      input.tlsRejectUnauthorized === false ? 0 : 1,
       input.remotePath ?? null,
       input.localPath ?? null,
       input.note ?? null,

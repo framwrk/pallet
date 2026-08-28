@@ -1,5 +1,5 @@
+import type { ConnectionProtocol, HostKeyPrompt, SessionStatus } from "@shared/sftp/sftp.types";
 import type { Entry, KnownFolders, SizeTarget, SortDir, SortKey, VolumeInfo } from "@shared/fs/fs.types";
-import type { HostKeyPrompt, SessionStatus } from "@shared/sftp/sftp.types";
 import { localPath, remotePath } from "@shared/path/path.utils";
 import { DEFAULT_PREFERENCES } from "@shared/prefs/prefs.constants";
 import type { Favorite } from "@shared/favorite/favorite.types";
@@ -14,6 +14,7 @@ export type PaneBackend =
   | { kind: "none" }
   | {
       kind: "sftp";
+      protocol: ConnectionProtocol;
       sessionId: string;
       host: string;
       username: string;

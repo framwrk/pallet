@@ -84,7 +84,7 @@ function FavoriteItem({
           if (action === "edit") setEditingFavorite(favorite);
         });
       }}
-      title={`${favorite.username}@${favorite.host}:${favorite.port}${favorite.note ? ` — ${favorite.note}` : ""}`}
+      title={`${favorite.protocol.toUpperCase()} — ${favorite.username}@${favorite.host}:${favorite.port}${favorite.note ? ` — ${favorite.note}` : ""}`}
     >
       <Server className="text-muted-foreground group-hover:text-sidebar-foreground size-4 shrink-0 transition-colors duration-150" />
       <span className="truncate">{favorite.name}</span>

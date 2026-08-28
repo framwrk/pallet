@@ -1,7 +1,7 @@
 {
   "name": "pallet",
   "version": "0.3.0",
-  "description": "A free and open-source macOS SSH/SFTP file manager",
+  "description": "A free and open-source macOS SFTP, FTP, and FTPS file manager",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
@@ -22,6 +22,8 @@
     "start": "electron-vite preview",
     "dev": "electron-vite dev",
     "server": "docker compose up --build --detach --wait",
+    "server:verify": "bun run test-server/verify.ts",
+    "server:verify:app": "bun run test-server/verify-app.ts",
     "server:stop": "docker compose down",
     "build": "bun run typecheck && electron-vite build",
     "rebuild": "electron-rebuild --only better-sqlite3",
@@ -37,6 +39,7 @@
   "dependencies": {
     "@electron-toolkit/preload": "^3.0.2",
     "@electron-toolkit/utils": "^4.0.0",
+    "basic-ftp": "^6.2.1",
     "better-sqlite3": "^13.0.2",
     "ssh2": "^1.17.0"
   },

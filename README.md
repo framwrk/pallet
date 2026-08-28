@@ -1,6 +1,6 @@
 # Pallet
 
-A free and open-source macOS SSH/SFTP file manager
+A free and open-source macOS SFTP, FTP, and explicit FTPS file manager
 
 ## Features
 
@@ -55,9 +55,9 @@ bun run lint
 bun run typecheck
 ```
 
-### Local test server
+### Local test servers
 
-Docker is required. Start the local SFTP server in the background with:
+Docker is required. Start local SFTP, FTP, and explicit FTPS servers in the background with:
 
 ```bash
 bun run server
@@ -65,17 +65,31 @@ bun run server
 
 Connect from Pallet with these test-only credentials:
 
-| Field       | Value          |
-| ----------- | -------------- |
-| Server      | `localhost`    |
-| Port        | `2222`         |
-| Username    | `pallet`       |
-| Password    | `pallet`       |
-| Remote Path | `/home/pallet` |
+| Protocol      | Server      | Port   | Username | Password | Remote path    |
+| ------------- | ----------- | ------ | -------- | -------- | -------------- |
+| SFTP          | `localhost` | `2222` | `pallet` | `pallet` | `/home/pallet` |
+| FTP           | `localhost` | `2121` | `pallet` | `pallet` | `/`            |
+| Explicit FTPS | `localhost` | `2122` | `pallet` | `pallet` | `/`            |
 
 The SSH host keys persist across container rebuilds so Pallet's trusted-host entry remains valid.
-Use `PALLET_TEST_SERVER_PORT` to override the host port or `PALLET_TEST_PASSWORD` to override the
-password. Stop and remove the server with `bun run server:stop`.
+FTPS generates a self-signed certificate for `localhost` on first start and persists it in a Docker
+volume so its fingerprint remains stable across rebuilds. It is only for local testing. The FTP
+servers use passive ports `30000-30009` and `30100-30109`, respectively. Disable certificate
+verification in the connection dialog's Options section when connecting to this local FTPS server;
+never disable it for a production server.
+
+Use `PALLET_TEST_SERVER_PORT`, `PALLET_TEST_FTP_PORT`, or `PALLET_TEST_FTPS_PORT` to override a
+control port, and use `PALLET_TEST_PASSWORD` to override the shared password. After the servers are
+healthy, verify login, listing, download, upload, and deletion over all three protocols with:
+
+```bash
+bun run server:verify
+```
+
+To exercise Pallet's own session, browsing, transfer, preview, folder-size, and mutation adapters
+against all three servers, run `bun run server:verify:app`.
+
+Stop and remove the servers with `bun run server:stop`.
 
 ## License
 

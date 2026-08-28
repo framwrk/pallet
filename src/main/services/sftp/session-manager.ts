@@ -6,9 +6,16 @@
  * integration tests can drive it directly. Host-key decisions and status
  * events are injected via SessionManagerHooks.
  */
-import { Client, type ConnectConfig, type SFTPWrapper } from "ssh2";
-import type { ConnectProfile, ConnectResult, SessionStatus, SessionStatusEvent } from "@shared/sftp/sftp.types";
+import { type ConnectConfig, type SFTPWrapper, Client as SshClient } from "ssh2";
+import type {
+  ConnectProfile,
+  ConnectResult,
+  ConnectionProtocol,
+  SessionStatus,
+  SessionStatusEvent,
+} from "@shared/sftp/sftp.types";
 import { DEFAULT_CONCURRENCY, MAX_CONCURRENCY } from "@shared/prefs/prefs.constants";
+import { Client as FtpClient } from "basic-ftp";
 import { createHash } from "crypto";
 import { promises as fs } from "fs";
 
@@ -32,16 +39,25 @@ interface ChannelPool {
   waiters: { resolve: (sftp: SFTPWrapper) => void; reject: (err: Error) => void }[];
 }
 
+interface FtpPool {
+  free: FtpClient[];
+  total: number;
+  waiters: { resolve: (client: FtpClient) => void; reject: (err: Error) => void }[];
+}
+
 interface Session {
   id: string;
   profile: ConnectProfile;
   /** Bumped on every successful dial; leases from older generations are dead. */
   generation: number;
-  client: Client;
+  client: SshClient | null;
+  /** Dedicated FTP/FTPS client for browsing and metadata operations. */
+  ftp: FtpClient | null;
   /** Dedicated browsing channel; navigation never queues behind a transfer. */
   sftp: SFTPWrapper | null;
   /** Pool of transfer channels (§3.3); size from the profile's concurrency. */
   pool: ChannelPool;
+  ftpPool: FtpPool;
   status: SessionStatus;
   /**
    * Whether the server's `du` understands -b (GNU). Probed on first use and
@@ -63,6 +79,10 @@ export function parseKeyType(keyBlob: Buffer): string {
   } catch {
     return "unknown";
   }
+}
+
+export function protocolOf(profile: ConnectProfile): ConnectionProtocol {
+  return profile.protocol === "ftp" || profile.protocol === "ftps" ? profile.protocol : "sftp";
 }
 
 /**
@@ -97,7 +117,7 @@ export class SessionManager {
     this.hooks.onStatus({ sessionId: session.id, status, detail });
   }
 
-  private async buildConnectConfig(profile: ConnectProfile): Promise<Parameters<Client["connect"]>[0]> {
+  private async buildConnectConfig(profile: ConnectProfile): Promise<Parameters<SshClient["connect"]>[0]> {
     const base: ConnectConfig = {
       host: profile.host,
       port: profile.port,
@@ -133,14 +153,15 @@ export class SessionManager {
   /** Open the connection and the dedicated browse channel. */
   async connect(profile: ConnectProfile): Promise<ConnectResult> {
     const id = `s${++this.seq}`;
-    const client = new Client();
     const session: Session = {
       id,
       profile,
       generation: 0,
-      client,
+      client: protocolOf(profile) === "sftp" ? new SshClient() : null,
+      ftp: null,
       sftp: null,
       pool: { free: [], total: 0, waiters: [] },
+      ftpPool: { free: [], total: 0, waiters: [] },
       status: "connecting",
       duApparentBytes: null,
       closing: false,
@@ -157,7 +178,8 @@ export class SessionManager {
       throw err;
     }
 
-    session.client.on("close", () => this.handleDrop(session));
+    session.client?.on("close", () => this.handleDrop(session));
+    this.watchFtpDrop(session);
 
     const initialPath = await this.resolveInitialPath(session);
     return { sessionId: id, initialPath };
@@ -165,8 +187,13 @@ export class SessionManager {
 
   /** One dial attempt: TCP+SSH handshake plus the browse SFTP channel. */
   private async dial(session: Session): Promise<void> {
+    if (protocolOf(session.profile) !== "sftp") {
+      await this.dialFtp(session);
+      return;
+    }
     const config = await this.buildConnectConfig(session.profile);
     const client = session.client;
+    if (!client) throw new Error("No SSH client");
     await new Promise<void>((resolve, reject) => {
       const onError = (err: Error): void => {
         cleanup();
@@ -200,8 +227,67 @@ export class SessionManager {
     this.setStatus(session, "connected");
   }
 
+  private async openFtpClient(profile: ConnectProfile): Promise<FtpClient> {
+    if (profile.auth.method !== "password") {
+      throw new Error("FTP and FTPS require password authentication");
+    }
+    const client = new FtpClient(20_000);
+    try {
+      await client.access({
+        host: profile.host,
+        port: profile.port,
+        user: profile.username,
+        password: profile.auth.password,
+        secure: protocolOf(profile) === "ftps",
+        ...(protocolOf(profile) === "ftps"
+          ? { secureOptions: { rejectUnauthorized: profile.tlsRejectUnauthorized !== false } }
+          : {}),
+      });
+      return client;
+    } catch (err) {
+      client.close();
+      throw err;
+    }
+  }
+
+  private async dialFtp(session: Session): Promise<void> {
+    session.ftp = await this.openFtpClient(session.profile);
+    session.reconnectAttempt = 0;
+    this.resetFtpPool(session, new Error("Connection replaced"));
+    session.generation++;
+    this.setStatus(session, "connected");
+  }
+
+  private watchFtpDrop(session: Session): void {
+    const ftp = session.ftp;
+    if (!ftp) return;
+    const socket = ftp.ftp.socket;
+    socket.once("close", () => {
+      if (session.ftp === ftp) {
+        session.ftp = null;
+        this.handleDrop(session);
+      }
+    });
+    // The library handles its own connection errors; this listener prevents
+    // a late socket error from becoming uncaught while close drives recovery.
+    socket.on("error", () => {});
+  }
+
   private async resolveInitialPath(session: Session): Promise<string> {
     const want = session.profile.remotePath?.trim();
+    if (protocolOf(session.profile) !== "sftp") {
+      const ftp = session.ftp;
+      if (!ftp) throw new Error("No FTP client");
+      if (want) {
+        try {
+          await ftp.cd(want);
+          return await ftp.pwd();
+        } catch {
+          // Fall through to the login directory.
+        }
+      }
+      return ftp.pwd();
+    }
     const sftp = session.sftp;
     if (!sftp) throw new Error("No SFTP channel");
     const realpath = (p: string): Promise<string> =>
@@ -220,6 +306,7 @@ export class SessionManager {
     if (session.closing || !this.sessions.has(session.id)) return;
     session.sftp = null;
     this.resetPool(session, new Error("Connection lost"));
+    this.resetFtpPool(session, new Error("Connection lost"));
     this.scheduleReconnect(session);
   }
 
@@ -228,6 +315,14 @@ export class SessionManager {
     session.pool.total = 0;
     const waiters = session.pool.waiters.splice(0);
     for (const w of waiters) w.reject(err);
+  }
+
+  private resetFtpPool(session: Session, err: Error): void {
+    for (const client of session.ftpPool.free) client.close();
+    session.ftpPool.free = [];
+    session.ftpPool.total = 0;
+    const waiters = session.ftpPool.waiters.splice(0);
+    for (const waiter of waiters) waiter.reject(err);
   }
 
   private scheduleReconnect(session: Session): void {
@@ -246,11 +341,14 @@ export class SessionManager {
 
   private async tryReconnect(session: Session): Promise<void> {
     if (session.closing || !this.sessions.has(session.id)) return;
-    session.client.removeAllListeners();
-    session.client = new Client();
+    session.client?.removeAllListeners();
+    session.client = protocolOf(session.profile) === "sftp" ? new SshClient() : null;
+    session.ftp?.close();
+    session.ftp = null;
     try {
       await this.dial(session);
-      session.client.on("close", () => this.handleDrop(session));
+      session.client?.on("close", () => this.handleDrop(session));
+      this.watchFtpDrop(session);
     } catch {
       this.scheduleReconnect(session);
     }
@@ -270,7 +368,9 @@ export class SessionManager {
     if (!session) return;
     session.closing = true;
     if (session.reconnectTimer) clearTimeout(session.reconnectTimer);
-    session.client.end();
+    session.client?.end();
+    session.ftp?.close();
+    this.resetFtpPool(session, new Error("Disconnected"));
     this.sessions.delete(sessionId);
     this.setStatus(session, "disconnected", "Disconnected");
   }
@@ -289,6 +389,10 @@ export class SessionManager {
     return this.mustGet(sessionId).status;
   }
 
+  protocol(sessionId: string): ConnectionProtocol {
+    return protocolOf(this.mustGet(sessionId).profile);
+  }
+
   /** Identifies the underlying connection; changes after every reconnect. */
   connectionGeneration(sessionId: string): number {
     return this.mustGet(sessionId).generation;
@@ -303,6 +407,17 @@ export class SessionManager {
       throw err;
     }
     return session.sftp;
+  }
+
+  /** Dedicated FTP client. Callers must serialize operations on it. */
+  browseFtpClient(sessionId: string): FtpClient {
+    const session = this.mustGet(sessionId);
+    if (!session.ftp || session.ftp.closed || session.status !== "connected") {
+      const err: NodeJS.ErrnoException = new Error("Not connected");
+      err.code = "ENOTCONN";
+      throw err;
+    }
+    return session.ftp;
   }
 
   /** Cached `du -b` support, or null until probed. Survives reconnects. */
@@ -325,13 +440,14 @@ export class SessionManager {
    */
   async exec(sessionId: string, command: string, maxBytes = 64 * 1024): Promise<{ stdout: string; code: number | null }> {
     const session = this.mustGet(sessionId);
+    if (protocolOf(session.profile) !== "sftp") throw new Error("Remote commands are only available over SFTP");
     if (session.status !== "connected") {
       const err: NodeJS.ErrnoException = new Error("Not connected");
       err.code = "ENOTCONN";
       throw err;
     }
     return new Promise((resolve, reject) => {
-      session.client.exec(command, (err, stream) => {
+      session.client!.exec(command, (err, stream) => {
         if (err) return reject(err);
         const chunks: Buffer[] = [];
         let length = 0;
@@ -379,7 +495,7 @@ export class SessionManager {
       session.pool.total++;
       try {
         const sftp = await new Promise<SFTPWrapper>((resolve, reject) =>
-          session.client.sftp((err, ch) => (err ? reject(err) : resolve(ch))),
+          session.client!.sftp((err, ch) => (err ? reject(err) : resolve(ch))),
         );
         return lease(sftp);
       } catch (err) {
@@ -390,6 +506,55 @@ export class SessionManager {
 
     const sftp = await new Promise<SFTPWrapper>((resolve, reject) => session.pool.waiters.push({ resolve, reject }));
     return lease(sftp);
+  }
+
+  /** Lease an independent FTP control connection for one transfer/endpoint. */
+  async acquireFtpClient(sessionId: string): Promise<{ client: FtpClient; release: (broken?: boolean) => void }> {
+    const session = this.mustGet(sessionId);
+    if (protocolOf(session.profile) === "sftp") throw new Error("Not an FTP session");
+    if (session.status !== "connected") {
+      const err: NodeJS.ErrnoException = new Error("Not connected");
+      err.code = "ENOTCONN";
+      throw err;
+    }
+    const generation = session.generation;
+    const makeLease = (client: FtpClient): { client: FtpClient; release: (broken?: boolean) => void } => ({
+      client,
+      release: (broken = false): void => this.releaseFtpClient(session, client, broken, generation),
+    });
+    while (session.ftpPool.free.length > 0) {
+      const pooled = session.ftpPool.free.pop()!;
+      if (!pooled.closed) return makeLease(pooled);
+      session.ftpPool.total = Math.max(0, session.ftpPool.total - 1);
+    }
+
+    if (session.ftpPool.total < poolSizeFor(session.profile)) {
+      session.ftpPool.total++;
+      try {
+        return makeLease(await this.openFtpClient(session.profile));
+      } catch (err) {
+        session.ftpPool.total--;
+        throw err;
+      }
+    }
+    const client = await new Promise<FtpClient>((resolve, reject) => session.ftpPool.waiters.push({ resolve, reject }));
+    return makeLease(client);
+  }
+
+  private releaseFtpClient(session: Session, client: FtpClient, broken: boolean, generation: number): void {
+    if (generation !== session.generation || session.closing) {
+      client.close();
+      return;
+    }
+    if (broken || client.closed) {
+      client.close();
+      session.ftpPool.total = Math.max(0, session.ftpPool.total - 1);
+      session.ftpPool.waiters.shift()?.reject(new Error("FTP connection lost"));
+      return;
+    }
+    const waiter = session.ftpPool.waiters.shift();
+    if (waiter) waiter.resolve(client);
+    else session.ftpPool.free.push(client);
   }
 
   private releaseTransferChannel(session: Session, sftp: SFTPWrapper, broken: boolean, leaseGeneration: number): void {

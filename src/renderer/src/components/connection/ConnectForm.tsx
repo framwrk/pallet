@@ -1,14 +1,73 @@
 import { COLOR_LABELS, LABEL_COLOR_CLASSES } from "@shared/favorite/favorite.constants";
 import { ChevronDown, KeyRound, LoaderCircle, LockKeyhole, Server, Settings2, Star, UserRound } from "lucide-react";
 import type { ColorLabel, Favorite, FavoriteInput } from "@shared/favorite/favorite.types";
+import type { ConnectProfile, ConnectionProtocol } from "@shared/sftp/sftp.types";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
-import type { ConnectProfile } from "@shared/sftp/sftp.types";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { connectRemote } from "@/store/sftp.store";
 import { pushToast } from "@/store/pane.store";
 import { saveFavorite } from "@/store/favorite.store";
-import { useState } from "react";
+
+const PROTOCOLS: Record<ConnectionProtocol, string> = {
+  sftp: "SFTP",
+  ftp: "FTP",
+  ftps: "FTPS",
+};
+
+function defaultPort(protocol: ConnectionProtocol): number {
+  return protocol === "sftp" ? 22 : 21;
+}
+
+function ProtocolSelect({
+  protocol,
+  onProtocolChange,
+  endpoint = false,
+}: {
+  protocol: ConnectionProtocol;
+  onProtocolChange: (protocol: ConnectionProtocol) => void;
+  endpoint?: boolean;
+}): React.JSX.Element {
+  return (
+    <Select
+      items={PROTOCOLS}
+      value={protocol}
+      onValueChange={(value) => {
+        if (value) onProtocolChange(value as ConnectionProtocol);
+      }}
+    >
+      <SelectTrigger
+        size="sm"
+        aria-label="Connection protocol"
+        className={cn(
+          endpoint
+            ? "pallet-endpoint-protocol dark:hover:bg-muted/40 h-7 min-w-0 gap-0.5 border-transparent bg-transparent px-1 py-0 font-mono text-[11px] shadow-none data-[size=sm]:h-7 dark:bg-transparent [&>svg]:size-3"
+            : "h-7 w-24 text-[13px] data-[size=sm]:h-7",
+        )}
+      >
+        {endpoint ? <span className="text-muted-foreground">{protocol}://</span> : <SelectValue />}
+      </SelectTrigger>
+      <SelectContent
+        align="start"
+        alignItemWithTrigger={false}
+        className="min-w-24 p-1"
+      >
+        {Object.entries(PROTOCOLS).map(([value, label]) => (
+          <SelectItem
+            key={value}
+            value={value}
+            className="py-1 text-xs"
+          >
+            {label}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+}
 
 function Row({
   label,
@@ -56,11 +115,16 @@ export function ConnectForm({
   onClose?: () => void;
 }): React.JSX.Element {
   const seed = editing ?? prefill;
+  const initialProtocol = seed?.protocol ?? "sftp";
+  const [protocol, setProtocol] = useState<ConnectionProtocol>(initialProtocol);
   const [name, setName] = useState(seed?.name ?? "");
   const [server, setServer] = useState(seed?.host ?? "");
-  const [port, setPort] = useState(String(seed?.port ?? 22));
+  const [port, setPort] = useState(String(seed?.port ?? defaultPort(initialProtocol)));
+  const portTouched = useRef(seed ? seed.port !== defaultPort(initialProtocol) : false);
   const [username, setUsername] = useState(seed?.username ?? "");
-  const [authMethod, setAuthMethod] = useState<"password" | "key">(seed?.authMethod ?? "password");
+  const [authMethod, setAuthMethod] = useState<"password" | "key">(
+    initialProtocol === "sftp" ? (seed?.authMethod ?? "password") : "password",
+  );
   const [password, setPassword] = useState("");
   const [keyPath, setKeyPath] = useState(seed?.privateKeyPath ?? "");
   const [passphrase, setPassphrase] = useState("");
@@ -72,12 +136,24 @@ export function ConnectForm({
   const [showFavoriteDetails, setShowFavoriteDetails] = useState(false);
   const [keepalive, setKeepalive] = useState("15");
   const [compression, setCompression] = useState(false);
+  const [tlsRejectUnauthorized, setTlsRejectUnauthorized] = useState(seed?.tlsRejectUnauthorized ?? true);
   const [concurrency, setConcurrency] = useState(String(defaultConcurrency));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const secretPlaceholder =
     seed?.secretStored && !editing ? "Stored password" : editing?.secretStored ? "Leave blank to keep saved" : "";
+
+  function changeProtocol(nextProtocol: ConnectionProtocol): void {
+    const currentDefault = defaultPort(protocol);
+    if (!portTouched.current || port.trim() === String(currentDefault)) {
+      setPort(String(defaultPort(nextProtocol)));
+      portTouched.current = false;
+    }
+    setProtocol(nextProtocol);
+    if (nextProtocol !== "sftp") setAuthMethod("password");
+    setError(null);
+  }
 
   function validate(): string | null {
     const portNum = Number.parseInt(port, 10);
@@ -91,11 +167,13 @@ export function ConnectForm({
     return {
       ...(editing ? { id: editing.id } : {}),
       name: name.trim() || `${username.trim()}@${server.trim()}`,
+      protocol,
       host: server.trim(),
       port: Number.parseInt(port, 10),
       username: username.trim(),
       authMethod,
       ...(authMethod === "key" && keyPath.trim() ? { privateKeyPath: keyPath.trim() } : {}),
+      ...(protocol === "ftps" ? { tlsRejectUnauthorized } : {}),
       ...(remotePathField.trim() ? { remotePath: remotePathField.trim() } : {}),
       ...(localPathField.trim() ? { localPath: localPathField.trim() } : {}),
       ...(note.trim() ? { note: note.trim() } : {}),
@@ -116,6 +194,7 @@ export function ConnectForm({
       return;
     }
     const profile: ConnectProfile = {
+      protocol,
       host: server.trim(),
       port: Number.parseInt(port, 10),
       username: username.trim(),
@@ -126,6 +205,7 @@ export function ConnectForm({
       ...(remotePathField.trim() ? { remotePath: remotePathField.trim() } : {}),
       keepaliveIntervalMs: Math.max(0, Number.parseInt(keepalive, 10) || 15) * 1000,
       compression,
+      ...(protocol === "ftps" ? { tlsRejectUnauthorized } : {}),
       concurrency: Number.parseInt(concurrency, 10) || defaultConcurrency,
     };
     setBusy(true);
@@ -170,19 +250,21 @@ export function ConnectForm({
       >
         <LockKeyhole data-icon="inline-start" /> Password
       </Button>
-      <Button
-        type="button"
-        size="xs"
-        variant={authMethod === "key" ? "secondary" : "ghost"}
-        className="flex-1"
-        aria-pressed={authMethod === "key"}
-        onClick={() => setAuthMethod("key")}
-      >
-        <KeyRound data-icon="inline-start" />
-        <span>
-          <span className="pallet-private-key-prefix">Private </span>Key
-        </span>
-      </Button>
+      {protocol === "sftp" && (
+        <Button
+          type="button"
+          size="xs"
+          variant={authMethod === "key" ? "secondary" : "ghost"}
+          className="flex-1"
+          aria-pressed={authMethod === "key"}
+          onClick={() => setAuthMethod("key")}
+        >
+          <KeyRound data-icon="inline-start" />
+          <span>
+            <span className="pallet-private-key-prefix">Private </span>Key
+          </span>
+        </Button>
+      )}
     </div>
   );
 
@@ -203,7 +285,11 @@ export function ConnectForm({
             aria-label="Server endpoint"
           >
             <Server className="text-primary mr-2 size-4 shrink-0" />
-            <span className="pallet-endpoint-protocol text-muted-foreground font-mono text-[11px]">sftp://</span>
+            <ProtocolSelect
+              protocol={protocol}
+              onProtocolChange={changeProtocol}
+              endpoint
+            />
             <input
               className="text-foreground placeholder:text-muted-foreground min-w-0 flex-1 bg-transparent px-1.5 text-[13px] outline-none"
               aria-label="Server"
@@ -219,7 +305,10 @@ export function ConnectForm({
                 className="text-foreground w-10 bg-transparent text-center font-mono text-xs tabular-nums outline-none"
                 aria-label="Port"
                 value={port}
-                onChange={(e) => setPort(e.target.value)}
+                onChange={(e) => {
+                  portTouched.current = true;
+                  setPort(e.target.value);
+                }}
                 spellCheck={false}
               />
             </div>
@@ -304,6 +393,12 @@ export function ConnectForm({
               placeholder={`${username || "user"}@${server || "host"}`}
             />
           </Row>
+          <Row label="Protocol">
+            <ProtocolSelect
+              protocol={protocol}
+              onProtocolChange={changeProtocol}
+            />
+          </Row>
           <Row label="Server">
             <Input
               className={inputCls}
@@ -317,7 +412,10 @@ export function ConnectForm({
             <Input
               className={cn(inputCls, "w-24")}
               value={port}
-              onChange={(e) => setPort(e.target.value)}
+              onChange={(e) => {
+                portTouched.current = true;
+                setPort(e.target.value);
+              }}
               spellCheck={false}
             />
           </Row>
@@ -445,19 +543,22 @@ export function ConnectForm({
               spellCheck={false}
             />
           </Row>
-          <Row
-            label="Keepalive (s)"
-            layout={fieldLayout}
-          >
-            <Input
-              className={cn(fieldInputCls, !isPane && "w-24")}
-              value={keepalive}
-              onChange={(e) => setKeepalive(e.target.value)}
-            />
-          </Row>
+          {protocol === "sftp" && (
+            <Row
+              label="Keepalive (s)"
+              layout={fieldLayout}
+            >
+              <Input
+                className={cn(fieldInputCls, !isPane && "w-24")}
+                value={keepalive}
+                onChange={(e) => setKeepalive(e.target.value)}
+              />
+            </Row>
+          )}
           <Row
             label="Concurrency"
             layout={fieldLayout}
+            className={cn(isPane && protocol !== "sftp" && "pallet-options-span col-span-2")}
           >
             <div className="flex items-center gap-2">
               <Input
@@ -468,20 +569,48 @@ export function ConnectForm({
               {!isPane && <span className="text-muted-foreground text-[11px]">parallel transfer channels (1–7)</span>}
             </div>
           </Row>
-          <Row
-            label="Compression"
-            layout={fieldLayout}
-            className={cn(isPane && "pallet-options-span col-span-2")}
-          >
-            <div className="flex items-center gap-2 text-xs">
-              <input
-                type="checkbox"
-                checked={compression}
-                onChange={(e) => setCompression(e.target.checked)}
-              />
-              <span className="text-muted-foreground">Helps on slow links, costs CPU on fast ones</span>
-            </div>
-          </Row>
+          {protocol === "sftp" && (
+            <Row
+              label="Compression"
+              layout={fieldLayout}
+              className={cn(isPane && "pallet-options-span col-span-2")}
+            >
+              <div className="flex items-center gap-2 text-xs">
+                <Checkbox
+                  aria-label="Enable SFTP compression"
+                  checked={compression}
+                  onCheckedChange={setCompression}
+                />
+                <span className="text-muted-foreground">Helps on slow links, costs CPU on fast ones</span>
+              </div>
+            </Row>
+          )}
+          {protocol === "ftps" && (
+            <Row
+              label="TLS Security"
+              layout={fieldLayout}
+              className={cn(isPane && "pallet-options-span col-span-2")}
+            >
+              <div className="flex flex-col gap-1.5">
+                <div className="flex items-center gap-2 text-xs">
+                  <Checkbox
+                    aria-label="Verify TLS certificate"
+                    checked={tlsRejectUnauthorized}
+                    onCheckedChange={setTlsRejectUnauthorized}
+                  />
+                  <span className="text-foreground">Verify TLS certificate</span>
+                </div>
+                {!tlsRejectUnauthorized && (
+                  <p
+                    className="text-destructive text-[11px]"
+                    role="alert"
+                  >
+                    Untrusted certificates will be accepted. Use only with a server you trust.
+                  </p>
+                )}
+              </div>
+            </Row>
+          )}
         </div>
       )}
 
