@@ -70,14 +70,19 @@ FTP/FTPS passive data connections. Choose a profile when starting or recreating 
 | --------------------- | ------------ | ------------ | --------------------------- | --------------------------- |
 | `realistic` (default) | 10 Mbit/s    | 2 Mbit/s     | 40 ms ± 10 ms               | 0.1%                        |
 | `poor`                | 1.5 Mbit/s   | 0.5 Mbit/s   | 150 ms ± 50 ms              | 2%                          |
+| `optimal`             | 100 Mbit/s   | 50 Mbit/s    | 10 ms ± 2 ms                | 0%                          |
+| `performant`          | 1000 Mbit/s  | 1000 Mbit/s  | 1 ms                        | 0%                          |
 | `offline`             | —            | —            | —                           | 100%                        |
 | `off`                 | Unrestricted | Unrestricted | None                        | None                        |
 
 These are synthetic test presets, not measurements of a particular network. The default adds
-roughly 80 ms round-trip latency before queuing and retransmissions; `poor` adds roughly 300 ms.
-Bandwidth is shared by all connections **per server**, not allocated separately to every transfer.
-Packet loss is random, so repeated runs can behave differently. TCP may recover from loss;
-successful tests on these profiles are expected when the application handles the conditions well.
+roughly 80 ms round-trip latency before queuing and retransmissions; `poor` adds roughly 300 ms,
+while `optimal` and `performant` add roughly 20 ms and 2 ms for high-throughput and near-LAN
+checks. `performant` is still shaped, so it exercises throttling at gigabit rates; only `off`
+removes shaping entirely. Bandwidth is shared by all connections **per server**, not allocated
+separately to every transfer. Packet loss is random, so repeated runs can behave differently. TCP
+may recover from loss; successful tests on these profiles are expected when the application
+handles the conditions well.
 
 ```bash
 PALLET_TEST_NETWORK=poor bun run server
