@@ -24,6 +24,8 @@
     "server": "docker compose up --build --detach --wait",
     "server:verify": "bun run test-server/verify.ts",
     "server:verify:app": "bun run test-server/verify-app.ts",
+    "test:transfers": "bun test test-server/transfer.test.ts test-server/session-pool.test.ts",
+    "server:verify:transfers": "bun run test-server/verify-transfers.ts",
     "server:verify:network": "bun run test-server/verify-network.ts",
     "server:stop": "docker compose down",
     "build": "bun run typecheck && electron-vite build",

@@ -257,11 +257,18 @@ so progress, conflicts, and error handling behave identically no matter what you
 
 1. **Enumerated first.** Pallet walks the entire source tree _before moving a single byte_, so the
    file count and total size are known up front. The progress bar isn't a guess.
-2. **Staged, never in place.** Each file is written to `<name>.pallet-part`, has its modification
-   time and permissions stamped, and is then **atomically renamed** into its real name. If anything
-   goes wrong — crash, dropped Wi-Fi, closed lid — you're left with an obvious `.pallet-part` file,
-   **never a truncated file wearing the real name.**
-3. **Verified.** Size and modification time are checked after the rename.
+2. **Staged, never in place.** Each file is written to its own unique `.pallet-<id>.pallet-part`
+   file. Separate jobs cannot share partial files, and an existing destination stays intact while
+   its replacement is being transferred.
+3. **Verified before replacement.** Pallet checks the staged size and checks that the source size
+   and modification time have not changed, then stamps metadata and renames into place. Local
+   copies and SFTP servers supporting POSIX rename replace atomically. Other SFTP servers and
+   FTP/FTPS use the server's rename behavior; if replacement is refused, the job reports an error
+   rather than deleting the original. A lost rename reply is reported for inspection, not silently retried.
+
+Folder scans reuse directory-entry metadata instead of requesting it again for every child.
+Transfers honor the server's concurrency setting. Jobs sharing a server take turns, while jobs
+using different servers can run together. Progress updates are throttled to keep large batches responsive.
 
 ### Queue controls
 
@@ -269,7 +276,7 @@ Each job shows progress, transfer rate, and bytes moved. Per job:
 
 | Button               | What it does                     |
 | -------------------- | -------------------------------- |
-| **Pause**            | Stops after the current file     |
+| **Pause**            | Interrupts active streams        |
 | **Resume**           | Picks back up                    |
 | **Retry**            | Re-runs a failed job             |
 | **Cancel**           | Stops and cleans up staged files |
@@ -281,13 +288,20 @@ everything running.
 A job paused by a dropped connection shows **"Paused — connection lost"** and resumes automatically.
 You can't manually resume that one; it's waiting on the network, not on you.
 
-**If a transfer is interrupted,** the affected file restarts from the beginning on retry. Files that
-already completed in the batch are not re-sent. (Resuming mid-file from a byte offset is post-beta.)
+**If a transfer is interrupted,** local and SFTP transfers of at least 16 MiB resume from the last
+confirmed 8 MiB checkpoint during the same job. Only the interrupted chunk is repeated. Small
+files and transfers involving FTP/FTPS restart the affected file. Completed files remain completed
+when pausing or recovering automatically. The Retry button starts a new attempt and checks conflicts again.
 
-**If a transfer stalls** — no bytes at all for 60 seconds — Pallet gives up on that channel and
-restarts the file on a fresh one, up to five times before recording it as an error. A single dead
-channel on an otherwise healthy connection is the case this covers: the session still reports itself
-connected, so the auto-pause path would never fire and the job would sit at "running" forever.
+**If a transfer stalls** — no bytes at all for 60 seconds — Pallet abandons that channel and retries
+with a fresh one. Transient stream and metadata failures receive up to five retries with backoff;
+permission and disk errors fail without repeated attempts. Network loss pauses the job during
+scanning, directory creation, and copying until the session reconnects.
+
+Cancellation cleans up the job's temporary files when the destination is reachable. A crash or an
+unreachable server can leave identifiable partial files behind. Checkpoints are kept in memory;
+resuming across app restarts is not supported. Verification uses sizes and source modification times,
+not a full destination checksum or a guarantee against remote disk failure.
 
 ---
 
@@ -442,7 +456,8 @@ Deliberate omissions for the beta, not bugs:
 - **SSH agent auth** — password and private key only. Agent support (which brings 1Password's SSH
   agent along for free) is the first thing after beta.
 - **Remote→remote move** — copy, then delete.
-- **Mid-file resume** — an interrupted file restarts rather than continuing from an offset.
+- **Resume across app restarts or FTP/FTPS checkpoints** — checkpoint resume is currently limited to
+  large local/SFTP files within a running job.
 - **Undo for transfers or deletes** — undo covers local rename and move only.
 - **Search** — a good remote search needs server-side `find` with cancellation; a bad one is worse
   than none.

@@ -159,3 +159,19 @@ Stop and remove the servers with `bun run server:stop`.
 
 Inspired by [ForkLift 4](https://binarynights.com/) by BinaryNights. Built with Electron, React,
 Tailwind CSS, shadcn/ui on Base UI, TanStack Virtual, `ssh2`, and `better-sqlite3`.
+
+### Transfer reliability tests
+
+Run `bun run test:transfers` for deterministic filesystem and fault-injection coverage, including
+2,100-file folders, checkpoint resume, pause/cancel, conflicting names, source changes and safe replacement.
+With the local test servers running, `bun run server:verify:transfers` exercises the actual queue over
+SFTP, FTP and FTPS and compares SHA-256 hashes after downloading. It also checks overwrites and
+same-session remote copies with concurrency set to one. Set `PALLET_TEST_DISCONNECT=1` to
+also force a real SSH disconnect in the SFTP test and check automatic recovery.
+
+Use `PALLET_TEST_PROTOCOL=sftp` (or `ftp` / `ftps`) to select a protocol,
+`PALLET_TEST_FILE_COUNT=2100` for a larger batch, and `PALLET_TEST_TRANSFER_TIMEOUT_MS=900000`
+when deliberately using a slow network profile. The SFTP test includes a file larger than 16 MiB
+and an injected interruption after the first checkpoint. Use `PALLET_TEST_LARGE_FILE=0` for a
+small smoke test on a deliberately slow link. Test artifacts use unique temporary
+directories and are removed when the test exits normally.

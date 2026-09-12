@@ -20,15 +20,30 @@ export interface EndpointStat {
   isSymlink: boolean;
 }
 
+export interface ReadOptions {
+  start?: number;
+  end?: number;
+  signal?: AbortSignal;
+}
+
+export interface WriteOptions {
+  start?: number;
+  signal?: AbortSignal;
+}
+
 export interface TransferEndpoint {
+  /** Supports bounded reads and writing at a confirmed checkpoint. */
+  supportsRanges?: boolean;
   kind: "local" | "sftp";
   statOrNull(p: string): Promise<EndpointStat | null>;
+  fileVersion?(p: string): Promise<{ size: number; mtimeMs: number }>;
+  fileSize?(p: string): Promise<number>;
   listNames(dir: string): Promise<string[]>;
   /** Names + kinds, for enumeration. */
   listEntries(dir: string): Promise<{ name: string; stat: EndpointStat }[]>;
   mkdirp(p: string): Promise<void>;
-  createReadStream(p: string): Promise<Readable>;
-  createWriteStream(p: string, mode?: number): Promise<Writable>;
+  createReadStream(p: string, options?: ReadOptions): Promise<Readable>;
+  createWriteStream(p: string, mode?: number, options?: WriteOptions): Promise<Writable>;
   setMeta(p: string, meta: { mtimeMs: number; mode?: number }): Promise<void>;
   /** Rename, replacing an existing destination. */
   renameReplacing(from: string, to: string): Promise<void>;
@@ -45,6 +60,7 @@ export const joinPath = join;
 // --- local ------------------------------------------------------------------
 
 class LocalEndpoint implements TransferEndpoint {
+  supportsRanges = true;
   kind = "local" as const;
 
   async statOrNull(p: string): Promise<EndpointStat | null> {
@@ -57,16 +73,18 @@ class LocalEndpoint implements TransferEndpoint {
         isDir: lstat.isDirectory(),
         isSymlink: lstat.isSymbolicLink(),
       };
-    } catch {
-      return null;
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") return null;
+      throw err;
     }
   }
 
   async listNames(dir: string): Promise<string[]> {
     try {
       return await fs.readdir(dir);
-    } catch {
-      return [];
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") return [];
+      throw err;
     }
   }
 
@@ -74,7 +92,8 @@ class LocalEndpoint implements TransferEndpoint {
     const out: { name: string; stat: EndpointStat }[] = [];
     for (const name of await fs.readdir(dir)) {
       const stat = await this.statOrNull(join(dir, name));
-      if (stat) out.push({ name, stat });
+      if (!stat) throw new Error(`Source disappeared: ${join(dir, name)}`);
+      out.push({ name, stat });
     }
     return out;
   }
@@ -83,12 +102,14 @@ class LocalEndpoint implements TransferEndpoint {
     await fs.mkdir(p, { recursive: true });
   }
 
-  async createReadStream(p: string): Promise<Readable> {
-    return createReadStream(p);
+  async createReadStream(p: string, options: ReadOptions = {}): Promise<Readable> {
+    options.signal?.throwIfAborted();
+    return createReadStream(p, { ...options, highWaterMark: 256 * 1024 });
   }
 
-  async createWriteStream(p: string): Promise<Writable> {
-    return createWriteStream(p, { mode: 0o644 });
+  async createWriteStream(p: string, _mode?: number, options: WriteOptions = {}): Promise<Writable> {
+    options.signal?.throwIfAborted();
+    return createWriteStream(p, { ...options, flags: options.start ? "r+" : "w", mode: 0o600 });
   }
 
   async setMeta(p: string, meta: { mtimeMs: number; mode?: number }): Promise<void> {
@@ -140,54 +161,27 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
 }
 
 /**
- * SFTP endpoint over the session's transfer-channel pool. Metadata calls
- * share one leased channel; each concurrent stream leases its own.
+ * SFTP endpoint over the session's transfer-channel pool. Metadata leases
+ * last only for their operation; each concurrent stream leases its own.
  */
 class SftpEndpoint implements TransferEndpoint {
   kind = "sftp" as const;
-  private metaLease: Lease | null = null;
-  private metaGeneration = -1;
+  supportsRanges = true;
 
   constructor(
     private sessions: SessionManager,
     private sessionId: string,
   ) {}
 
-  private async meta(): Promise<SFTPWrapper> {
-    // A cached lease is only good for the connection it was taken on. After a
-    // drop the channel is dead but looks fine — its requests simply never call
-    // back — so drop it on any generation change or non-connected status
-    // rather than handing a caller something that will hang forever.
-    const generation = this.sessions.connectionGeneration(this.sessionId);
-    const live = this.sessions.status(this.sessionId) === "connected";
-    if (this.metaLease && (this.metaGeneration !== generation || !live)) {
-      this.metaLease.release(true);
-      this.metaLease = null;
-    }
-    if (!this.metaLease) {
-      this.metaLease = await this.sessions.acquireTransferChannel(this.sessionId);
-      this.metaGeneration = generation;
-    }
-    return this.metaLease.sftp;
-  }
-
-  /** Drop the cached metadata channel (after a connection error). */
-  private invalidateMeta(): void {
-    this.metaLease?.release(true);
-    this.metaLease = null;
-  }
-
   private async withMeta<T>(fn: (sftp: SFTPWrapper) => Promise<T>): Promise<T> {
+    const lease = await this.sessions.acquireTransferChannel(this.sessionId);
     try {
-      // Backstop: a channel can die between the status check and the request,
-      // and ssh2 never calls back on a dead channel. Without this, one lost
-      // packet strands a transfer worker permanently.
-      return await withTimeout(fn(await this.meta()), META_TIMEOUT_MS);
+      const result = await withTimeout(fn(lease.sftp), META_TIMEOUT_MS);
+      lease.release();
+      return result;
     } catch (err) {
-      const code = (err as NodeJS.ErrnoException).code;
-      if (code === "ENOTCONN" || code === "ETIMEDOUT" || /not connected|no response/i.test((err as Error).message)) {
-        this.invalidateMeta();
-      }
+      // Never return a channel with an outstanding/timed-out request to the pool.
+      lease.release(true);
       throw err;
     }
   }
@@ -195,9 +189,9 @@ class SftpEndpoint implements TransferEndpoint {
   statOrNull(p: string): Promise<EndpointStat | null> {
     return this.withMeta(
       (sftp) =>
-        new Promise((resolve) => {
+        new Promise((resolve, reject) => {
           sftp.lstat(p, (err, stats) => {
-            if (err) return resolve(null);
+            if (err) return (err as { code?: number }).code === 2 ? resolve(null) : reject(err);
             resolve({
               size: stats.size ?? 0,
               mtimeMs: (stats.mtime ?? 0) * 1000,
@@ -213,8 +207,11 @@ class SftpEndpoint implements TransferEndpoint {
   listNames(dir: string): Promise<string[]> {
     return this.withMeta(
       (sftp) =>
-        new Promise((resolve) => {
-          sftp.readdir(dir, (err, entries) => resolve(err ? [] : entries.map((e) => e.filename)));
+        new Promise((resolve, reject) => {
+          sftp.readdir(dir, (err, entries) => {
+            if (err) return (err as { code?: number }).code === 2 ? resolve([]) : reject(err);
+            resolve(entries.map((e) => e.filename));
+          });
         }),
     );
   }
@@ -263,21 +260,72 @@ class SftpEndpoint implements TransferEndpoint {
     );
   }
 
-  async createReadStream(p: string): Promise<Readable> {
+  async createReadStream(p: string, options: ReadOptions = {}): Promise<Readable> {
     const lease = await this.sessions.acquireTransferChannel(this.sessionId);
-    const stream = lease.sftp.createReadStream(p, { autoClose: true });
-    hookRelease(stream, lease);
-    return stream;
+    try {
+      options.signal?.throwIfAborted();
+      const stream = lease.sftp.createReadStream(p, {
+        start: options.start,
+        end: options.end,
+        autoClose: true,
+        highWaterMark: 256 * 1024,
+      });
+      hookRelease(stream, lease, options.signal);
+      return stream;
+    } catch (err) {
+      lease.release(true);
+      throw err;
+    }
   }
 
-  async createWriteStream(p: string, mode?: number): Promise<Writable> {
+  async createWriteStream(p: string, _mode?: number, options: WriteOptions = {}): Promise<Writable> {
     const lease = await this.sessions.acquireTransferChannel(this.sessionId);
-    const stream = lease.sftp.createWriteStream(p, {
-      flags: "w",
-      ...(mode != null ? { mode: mode & 0o7777 } : {}),
-    });
-    hookRelease(stream, lease);
-    return stream;
+    try {
+      options.signal?.throwIfAborted();
+      const stream = lease.sftp.createWriteStream(p, {
+        flags: options.start ? "r+" : "w",
+        start: options.start,
+        mode: 0o600,
+      });
+      hookRelease(stream, lease, options.signal);
+      // ssh2 emits finish before its asynchronous CLOSE reply. The outer
+      // writable must not finish until CLOSE succeeds (some servers report
+      // quota/disk failures there rather than on WRITE).
+      let closed = false;
+      const closing = new Promise<void>((resolve, reject) => {
+        stream.once("close", () => {
+          closed = true;
+          resolve();
+        });
+        stream.once("error", reject);
+      });
+      void closing.catch(() => {});
+      const output = new Writable({
+        write(chunk, encoding, callback) {
+          stream.write(chunk, encoding, callback);
+        },
+        final(callback) {
+          stream.end();
+          closing.then(
+            () => callback(),
+            (err) => callback(err as Error),
+          );
+        },
+        destroy(err, callback) {
+          if (!closed) {
+            lease.release(true);
+            stream.destroy();
+          }
+          callback(err);
+        },
+      });
+      output.on("error", () => {});
+      stream.on("error", (err) => output.destroy(err));
+      return output;
+    } catch (err) {
+      lease.release(true);
+      throw err;
+    }
   }
 
   setMeta(p: string, meta: { mtimeMs: number; mode?: number }): Promise<void> {
@@ -294,34 +342,34 @@ class SftpEndpoint implements TransferEndpoint {
 
   renameReplacing(from: string, to: string): Promise<void> {
     return this.withMeta(async (sftp) => {
-      const attempt = (): Promise<void> =>
-        new Promise((resolve, reject) => sftp.rename(from, to, (err) => (err ? reject(err) : resolve())));
       try {
-        await attempt();
-      } catch {
-        // SFTP rename refuses to overwrite; clear the target and retry.
-        await new Promise<void>((resolve) => sftp.unlink(to, () => resolve()));
-        await attempt();
+        await new Promise<void>((resolve, reject) =>
+          sftp.ext_openssh_rename(from, to, (err) => (err ? reject(err) : resolve())),
+        );
+      } catch (err) {
+        // Standard rename is safe for new files. Never unlink an existing file
+        // to work around a server lacking atomic replacement support.
+        if ((err as { code?: number }).code !== 8 && !/unsupported|not support/i.test((err as Error).message)) throw err;
+        await new Promise<void>((resolve, reject) => sftp.rename(from, to, (error) => (error ? reject(error) : resolve())));
       }
     });
   }
 
   removeFile(p: string): Promise<void> {
-    return this.withMeta((sftp) => new Promise<void>((resolve) => sftp.unlink(p, () => resolve())));
+    return this.withMeta(
+      (sftp) =>
+        new Promise<void>((resolve, reject) =>
+          sftp.unlink(p, (err) => (!err || (err as { code?: number }).code === 2 ? resolve() : reject(err))),
+        ),
+    );
   }
 
   dispose(): void {
-    this.metaLease?.release();
-    this.metaLease = null;
+    // Each operation releases its own lease.
   }
 }
 
 // --- ftp / explicit ftps ----------------------------------------------------
-
-interface FtpLease {
-  client: FtpClient;
-  release: (broken?: boolean) => void;
-}
 
 function ftpEndpointStat(info: FileInfo): EndpointStat {
   const type = info.type === FileType.Directory ? 0o040000 : info.type === FileType.SymbolicLink ? 0o120000 : 0o100000;
@@ -344,35 +392,21 @@ function checkFtpPath(path: string): void {
 
 class FtpEndpoint implements TransferEndpoint {
   kind = "sftp" as const;
-  private metaLease: FtpLease | null = null;
-  private metaTail: Promise<void> = Promise.resolve();
-
   constructor(
     private sessions: SessionManager,
     private sessionId: string,
   ) {}
 
-  private async meta(): Promise<FtpClient> {
-    if (!this.metaLease || this.metaLease.client.closed) {
-      this.metaLease?.release(true);
-      this.metaLease = await this.sessions.acquireFtpClient(this.sessionId);
-    }
-    return this.metaLease.client;
-  }
-
-  private withMeta<T>(fn: (client: FtpClient) => Promise<T>): Promise<T> {
-    const operation = this.metaTail.catch(() => {}).then(async () => fn(await this.meta()));
-    this.metaTail = operation.then(
-      () => undefined,
-      () => undefined,
-    );
-    return operation.catch((err) => {
-      if (this.metaLease?.client.closed) {
-        this.metaLease.release(true);
-        this.metaLease = null;
-      }
+  private async withMeta<T>(fn: (client: FtpClient) => Promise<T>): Promise<T> {
+    const lease = await this.sessions.acquireFtpClient(this.sessionId);
+    try {
+      const result = await withTimeout(fn(lease.client), META_TIMEOUT_MS);
+      lease.release();
+      return result;
+    } catch (err) {
+      lease.release(true);
       throw err;
-    });
+    }
   }
 
   async statOrNull(p: string): Promise<EndpointStat | null> {
@@ -382,11 +416,37 @@ class FtpEndpoint implements TransferEndpoint {
     const parent = slash <= 0 ? "/" : p.slice(0, slash);
     const name = p.slice(slash + 1);
     return this.withMeta(async (ftp) => {
+      const info = (await ftp.list(parent)).find((entry) => entry.name === name);
+      return info ? ftpEndpointStat(info) : null;
+    });
+  }
+
+  fileVersion(p: string): Promise<{ size: number; mtimeMs: number }> {
+    checkFtpPath(p);
+    return this.withMeta(async (ftp) => {
       try {
-        const info = (await ftp.list(parent)).find((entry) => entry.name === name);
-        return info ? ftpEndpointStat(info) : null;
-      } catch {
-        return null;
+        return { size: await ftp.size(p), mtimeMs: (await ftp.lastMod(p)).getTime() };
+      } catch (err) {
+        if (![500, 502, 504].includes(Number((err as { code?: number }).code))) throw err;
+        const slash = p.lastIndexOf("/");
+        const info = (await ftp.list(p.slice(0, slash) || "/")).find((entry) => entry.name === p.slice(slash + 1));
+        if (!info) throw new Error(`Source disappeared: ${p}`);
+        return { size: info.size, mtimeMs: info.modifiedAt?.getTime() ?? 0 };
+      }
+    });
+  }
+
+  fileSize(p: string): Promise<number> {
+    checkFtpPath(p);
+    return this.withMeta(async (ftp) => {
+      try {
+        return await ftp.size(p);
+      } catch (err) {
+        if (![500, 502, 504].includes(Number((err as { code?: number }).code))) throw err;
+        const slash = p.lastIndexOf("/");
+        const info = (await ftp.list(p.slice(0, slash) || "/")).find((entry) => entry.name === p.slice(slash + 1));
+        if (!info) throw new Error(`Staged file disappeared: ${p}`);
+        return info.size;
       }
     });
   }
@@ -394,11 +454,7 @@ class FtpEndpoint implements TransferEndpoint {
   listNames(dir: string): Promise<string[]> {
     checkFtpPath(dir);
     return this.withMeta(async (ftp) => {
-      try {
-        return (await ftp.list(dir)).map((entry) => entry.name);
-      } catch {
-        return [];
-      }
+      return (await ftp.list(dir)).map((entry) => entry.name);
     });
   }
 
@@ -414,24 +470,60 @@ class FtpEndpoint implements TransferEndpoint {
     await this.withMeta((ftp) => ftp.ensureDir(p));
   }
 
-  async createReadStream(p: string): Promise<Readable> {
+  async createReadStream(p: string, options: ReadOptions = {}): Promise<Readable> {
     checkFtpPath(p);
     const lease = await this.sessions.acquireFtpClient(this.sessionId);
+    if (options.signal?.aborted) {
+      lease.release();
+      options.signal.throwIfAborted();
+    }
+    // Data EOF is not success: wait for the FTP control connection's final reply.
     const output = new PassThrough();
-    void lease.client.downloadTo(output, p).then(
-      () => lease.release(),
-      (err) => {
-        output.destroy(err as Error);
+    let settled = false;
+    const sink = new Writable({
+      write(chunk, encoding, callback) {
+        if (output.write(chunk, encoding)) callback();
+        else output.once("drain", callback);
+      },
+    });
+    sink.on("error", () => {});
+    const abort = (): void => {
+      output.destroy(new Error("Transfer interrupted"));
+    };
+    options.signal?.addEventListener("abort", abort, { once: true });
+    output.on("error", () => {});
+    output.once("close", () => {
+      options.signal?.removeEventListener("abort", abort);
+      if (!settled) {
         lease.release(true);
+        sink.destroy();
+      }
+    });
+    void lease.client.downloadTo(sink, p, options.start ?? 0).then(
+      () => {
+        settled = true;
+        lease.release();
+        output.end();
+      },
+      (err) => {
+        settled = true;
+        lease.release(true);
+        output.destroy(err as Error);
       },
     );
     return output;
   }
 
-  async createWriteStream(p: string): Promise<Writable> {
+  async createWriteStream(p: string, _mode?: number, options: WriteOptions = {}): Promise<Writable> {
     checkFtpPath(p);
     const lease = await this.sessions.acquireFtpClient(this.sessionId);
+    if (options.signal?.aborted) {
+      lease.release();
+      options.signal.throwIfAborted();
+    }
     const input = new PassThrough();
+    input.on("error", () => {});
+    let settled = false;
     const uploaded = lease.client.uploadFrom(input, p);
     const output = new Writable({
       write(chunk, encoding, callback) {
@@ -446,15 +538,26 @@ class FtpEndpoint implements TransferEndpoint {
         );
       },
       destroy(err, callback) {
-        input.destroy(err ?? undefined);
+        if (!settled) lease.release(true);
+        input.destroy();
         callback(err);
       },
     });
-    uploaded.then(
-      () => lease.release(),
+    const abort = (): void => {
+      output.destroy(new Error("Transfer interrupted"));
+    };
+    output.on("error", () => {});
+    options.signal?.addEventListener("abort", abort, { once: true });
+    output.once("close", () => options.signal?.removeEventListener("abort", abort));
+    void uploaded.then(
+      () => {
+        settled = true;
+        lease.release();
+      },
       (err) => {
-        output.destroy(err as Error);
+        settled = true;
         lease.release(true);
+        output.destroy(err as Error);
       },
     );
     return output;
@@ -473,7 +576,7 @@ class FtpEndpoint implements TransferEndpoint {
     checkFtpPath(from);
     checkFtpPath(to);
     return this.withMeta(async (ftp) => {
-      await ftp.remove(to, true);
+      // Let the server replace with RNTO; never delete the original first.
       await ftp.rename(from, to);
     });
   }
@@ -486,22 +589,29 @@ class FtpEndpoint implements TransferEndpoint {
   }
 
   dispose(): void {
-    this.metaLease?.release();
-    this.metaLease = null;
+    // Each operation releases its own lease.
   }
 }
 
 /** Release the channel lease when the stream finishes or dies. */
-function hookRelease(stream: Readable | Writable, lease: Lease): void {
+function hookRelease(stream: Readable | Writable, lease: Lease, signal?: AbortSignal): void {
   let done = false;
   const finish = (broken: boolean): void => {
     if (!done) {
       done = true;
+      signal?.removeEventListener("abort", abort);
       lease.release(broken);
     }
   };
+  const abort = (): void => {
+    // ssh2 may never emit close on a dead channel; release explicitly on abort.
+    finish(true);
+    stream.destroy(new Error("Transfer interrupted"));
+  };
   stream.once("close", () => finish(false));
-  stream.once("error", () => finish(true));
+  stream.on("error", () => finish(true));
+  signal?.addEventListener("abort", abort, { once: true });
+  if (signal?.aborted) abort();
 }
 
 export function makeEndpoint(

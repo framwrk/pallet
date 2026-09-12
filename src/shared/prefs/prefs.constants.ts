@@ -5,7 +5,7 @@ export const DEFAULT_CONCURRENCY = 3;
 
 /**
  * OpenSSH's default MaxSessions is 10. Browsing holds one channel and the
- * SFTP endpoint holds one for metadata, so capping streams at 7 keeps the
+ * transfer pool reserves one for metadata, so capping streams at 7 keeps the
  * worst case at 9 and leaves headroom.
  */
 export const MIN_CONCURRENCY = 1;

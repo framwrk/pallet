@@ -72,6 +72,38 @@ interface Session {
 
 const RECONNECT_DELAYS_MS = [1000, 2000, 4000, 8000, 15000];
 
+/** Bound both channel handshakes and pool waits; dispose any late resource. */
+function boundedAcquire<T>(pending: Promise<T>, discard: (value: T) => void): Promise<T> {
+  return new Promise((resolve, reject) => {
+    let expired = false;
+    const timer = setTimeout(() => {
+      expired = true;
+      reject(Object.assign(new Error("Transfer connection timed out"), { code: "ETIMEDOUT" }));
+    }, 20_000);
+    pending.then(
+      (value) => {
+        clearTimeout(timer);
+        if (expired) discard(value);
+        else resolve(value);
+      },
+      (err) => {
+        clearTimeout(timer);
+        reject(err);
+      },
+    );
+  });
+}
+
+function onceRelease(fn: (broken: boolean) => void): (broken?: boolean) => void {
+  let released = false;
+  return (broken = false) => {
+    if (!released) {
+      released = true;
+      fn(broken);
+    }
+  };
+}
+
 export function parseKeyType(keyBlob: Buffer): string {
   try {
     const len = keyBlob.readUInt32BE(0);
@@ -85,15 +117,7 @@ export function protocolOf(profile: ConnectProfile): ConnectionProtocol {
   return profile.protocol === "ftp" || profile.protocol === "ftps" ? profile.protocol : "sftp";
 }
 
-/**
- * Channel budget for one session's transfer pool.
- *
- * "Concurrency" is the number of parallel *transfers* the user asked for, but
- * the SFTP endpoint also parks one channel for metadata (stat/mkdir/rename)
- * for as long as a job runs. The pool therefore needs concurrency + 1: at a
- * literal budget of 1 the metadata lease takes the only channel and every
- * stream waits on it forever.
- */
+/** Parallel transfers plus one channel of headroom for short metadata calls. */
 function poolSizeFor(profile: ConnectProfile): number {
   const requested = profile.concurrency ?? DEFAULT_CONCURRENCY;
   const streams = Number.isFinite(requested)
@@ -305,12 +329,14 @@ export class SessionManager {
   private handleDrop(session: Session): void {
     if (session.closing || !this.sessions.has(session.id)) return;
     session.sftp = null;
+    session.generation++;
     this.resetPool(session, new Error("Connection lost"));
     this.resetFtpPool(session, new Error("Connection lost"));
     this.scheduleReconnect(session);
   }
 
   private resetPool(session: Session, err: Error): void {
+    for (const channel of session.pool.free) channel.end();
     session.pool.free = [];
     session.pool.total = 0;
     const waiters = session.pool.waiters.splice(0);
@@ -370,6 +396,8 @@ export class SessionManager {
     if (session.reconnectTimer) clearTimeout(session.reconnectTimer);
     session.client?.end();
     session.ftp?.close();
+    session.generation++;
+    this.resetPool(session, new Error("Disconnected"));
     this.resetFtpPool(session, new Error("Disconnected"));
     this.sessions.delete(sessionId);
     this.setStatus(session, "disconnected", "Disconnected");
@@ -391,6 +419,10 @@ export class SessionManager {
 
   protocol(sessionId: string): ConnectionProtocol {
     return protocolOf(this.mustGet(sessionId).profile);
+  }
+
+  transferConcurrency(sessionId: string): number {
+    return poolSizeFor(this.mustGet(sessionId).profile) - 1;
   }
 
   /** Identifies the underlying connection; changes after every reconnect. */
@@ -485,7 +517,7 @@ export class SessionManager {
     const leaseGeneration = session.generation;
     const lease = (sftp: SFTPWrapper): { sftp: SFTPWrapper; release: (broken?: boolean) => void } => ({
       sftp,
-      release: (broken = false) => this.releaseTransferChannel(session, sftp, broken, leaseGeneration),
+      release: onceRelease((broken) => this.releaseTransferChannel(session, sftp, broken, leaseGeneration)),
     });
 
     const pooled = session.pool.free.pop();
@@ -494,18 +526,39 @@ export class SessionManager {
     if (session.pool.total < poolSizeFor(session.profile)) {
       session.pool.total++;
       try {
-        const sftp = await new Promise<SFTPWrapper>((resolve, reject) =>
-          session.client!.sftp((err, ch) => (err ? reject(err) : resolve(ch))),
+        const sftp = await boundedAcquire(
+          new Promise<SFTPWrapper>((resolve, reject) => session.client!.sftp((err, ch) => (err ? reject(err) : resolve(ch)))),
+          (channel) => channel.end(),
         );
+        if (session.generation !== leaseGeneration || session.status !== "connected") {
+          sftp.end();
+          throw new Error("Connection replaced");
+        }
+        sftp.on("error", () => {});
         return lease(sftp);
       } catch (err) {
-        session.pool.total--;
+        if (session.generation === leaseGeneration) {
+          session.pool.total = Math.max(0, session.pool.total - 1);
+          for (const waiter of session.pool.waiters.splice(0)) waiter.reject(err as Error);
+        }
         throw err;
       }
     }
 
-    const sftp = await new Promise<SFTPWrapper>((resolve, reject) => session.pool.waiters.push({ resolve, reject }));
-    return lease(sftp);
+    let waiter!: ChannelPool["waiters"][number];
+    try {
+      const sftp = await boundedAcquire(
+        new Promise<SFTPWrapper>((resolve, reject) => {
+          waiter = { resolve, reject };
+          session.pool.waiters.push(waiter);
+        }),
+        (channel) => this.releaseTransferChannel(session, channel, true, leaseGeneration),
+      );
+      return lease(sftp);
+    } finally {
+      const index = session.pool.waiters.indexOf(waiter);
+      if (index !== -1) session.pool.waiters.splice(index, 1);
+    }
   }
 
   /** Lease an independent FTP control connection for one transfer/endpoint. */
@@ -520,7 +573,7 @@ export class SessionManager {
     const generation = session.generation;
     const makeLease = (client: FtpClient): { client: FtpClient; release: (broken?: boolean) => void } => ({
       client,
-      release: (broken = false): void => this.releaseFtpClient(session, client, broken, generation),
+      release: onceRelease((broken) => this.releaseFtpClient(session, client, broken, generation)),
     });
     while (session.ftpPool.free.length > 0) {
       const pooled = session.ftpPool.free.pop()!;
@@ -531,25 +584,45 @@ export class SessionManager {
     if (session.ftpPool.total < poolSizeFor(session.profile)) {
       session.ftpPool.total++;
       try {
-        return makeLease(await this.openFtpClient(session.profile));
+        const client = await boundedAcquire(this.openFtpClient(session.profile), (late) => late.close());
+        if (session.generation !== generation || session.status !== "connected") {
+          client.close();
+          throw new Error("Connection replaced");
+        }
+        return makeLease(client);
       } catch (err) {
-        session.ftpPool.total--;
+        if (session.generation === generation) {
+          session.ftpPool.total = Math.max(0, session.ftpPool.total - 1);
+          for (const waiter of session.ftpPool.waiters.splice(0)) waiter.reject(err as Error);
+        }
         throw err;
       }
     }
-    const client = await new Promise<FtpClient>((resolve, reject) => session.ftpPool.waiters.push({ resolve, reject }));
-    return makeLease(client);
+    let waiter!: FtpPool["waiters"][number];
+    try {
+      const client = await boundedAcquire(
+        new Promise<FtpClient>((resolve, reject) => {
+          waiter = { resolve, reject };
+          session.ftpPool.waiters.push(waiter);
+        }),
+        (late) => this.releaseFtpClient(session, late, true, generation),
+      );
+      return makeLease(client);
+    } finally {
+      const index = session.ftpPool.waiters.indexOf(waiter);
+      if (index !== -1) session.ftpPool.waiters.splice(index, 1);
+    }
   }
 
   private releaseFtpClient(session: Session, client: FtpClient, broken: boolean, generation: number): void {
-    if (generation !== session.generation || session.closing) {
+    if (generation !== session.generation || session.closing || session.status !== "connected") {
       client.close();
       return;
     }
     if (broken || client.closed) {
       client.close();
       session.ftpPool.total = Math.max(0, session.ftpPool.total - 1);
-      session.ftpPool.waiters.shift()?.reject(new Error("FTP connection lost"));
+      for (const waiter of session.ftpPool.waiters.splice(0)) waiter.reject(new Error("FTP connection lost"));
       return;
     }
     const waiter = session.ftpPool.waiters.shift();
@@ -561,7 +634,7 @@ export class SessionManager {
     // The connection was replaced under this lease: the channel is dead even
     // if its stream closed cleanly. Dropping it here keeps a corpse out of
     // the free list, where it would silently hang the next transfer.
-    if (leaseGeneration !== session.generation) {
+    if (leaseGeneration !== session.generation || session.closing || session.status !== "connected") {
       try {
         sftp.end();
       } catch {
@@ -571,6 +644,7 @@ export class SessionManager {
     }
     if (broken) {
       session.pool.total = Math.max(0, session.pool.total - 1);
+      for (const waiter of session.pool.waiters.splice(0)) waiter.reject(new Error("Channel closed"));
       try {
         sftp.end();
       } catch {
