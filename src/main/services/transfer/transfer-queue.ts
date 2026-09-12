@@ -33,6 +33,12 @@ import { randomUUID } from "crypto";
 const STALL_TIMEOUT_MS = 60_000;
 /** Guard against retrying one file forever when its channel keeps dying. */
 const MAX_CHANNEL_RETRIES = 5;
+/**
+ * Live-progress cadence: the queue's own emits are throttled and bursty, so a
+ * ticker re-broadcasts every running job at this interval with the true
+ * counters — the bar tracks bytes actually transferred, not chunk bursts.
+ */
+const PROGRESS_TICK_MS = 100;
 const CHUNK_SIZE = 8 * 1024 * 1024;
 const CHUNK_THRESHOLD = 16 * 1024 * 1024;
 
@@ -117,6 +123,8 @@ export class TransferQueue {
   private seq = 0;
   private activeSessions = new Set<string>();
   private slotWaiters: (() => void)[] = [];
+  /** Re-broadcasts running jobs at PROGRESS_TICK_MS; lives while any job is running. */
+  private ticker: NodeJS.Timeout | null = null;
 
   constructor(
     private sessions: SessionManager,
@@ -126,14 +134,18 @@ export class TransferQueue {
     private endpointFactory: EndpointFactory = makeEndpoint,
   ) {}
 
-  snapshot(job: Job): TransferJobSnapshot {
+  /** Bytes/second over the trailing 3 s sample window. */
+  private bytesPerSecOf(job: Job): number {
     const now = Date.now();
     const windowStart = now - 3000;
     const recent = job.samples.filter((s) => s.t >= windowStart);
-    const bytesPerSec =
-      recent.length > 1
-        ? ((recent[recent.length - 1].bytes - recent[0].bytes) / Math.max(1, recent[recent.length - 1].t - recent[0].t)) * 1000
-        : 0;
+    if (recent.length < 2) return 0;
+    return (
+      ((recent[recent.length - 1].bytes - recent[0].bytes) / Math.max(1, recent[recent.length - 1].t - recent[0].t)) * 1000
+    );
+  }
+
+  snapshot(job: Job): TransferJobSnapshot {
     return {
       id: job.id,
       state: job.state,
@@ -145,7 +157,7 @@ export class TransferQueue {
       skippedFiles: job.skippedFiles + job.skippedSymlinks,
       totalBytes: job.totalBytes,
       doneBytes: job.doneBytes,
-      bytesPerSec,
+      bytesPerSec: this.bytesPerSecOf(job),
       currentFiles: [...job.inFlight.keys()],
       errors: job.errors.slice(0, 20),
     };
@@ -164,6 +176,32 @@ export class TransferQueue {
     if (!force && now - job.lastEmit < 150) return;
     job.lastEmit = now;
     this.hooks.onUpdate(this.snapshot(job));
+    if (job.state === "running") this.startProgressTicker();
+    else this.maybeStopProgressTicker();
+  }
+
+  /**
+   * Re-broadcast every running job at PROGRESS_TICK_MS with the true counters,
+   * so the bar tracks bytes actually transferred instead of the chunk bursts
+   * the throttled emits produce. No estimation: if 4 MB of 100 MB have been
+   * written, the bar shows 4%.
+   */
+  private startProgressTicker(): void {
+    if (this.ticker) return;
+    const tick = (): void => {
+      const running = [...this.jobs.values()].filter((j) => j.state === "running");
+      for (const job of running) this.hooks.onUpdate(this.snapshot(job));
+      if (running.length === 0) this.maybeStopProgressTicker();
+    };
+    this.ticker = setInterval(tick, PROGRESS_TICK_MS);
+    this.ticker.unref?.();
+  }
+
+  /** Stop the ticker unless a state flip in this tick revived a running job. */
+  private maybeStopProgressTicker(): void {
+    if (!this.ticker || [...this.jobs.values()].some((j) => j.state === "running")) return;
+    clearInterval(this.ticker);
+    this.ticker = null;
   }
 
   enqueue(request: TransferRequest): string {

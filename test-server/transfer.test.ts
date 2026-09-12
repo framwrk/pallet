@@ -412,3 +412,50 @@ test("FTP timestamp verification uses a consistent precise baseline", async () =
     await f.cleanup();
   }
 });
+
+test("running jobs are re-broadcast with live true-counter progress", { timeout: 15000 }, async () => {
+  const f = await fixture();
+  try {
+    // Local copies finish inside one 100 ms tick, so throttle the source:
+    // 512 KiB every 50 ms keeps the job "running" across several ticks.
+    await fs.writeFile(`${f.source}/a`, Buffer.alloc(8 * 1024 * 1024, 33));
+    const source = wrap(f.local, {
+      createReadStream: async () =>
+        // Synthetic 512 KiB reads every 50 ms. Content matches the source fill (0x21).
+        Readable.from(
+          (async function* () {
+            for (let i = 0; i < 16; i++) {
+              yield Buffer.alloc(512 * 1024, 33);
+              await new Promise((r) => setTimeout(r, 50));
+            }
+          })(),
+        ),
+    });
+    const updates: TransferJobSnapshot[] = [];
+    const h = harness(source, f.local, "replace", (s) => {
+      if (s.state === "running") updates.push(s);
+    });
+    const result = await h.run(f.source, f.dest, ["a"]);
+    assert.equal(result.state, "completed", JSON.stringify(result.errors));
+    // The view must carry the real counter at sub-chunk granularity: the
+    // throttled emits alone would only ever step by whole chunks.
+    const deltas = updates.slice(1).map((s, i) => s.doneBytes - updates[i].doneBytes);
+    assert(
+      deltas.some((d) => d > 0 && d < CHUNK),
+      "expected progress steps smaller than one 8 MiB chunk",
+    );
+    // The bar shows bytes actually transferred: never backwards, never past
+    // the total, and it must spend most of the run below 100%. The counter
+    // legitimately reaches totalBytes during the brief commit phase (verify,
+    // setMeta, rename) while state is still "running", so allow a tick or two
+    // of that — but the overshoot bug sat at 100% for the entire upload.
+    const atTotal = updates.filter((s) => s.doneBytes >= s.totalBytes).length;
+    assert(atTotal <= 2, `bar sat at 100% for ${atTotal} ticks while bytes remained`);
+    assert(updates.length - atTotal >= 3, "expected mostly partial progress");
+    // Terminal record shows the true final counters.
+    const record = h.records[0];
+    assert.equal(record.doneBytes, result.totalBytes);
+  } finally {
+    await f.cleanup();
+  }
+});

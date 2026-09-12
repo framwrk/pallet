@@ -38,7 +38,9 @@ function JobRow({ job }: { job: TransferJobSnapshot }): React.JSX.Element {
           <div className="bg-muted h-1.5 flex-1 overflow-hidden rounded-full">
             <div
               className={cn(
-                "h-full rounded-full transition-[width] duration-200",
+                "h-full rounded-full",
+                // Bridge the queue's 100 ms counter updates without easing to a stop between them.
+                job.state === "running" && "transition-[width] duration-300 ease-linear motion-reduce:transition-none",
                 job.state === "failed" ? "bg-destructive" : job.state === "completed" ? "bg-green-500" : "bg-primary",
               )}
               style={{ width: `${terminal && job.state !== "completed" ? 100 : pct}%` }}
