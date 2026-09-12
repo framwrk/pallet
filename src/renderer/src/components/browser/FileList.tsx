@@ -17,6 +17,11 @@ interface DragPayload {
   names: string[];
 }
 
+// dataTransfer.getData() is blocked during dragover, so the origin of an
+// in-flight drag is tracked here to reject same-directory drops while
+// hovering; drop still reads the real payload from dataTransfer.
+let activeDrag: DragPayload | null = null;
+
 function readDragPayload(e: React.DragEvent): DragPayload | null {
   try {
     const raw = e.dataTransfer.getData(DND_MIME);
@@ -82,8 +87,14 @@ export function FileList({ paneId, pane, visible, isActive }: FileListProps): Re
   function onRowDragStart(e: React.DragEvent, entry: Entry): void {
     const names = pane.selected.has(entry.name) ? [...pane.selected] : [entry.name];
     if (!pane.selected.has(entry.name)) selectOnly(paneId, entry.name);
+    activeDrag = { pane: paneId, names };
     e.dataTransfer.setData(DND_MIME, JSON.stringify({ pane: paneId, names } satisfies DragPayload));
     e.dataTransfer.effectAllowed = "copy";
+  }
+
+  /** Same-directory drops are a no-op, so hover must not offer one (Finder). */
+  function isDroppableDir(entry: Entry): boolean {
+    return isDirLike(entry) && !(activeDrag?.pane === paneId && activeDrag.names.includes(entry.name));
   }
 
   function acceptDrop(e: React.DragEvent): boolean {
@@ -97,10 +108,13 @@ export function FileList({ paneId, pane, visible, isActive }: FileListProps): Re
     e.preventDefault();
     e.stopPropagation();
     setDropTarget(null);
+    activeDrag = null;
     const payload = readDragPayload(e);
     if (!payload) return;
     // Dropping into the pane you dragged from with no folder target is a no-op.
     if (payload.pane === paneId && destDir === undefined) return;
+    // Dropping a folder onto itself would copy it into itself.
+    if (payload.pane === paneId && destDir !== undefined && payload.names.includes(destDir)) return;
     void enqueuePaneCopy(payload.pane, paneId, payload.names, destDir);
   }
 
@@ -171,7 +185,18 @@ export function FileList({ paneId, pane, visible, isActive }: FileListProps): Re
         if (acceptDrop(e)) setDropTarget("pane");
       }}
       onDragLeave={(e) => {
-        if (e.target === e.currentTarget) setDropTarget(null);
+        // relatedTarget is null when the drag is aborted (Escape), and inside
+        // the pane when the pointer merely moved between children.
+        if (!e.currentTarget.contains(e.relatedTarget as Node)) setDropTarget(null);
+      }}
+      onDragEnd={(e) => {
+        // Bubbled from the source row: fires whenever the drag ends without a
+        // drop, so it is the backstop for any highlight dragleave missed.
+        setDropTarget(null);
+        activeDrag = null;
+        // Non-pallet drags (OS files) never set activeDrag; dropping them is a
+        // copy into cwd, so signal "not allowed" instead of offering it.
+        if (e.dataTransfer) e.dataTransfer.dropEffect = "none";
       }}
       onDrop={(e) => onDrop(e)}
       data-drop-active={dropTarget === "pane" || undefined}
@@ -181,6 +206,14 @@ export function FileList({ paneId, pane, visible, isActive }: FileListProps): Re
         className="relative w-full"
         style={{ height: virtualizer.getTotalSize() }}
       >
+        {!pane.loading && pane.cwd && visible.length === 0 && (
+          <div
+            className="text-muted-foreground absolute inset-x-0 top-1/2 -translate-y-1/2 text-center text-sm"
+            onMouseDown={() => setActive(paneId)}
+          >
+            Empty folder
+          </div>
+        )}
         {virtualItems.map((row) => {
           const entry = visible[row.index];
           const selected = pane.selected.has(entry.name);
@@ -201,7 +234,7 @@ export function FileList({ paneId, pane, visible, isActive }: FileListProps): Re
               draggable
               onDragStart={(e) => onRowDragStart(e, entry)}
               onDragOver={(e) => {
-                if (dirLike && acceptDrop(e)) {
+                if (isDroppableDir(entry) && acceptDrop(e)) {
                   e.stopPropagation();
                   setDropTarget(entry.name);
                 }
@@ -210,7 +243,7 @@ export function FileList({ paneId, pane, visible, isActive }: FileListProps): Re
                 if (dropTarget === entry.name) setDropTarget(null);
               }}
               onDrop={(e) => {
-                if (dirLike) onDrop(e, entry.path);
+                if (isDroppableDir(entry)) onDrop(e, entry.path);
               }}
               onMouseDown={(e) => onRowMouseDown(e, entry)}
               onDoubleClick={() => onRowDoubleClick(entry)}

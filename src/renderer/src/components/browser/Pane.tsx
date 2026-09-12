@@ -202,13 +202,6 @@ export function Pane({ paneId }: { paneId: PaneId }): React.JSX.Element {
             <AlertTriangle className="text-caution size-6" />
             <p className="text-muted-foreground text-sm">{pane.error}</p>
           </div>
-        ) : visible.length === 0 && !pane.loading && pane.cwd ? (
-          <div
-            className="text-muted-foreground flex flex-1 items-center justify-center text-sm"
-            onMouseDown={() => setActive(paneId)}
-          >
-            Empty folder
-          </div>
         ) : (
           <FileList
             paneId={paneId}
