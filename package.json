@@ -24,6 +24,7 @@
     "server": "docker compose up --build --detach --wait",
     "server:verify": "bun run test-server/verify.ts",
     "server:verify:app": "bun run test-server/verify-app.ts",
+    "server:verify:network": "bun run test-server/verify-network.ts",
     "server:stop": "docker compose down",
     "build": "bun run typecheck && electron-vite build",
     "rebuild": "electron-rebuild --only better-sqlite3",

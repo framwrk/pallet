@@ -1,6 +1,8 @@
 #!/bin/sh
 set -eu
 
+/usr/local/bin/test-server-network
+
 password="${PALLET_TEST_PASSWORD:-pallet}"
 echo "pallet:${password}" | chpasswd
 

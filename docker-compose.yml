@@ -1,8 +1,25 @@
+x-network-settings: &network-settings
+  cap_add: [NET_ADMIN]
+  # Uploads enter the IP stack through the shaper's virtual interface.
+  sysctls:
+    net.ipv4.conf.all.rp_filter: 0
+    net.ipv4.conf.default.rp_filter: 0
+
+x-network-environment: &network-environment
+  PALLET_TEST_NETWORK: "${PALLET_TEST_NETWORK:-realistic}"
+  PALLET_TEST_DOWNLOAD_KBIT: "${PALLET_TEST_DOWNLOAD_KBIT:-}"
+  PALLET_TEST_UPLOAD_KBIT: "${PALLET_TEST_UPLOAD_KBIT:-}"
+  PALLET_TEST_DELAY_MS: "${PALLET_TEST_DELAY_MS:-}"
+  PALLET_TEST_JITTER_MS: "${PALLET_TEST_JITTER_MS:-}"
+  PALLET_TEST_LOSS_PERCENT: "${PALLET_TEST_LOSS_PERCENT:-}"
+
 services:
   sftp:
+    <<: *network-settings
     build:
       context: ./test-server
     environment:
+      <<: *network-environment
       PALLET_TEST_PASSWORD: "${PALLET_TEST_PASSWORD:-pallet}"
     ports:
       - "${PALLET_TEST_SERVER_PORT:-2222}:22"
@@ -16,9 +33,11 @@ services:
       start_period: 2s
 
   ftp:
+    <<: *network-settings
     build:
       context: ./test-server
     environment:
+      <<: *network-environment
       PALLET_TEST_PASSWORD: "${PALLET_TEST_PASSWORD:-pallet}"
       PALLET_TEST_PROTOCOL: ftp
     ports:
@@ -32,9 +51,11 @@ services:
       start_period: 2s
 
   ftps:
+    <<: *network-settings
     build:
       context: ./test-server
     environment:
+      <<: *network-environment
       PALLET_TEST_PASSWORD: "${PALLET_TEST_PASSWORD:-pallet}"
       PALLET_TEST_PROTOCOL: ftps
     ports:
