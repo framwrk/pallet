@@ -221,14 +221,17 @@ export function FileList({ paneId, pane, visible, isActive }: FileListProps): Re
       style={dropTarget === "pane" ? { boxShadow: "inset 0 0 0 2px var(--primary)" } : undefined}
     >
       <div
-        className="relative w-full"
-        style={{ height: virtualizer.getTotalSize() }}
+        className={cn(
+          "relative w-full",
+          // Zero-height when no rows exist, which clips the empty message
+          // behind the column header; stretch to the viewport instead. Pointer
+          // events pass through so background clicks still hit the pane.
+          visible.length === 0 && "pointer-events-none h-full",
+        )}
+        style={visible.length === 0 ? undefined : { height: virtualizer.getTotalSize() }}
       >
         {!pane.loading && pane.cwd && visible.length === 0 && (
-          <div
-            className="text-muted-foreground absolute inset-x-0 top-1/2 -translate-y-1/2 text-center text-sm"
-            onMouseDown={() => setActive(paneId)}
-          >
+          <div className="text-muted-foreground absolute inset-x-0 top-1/2 -translate-y-1/2 text-center text-sm">
             Empty folder
           </div>
         )}
