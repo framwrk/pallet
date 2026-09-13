@@ -146,6 +146,17 @@ export function FileList({ paneId, pane, visible, isActive }: FileListProps): Re
     if (focusedIndex >= 0) virtualizer.scrollToIndex(focusedIndex);
   }, [focusedIndex, virtualizer]);
 
+  // The container, not the row divs, holds DOM focus while the keyboard cursor
+  // moves: dialog dismissal then restores here (Base UI returnFocus), and Tab
+  // from it swaps panes. Gated on the cursor actually changing so pane
+  // activation or remounts never steal focus from a clicked button.
+  const lastCursor = useRef<string | null>(null);
+  useEffect(() => {
+    const changed = pane.focused !== lastCursor.current;
+    lastCursor.current = pane.focused;
+    if (changed && isActive && pane.focused) scrollRef.current?.focus({ preventScroll: true });
+  }, [pane.focused, isActive]);
+
   function onRowMouseDown(e: React.MouseEvent, entry: Entry): void {
     setActive(paneId);
     if (e.metaKey) {
@@ -167,10 +178,17 @@ export function FileList({ paneId, pane, visible, isActive }: FileListProps): Re
   return (
     <div
       ref={scrollRef}
-      className="min-h-0 flex-1 overflow-y-auto"
+      className="min-h-0 flex-1 overflow-y-auto outline-none"
+      tabIndex={0}
+      role="listbox"
+      aria-label={`${paneId === "left" ? "Local" : "Remote"} files`}
+      aria-multiselectable
+      // The pane holds DOM focus while rows are navigated: dialog dismissal
+      // then restores here (Base UI returnFocus), and Tab from it swaps panes.
       onMouseDown={(e) => {
         if (e.target === scrollRef.current || e.target === e.currentTarget) {
           setActive(paneId);
+          scrollRef.current?.focus({ preventScroll: true });
           clearSelection(paneId);
         }
       }}
@@ -221,8 +239,10 @@ export function FileList({ paneId, pane, visible, isActive }: FileListProps): Re
           return (
             <div
               key={entry.name}
+              role="option"
+              aria-selected={selected}
               className={cn(
-                "absolute left-0 grid w-full grid-cols-[minmax(0,1fr)_5.5rem_11rem] items-center gap-2 px-3 text-[13px]",
+                "absolute left-0 grid w-full grid-cols-[minmax(0,1fr)_5.5rem_11rem] items-center gap-2 px-3 text-[13px] outline-none",
                 // row.index % 2 === 1 && !selected && "bg-muted/40",
                 selected && (isActive ? "bg-primary text-primary-foreground" : "bg-muted text-foreground"),
               )}

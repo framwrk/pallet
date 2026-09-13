@@ -14,6 +14,7 @@ import {
   getState,
   goUp,
   initApp,
+  isModalOpen,
   moveFocus,
   openQuickConnect,
   refresh,
@@ -48,19 +49,44 @@ function isEditableTarget(target: EventTarget | null): boolean {
   return target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable;
 }
 
+/**
+ * True when the key event belongs to the file lists (the window handler's
+ * jurisdiction). Plain keys yield to whatever widget is focused — buttons,
+ * menus, checkboxes keep their own Enter/Space/arrows — while ⌘-combos stay
+ * available: they never collide with widget activation (Finder keeps ⌘C
+ * working with a toolbar button focused). Dialogs and text fields were
+ * already excluded by the caller.
+ */
+function isFileContext(e: KeyboardEvent): boolean {
+  if (e.altKey || e.ctrlKey) return false;
+  const t = e.target;
+  if (!(t instanceof Element)) return false;
+  if (isEditableTarget(t)) return false;
+  if (!e.metaKey && t.closest("button, a, select, [role='menu'], [role='dialog'], [role='menuitem'], [role='checkbox']")) {
+    return false;
+  }
+  return true;
+}
+
 function handleKeyDown(e: KeyboardEvent): void {
-  const state = getState();
-  if (
-    state.goToOpen ||
-    state.quickConnectOpen ||
-    state.editingFavorite !== null ||
-    state.hostKeyPrompts.length > 0 ||
-    state.confirmDelete !== null ||
-    isEditableTarget(e.target)
-  ) {
+  if (e.defaultPrevented) return;
+  if (isEditableTarget(e.target)) return;
+  if (isModalOpen()) return;
+
+  // Tab is the pane switch wherever focus is (Total Commander), except inside
+  // dialogs and text fields. With a single pane (disconnected) it falls
+  // through so native traversal can move focus — previously it was swallowed
+  // here and switchPane() also no-op'd, leaving focus stuck on the document.
+  const focused = e.target instanceof Element && !e.target.closest("[role='dialog'], input, textarea, [contenteditable]");
+  if (e.key === "Tab" && focused && getState().panes.right.backend.kind !== "none") {
+    e.preventDefault();
+    switchPane();
     return;
   }
 
+  if (!isFileContext(e)) return;
+
+  const state = getState();
   const id = state.active;
   const pane = state.panes[id];
   const visible = visibleEntries(pane.entries, pane.sortKey, pane.sortDir, state.showHidden);
@@ -68,10 +94,6 @@ function handleKeyDown(e: KeyboardEvent): void {
   const shift = e.shiftKey;
 
   switch (e.key) {
-    case "Tab":
-      e.preventDefault();
-      switchPane();
-      return;
     case "Enter":
       // Finder convention: Enter renames (plan §9.3); ⌘↓/⌘O opens.
       if (!meta && pane.selected.size === 1) {

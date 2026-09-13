@@ -1,7 +1,6 @@
 /** Renderer transfer state: job snapshots, conflict prompts, drawer UI (M5). */
-import type { ConflictAction, ConflictPrompt, TransferJobSnapshot } from "@shared/transfer/transfer.types";
-import { type PaneId, getState, pushToast, refresh } from "./pane.store";
-import type { EndpointRef } from "@shared/transfer/transfer.types";
+import type { ConflictAction, ConflictPrompt, EndpointRef, TransferJobSnapshot } from "@shared/transfer/transfer.types";
+import { type PaneId, getState, pushToast, refresh, setConflictPromptCount } from "./pane.store";
 import { TERMINAL_TRANSFER_STATES } from "@shared/transfer/transfer.constants";
 import { useSyncExternalStore } from "react";
 
@@ -51,7 +50,19 @@ export function initTransferEvents(): void {
   });
   window.pallet.transfer.onConflict((prompt) => {
     set({ prompts: [...state.prompts, prompt] });
+    // The pane store's modal guard also covers conflict decisions, so file
+    // shortcuts cannot fire while a transfer waits on the user.
+    setConflictPromptCount(state.prompts.length);
   });
+}
+
+/**
+ * Keep the pane store's modal guard in step as conflicts are answered; called
+ * from every prompts mutation below.
+ */
+function setPrompts(prompts: ConflictPrompt[]): void {
+  set({ prompts });
+  setConflictPromptCount(prompts.length);
 }
 
 export function setDrawerOpen(open: boolean): void {
@@ -63,9 +74,7 @@ export function answerConflict(action: ConflictAction, applyToAll: boolean): voi
   if (!prompt) return;
   void window.pallet.transfer.resolveConflict(prompt.jobId, action, applyToAll);
   // Apply-to-all settles every queued prompt for that job.
-  set({
-    prompts: applyToAll ? state.prompts.filter((p) => p.jobId !== prompt.jobId) : state.prompts.slice(1),
-  });
+  setPrompts(applyToAll ? state.prompts.filter((p) => p.jobId !== prompt.jobId) : state.prompts.slice(1));
 }
 
 export function jobAction(id: string, action: "pause" | "resume" | "cancel" | "retry"): void {

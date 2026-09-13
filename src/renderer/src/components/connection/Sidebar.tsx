@@ -109,6 +109,17 @@ export function Sidebar(): React.JSX.Element {
   const dragIndex = useRef<number | null>(null);
   const [dropIndex, setDropIndex] = useState<number | null>(null);
 
+  // Tab inside the sidebar cycles its own items (Shift reverses, both wrap)
+  // instead of reaching the window-level pane switch, which respects
+  // defaultPrevented and stays out of the way.
+  function cycleSidebarFocus(nav: HTMLElement, back: boolean): void {
+    const items = Array.from(nav.querySelectorAll<HTMLElement>("button:not([disabled])"));
+    if (items.length === 0) return;
+    const index = items.indexOf(document.activeElement as HTMLElement);
+    const next = back ? items[(index <= 0 ? items.length : index) - 1] : items[(index + 1) % items.length];
+    next.focus();
+  }
+
   function commitDrop(target: number): void {
     const from = dragIndex.current;
     dragIndex.current = null;
@@ -125,7 +136,15 @@ export function Sidebar(): React.JSX.Element {
       aria-label="Locations and connections"
       className="pallet-sidebar m-2 flex w-64 shrink-0 flex-col overflow-hidden rounded-[14px] pt-9"
     >
-      <nav className="pallet-sidebar-scroll flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-2">
+      <nav
+        className="pallet-sidebar-scroll flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-2"
+        onKeyDown={(e) => {
+          if (e.key !== "Tab" || e.target === e.currentTarget) return;
+          e.preventDefault();
+          e.stopPropagation();
+          cycleSidebarFocus(e.currentTarget, e.shiftKey);
+        }}
+      >
         <button
           type="button"
           className={cn(

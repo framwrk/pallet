@@ -85,6 +85,11 @@ export interface AppState {
   inspectorOpen: boolean;
   /** Pending permanent-delete confirmation for a remote pane. */
   confirmDelete: { paneId: PaneId; names: string[] } | null;
+  /**
+   * Conflict decisions are modal: a job waits on the user, so file shortcuts
+   * must idle. Mirrored from transfer.store so one guard covers every dialog.
+   */
+  conflictPrompts: number;
 }
 
 function initialPane(backend: PaneBackend): PaneState {
@@ -124,6 +129,7 @@ let state: AppState = {
   toasts: [],
   inspectorOpen: false,
   confirmDelete: null,
+  conflictPrompts: 0,
 };
 
 const listeners = new Set<() => void>();
@@ -256,8 +262,23 @@ export function otherPane(id: PaneId): PaneId {
 }
 
 export function switchPane(): void {
+  // No second pane exists until a session does; keep this pure so keyboard
+  // handlers can decide when Tab should fall through to native focus instead.
   if (state.panes.right.backend.kind === "none") return;
   setApp({ active: otherPane(state.active) });
+}
+
+/** True while a dialog owns the interaction and file shortcuts must idle. */
+export function isModalOpen(): boolean {
+  const s = state;
+  return (
+    s.goToOpen ||
+    s.quickConnectOpen ||
+    s.editingFavorite !== null ||
+    s.hostKeyPrompts.length > 0 ||
+    s.confirmDelete !== null ||
+    s.conflictPrompts > 0
+  );
 }
 
 export function setSort(id: PaneId, key: SortKey): void {
@@ -302,6 +323,11 @@ export function setInspectorOpen(open: boolean): void {
 
 export function setConfirmDelete(pending: { paneId: PaneId; names: string[] } | null): void {
   setApp({ confirmDelete: pending });
+}
+
+/** transfer.store mirrors its live conflict-prompt count here. */
+export function setConflictPromptCount(count: number): void {
+  if (state.conflictPrompts !== count) setApp({ conflictPrompts: count });
 }
 
 /** Swap a pane's backend; the listing and history belong to the old one. */
