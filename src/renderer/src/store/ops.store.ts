@@ -291,9 +291,15 @@ export async function showRowContextMenu(id: PaneId, entry: Entry): Promise<void
         label: "Edit in External Editor",
         enabled: singleRemote && entry.kind === "file",
       },
-      { id: "copy", label: "Copy" },
       { type: "separator" },
       { id: "rename", label: "Rename", enabled: singleRemote },
+      { id: "copy", label: "Copy" },
+      {
+        id: "transferToLocal",
+        label: "Transfer to Local",
+        enabled: getState().panes[otherPane(id)].backend.kind === "local",
+      },
+      { type: "separator" },
       { id: "delete", label: "Delete…" },
       { type: "separator" },
       { id: "refresh", label: "Refresh" },
@@ -307,6 +313,9 @@ export async function showRowContextMenu(id: PaneId, entry: Entry): Promise<void
         break;
       case "copy":
         copySelection(id);
+        break;
+      case "transferToLocal":
+        void copyToOther(id);
         break;
       case "rename":
         beginRename(id);
@@ -327,6 +336,11 @@ export async function showRowContextMenu(id: PaneId, entry: Entry): Promise<void
     { type: "separator" },
     { id: "rename", label: "Rename", enabled: single },
     { id: "copy", label: "Copy" },
+    {
+      id: "transferToRemote",
+      label: "Transfer to Remote",
+      enabled: getState().panes[otherPane(id)].backend.kind === "sftp",
+    },
     { type: "separator" },
     { id: "trash", label: "Move to Trash" },
   ]);
@@ -342,6 +356,9 @@ export async function showRowContextMenu(id: PaneId, entry: Entry): Promise<void
       break;
     case "copy":
       copySelection(id);
+      break;
+    case "transferToRemote":
+      void copyToOther(id);
       break;
     case "trash":
       void trashSelection(id);
