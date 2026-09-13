@@ -300,7 +300,7 @@ export async function showRowContextMenu(id: PaneId, entry: Entry): Promise<void
         enabled: getState().panes[otherPane(id)].backend.kind === "local",
       },
       { type: "separator" },
-      { id: "delete", label: "Delete…" },
+      { id: "delete", label: "Delete" },
       { type: "separator" },
       { id: "refresh", label: "Refresh" },
     ]);
