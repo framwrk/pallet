@@ -17,6 +17,8 @@ out
 # logs
 *.log*
 
+# personal
+plans/
 
 # AI stuff
 .agents/
