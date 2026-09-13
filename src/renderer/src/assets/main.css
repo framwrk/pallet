@@ -61,7 +61,53 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
+/* Light palette is the default; .dark re-states the shipped dark values so
+   both modes stay in sync in one file. */
 :root {
+  --background: oklch(0.97 0 0);
+  --foreground: oklch(0.2 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: var(--foreground);
+  --popover: var(--background);
+  --popover-foreground: var(--foreground);
+  --primary: oklch(0.522 0.1771 255.83);
+  --primary-foreground: oklch(0.98 0 0);
+  --secondary: var(--primary);
+  --secondary-foreground: var(--primary-foreground);
+  --muted: oklch(0.92 0 0);
+  --muted-foreground: oklch(0.45 0 0);
+  --accent: var(--primary);
+  --accent-foreground: var(--primary-foreground);
+  --destructive: oklch(0.6434 0.2343 28.32);
+  --border: oklch(0 0 0 / 10%);
+  --input: var(--border);
+  --ring: oklch(0.5 0 0);
+  --chart-1: oklch(0.1 0 0);
+  --chart-2: oklch(0.3 0 0);
+  --chart-3: oklch(0.5 0 0);
+  --chart-4: oklch(0.7 0 0);
+  --chart-5: oklch(0.9 0 0);
+  --sidebar: oklch(0.93 0 0);
+  --sidebar-foreground: var(--foreground);
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: var(--primary-foreground);
+  --sidebar-accent: var(--background);
+  --sidebar-accent-foreground: var(--accent-foreground);
+  --sidebar-border: var(--border);
+  --sidebar-ring: var(--ring);
+  --caution: oklch(0.769 0.188 70.08);
+  --favorite-label-red: oklch(0.637 0.237 25.331);
+  --favorite-label-orange: oklch(0.705 0.213 47.604);
+  --favorite-label-yellow: oklch(0.852 0.199 91.936);
+  --favorite-label-green: oklch(0.723 0.219 149.579);
+  --favorite-label-blue: oklch(0.623 0.214 259.815);
+  --favorite-label-purple: oklch(0.627 0.265 303.9);
+  --favorite-label-gray: oklch(0.707 0.022 261.325);
+  --radius: 0.625rem;
+  color-scheme: light;
+}
+
+.dark {
   --background: oklch(0.2 0 0);
   --foreground: oklch(0.9 0 0);
   --card: oklch(0.4 0 0);
@@ -102,6 +148,7 @@
   --favorite-label-purple: oklch(0.627 0.265 303.9);
   --favorite-label-gray: oklch(0.707 0.022 261.325);
   --radius: 0.625rem;
+  color-scheme: dark;
 }
 
 @layer base {
