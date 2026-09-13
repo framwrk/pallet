@@ -173,8 +173,6 @@
     isolation: isolate;
     background: color-mix(in oklch, var(--sidebar) 74%, transparent);
     box-shadow:
-      0 14px 36px rgb(0 0 0 / 20%),
-      0 2px 8px rgb(0 0 0 / 14%),
       inset 0 0 0 1px color-mix(in oklch, var(--foreground) 10%, transparent),
       inset 0 1px 0 color-mix(in oklch, var(--foreground) 8%, transparent);
     backdrop-filter: blur(28px) saturate(165%);
