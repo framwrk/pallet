@@ -28,7 +28,7 @@ function SidebarItem({
       type="button"
       aria-current={isCurrent ? "location" : undefined}
       className={cn(
-        "group flex h-8 w-full items-center gap-2 rounded-lg px-2 text-left text-[13px] outline-none",
+        "group flex h-8 w-full items-center gap-2 rounded-[6px] px-2 text-left text-[13px] outline-none",
         "text-sidebar-foreground/85 hover:bg-sidebar-accent/70 hover:text-sidebar-foreground",
         "focus-visible:ring-primary/55 focus-visible:ring-2 focus-visible:ring-inset",
         "transition-[background-color,color,box-shadow] duration-150",
@@ -71,7 +71,7 @@ function FavoriteItem({
       onDrop={onDrop}
       onDragEnd={onDragEnd}
       className={cn(
-        "group relative flex h-8 w-full cursor-default items-center gap-2 rounded-lg px-2 text-left text-[13px] outline-none",
+        "group relative flex h-8 w-full cursor-default items-center gap-2 rounded-[6px] px-2 text-left text-[13px] outline-none",
         "text-sidebar-foreground/85 hover:bg-sidebar-accent/70 hover:text-sidebar-foreground",
         "focus-visible:ring-primary/55 focus-visible:ring-2 focus-visible:ring-inset",
         "transition-[background-color,color,box-shadow] duration-150",

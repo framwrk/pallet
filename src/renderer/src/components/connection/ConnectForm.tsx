@@ -244,7 +244,7 @@ export function ConnectForm({
         type="button"
         size="xs"
         variant={authMethod === "password" ? "secondary" : "ghost"}
-        className="flex-1"
+        className="flex-1 rounded-[6px]"
         aria-pressed={authMethod === "password"}
         onClick={() => setAuthMethod("password")}
       >
@@ -255,7 +255,7 @@ export function ConnectForm({
           type="button"
           size="xs"
           variant={authMethod === "key" ? "secondary" : "ghost"}
-          className="flex-1"
+          className="flex-1 rounded-[6px]"
           aria-pressed={authMethod === "key"}
           onClick={() => setAuthMethod("key")}
         >
