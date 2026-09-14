@@ -5,6 +5,7 @@
 import {
   type PaneId,
   getState,
+  isUsable,
   navigate,
   otherPane,
   pushToast,
@@ -52,6 +53,17 @@ function fail(err: unknown): void {
   pushToast((err as Error).message);
 }
 
+/**
+ * File ops act on the pane's listing, so they need one that is present and
+ * neither pending nor failed; toolbar buttons and context menus disable on
+ * the same rule (isUsable).
+ */
+function requireUsable(id: PaneId): boolean {
+  if (isUsable(getState().panes[id])) return true;
+  pushToast("Folder is loading or unavailable", "info");
+  return false;
+}
+
 /** M3: remote panes are read-only; mutations arrive in M5 (transfers) / M6 (ops). */
 function requireLocal(...ids: PaneId[]): boolean {
   for (const id of ids) {
@@ -66,6 +78,7 @@ function requireLocal(...ids: PaneId[]): boolean {
 // --- rename ----------------------------------------------------------------
 
 export function beginRename(id: PaneId): void {
+  if (!requireUsable(id)) return;
   const pane = getState().panes[id];
   if (pane.selected.size !== 1) return;
   const name = [...pane.selected][0];
@@ -105,6 +118,7 @@ export function cancelRename(id: PaneId): void {
 // --- new folder ------------------------------------------------------------
 
 export async function newFolder(id: PaneId): Promise<void> {
+  if (!requireUsable(id)) return;
   const pane = getState().panes[id];
   const cwd = pane.cwd;
   if (!cwd) return;
@@ -124,6 +138,7 @@ export async function newFolder(id: PaneId): Promise<void> {
 // --- trash -----------------------------------------------------------------
 
 export async function trashSelection(id: PaneId): Promise<void> {
+  if (!requireUsable(id)) return;
   const entries = selectedEntries(id);
   if (entries.length === 0) return;
   const pane = getState().panes[id];
@@ -157,6 +172,7 @@ export async function confirmedRemoteDelete(id: PaneId, names: string[]): Promis
 // --- copy / move -----------------------------------------------------------
 
 export function copySelection(id: PaneId): void {
+  if (!requireUsable(id)) return;
   const entries = selectedEntries(id);
   if (entries.length === 0) return;
   const pane = getState().panes[id];
@@ -169,6 +185,7 @@ export function copySelection(id: PaneId): void {
 
 export async function paste(id: PaneId): Promise<void> {
   if (!clipboard || clipboard.names.length === 0) return;
+  if (!requireUsable(id)) return;
   const pane = getState().panes[id];
   if (pane.backend.kind === "none") return;
   const to: EndpointRef =
@@ -188,6 +205,7 @@ export async function paste(id: PaneId): Promise<void> {
 
 /** F5/⌘D: copy the selection to the other pane via the transfer queue. */
 export async function copyToOther(id: PaneId): Promise<void> {
+  if (!requireUsable(id)) return;
   const entries = selectedEntries(id);
   if (entries.length === 0) return;
   await enqueuePaneCopy(
@@ -198,6 +216,7 @@ export async function copyToOther(id: PaneId): Promise<void> {
 }
 
 export async function moveToOther(id: PaneId): Promise<void> {
+  if (!requireUsable(id)) return;
   if (getState().panes[id].backend.kind !== "local" || getState().panes[otherPane(id)].backend.kind !== "local") {
     pushToast("Remote moves are copy-only in the beta — use F5, then delete", "info");
     return;
@@ -260,6 +279,7 @@ export function openEntry(id: PaneId, entry: Entry): void {
 }
 
 export function openSelection(id: PaneId): void {
+  if (!requireUsable(id)) return;
   for (const entry of selectedEntries(id)) {
     openEntry(id, entry);
   }
@@ -267,6 +287,7 @@ export function openSelection(id: PaneId): void {
 
 export function revealSelection(id: PaneId): void {
   if (!requireLocal(id)) return;
+  if (!requireUsable(id)) return;
   for (const entry of selectedEntries(id)) {
     window.pallet.fs.reveal(entry.path).catch(fail);
   }
@@ -283,24 +304,25 @@ export async function showRowContextMenu(id: PaneId, entry: Entry): Promise<void
   if (!pane.selected.has(entry.name)) selectNames(id, [entry.name]);
   if (pane.backend.kind === "sftp") {
     const singleRemote = getState().panes[id].selected.size === 1;
+    const usable = isUsable(pane);
     const sessionId = pane.backend.sessionId;
     const remoteChoice = await window.pallet.ui.contextMenu([
-      { id: "open", label: "Open", enabled: isDirLike(entry) },
+      { id: "open", label: "Open", enabled: usable && isDirLike(entry) },
       {
         id: "edit",
         label: "Edit in External Editor",
-        enabled: singleRemote && entry.kind === "file",
+        enabled: usable && singleRemote && entry.kind === "file",
       },
       { type: "separator" },
-      { id: "rename", label: "Rename", enabled: singleRemote },
-      { id: "copy", label: "Copy" },
+      { id: "rename", label: "Rename", enabled: usable && singleRemote },
+      { id: "copy", label: "Copy", enabled: usable },
       {
         id: "transferToLocal",
         label: "Transfer to Local",
-        enabled: getState().panes[otherPane(id)].backend.kind === "local",
+        enabled: usable && getState().panes[otherPane(id)].backend.kind === "local",
       },
       { type: "separator" },
-      { id: "delete", label: "Delete" },
+      { id: "delete", label: "Delete", enabled: usable },
       { type: "separator" },
       { id: "refresh", label: "Refresh" },
     ]);
@@ -330,19 +352,20 @@ export async function showRowContextMenu(id: PaneId, entry: Entry): Promise<void
     return;
   }
   const single = getState().panes[id].selected.size === 1;
+  const usable = isUsable(getState().panes[id]);
   const choice = await window.pallet.ui.contextMenu([
-    { id: "open", label: "Open" },
-    { id: "reveal", label: "Reveal in Finder" },
+    { id: "open", label: "Open", enabled: usable },
+    { id: "reveal", label: "Reveal in Finder", enabled: usable },
     { type: "separator" },
-    { id: "rename", label: "Rename", enabled: single },
-    { id: "copy", label: "Copy" },
+    { id: "rename", label: "Rename", enabled: usable && single },
+    { id: "copy", label: "Copy", enabled: usable },
     {
       id: "transferToRemote",
       label: "Transfer to Remote",
-      enabled: getState().panes[otherPane(id)].backend.kind === "sftp",
+      enabled: usable && getState().panes[otherPane(id)].backend.kind === "sftp",
     },
     { type: "separator" },
-    { id: "trash", label: "Move to Trash" },
+    { id: "trash", label: "Move to Trash", enabled: usable },
   ]);
   switch (choice) {
     case "open":
@@ -368,9 +391,10 @@ export async function showRowContextMenu(id: PaneId, entry: Entry): Promise<void
 
 export async function showBackgroundContextMenu(id: PaneId): Promise<void> {
   if (getState().panes[id].backend.kind === "sftp") {
+    const usable = isUsable(getState().panes[id]);
     const remoteChoice = await window.pallet.ui.contextMenu([
-      { id: "newFolder", label: "New Folder" },
-      { id: "paste", label: "Paste", enabled: hasClipboard() },
+      { id: "newFolder", label: "New Folder", enabled: usable },
+      { id: "paste", label: "Paste", enabled: usable && hasClipboard() },
       { type: "separator" },
       { id: "refresh", label: "Refresh" },
     ]);
@@ -379,9 +403,10 @@ export async function showBackgroundContextMenu(id: PaneId): Promise<void> {
     else if (remoteChoice === "refresh") refresh(id);
     return;
   }
+  const usable = isUsable(getState().panes[id]);
   const choice = await window.pallet.ui.contextMenu([
-    { id: "newFolder", label: "New Folder" },
-    { id: "paste", label: "Paste", enabled: hasClipboard() },
+    { id: "newFolder", label: "New Folder", enabled: usable },
+    { id: "paste", label: "Paste", enabled: usable && hasClipboard() },
     { type: "separator" },
     { id: "refresh", label: "Refresh" },
   ]);

@@ -1,5 +1,14 @@
 import { AlertTriangle, ChevronDown, ChevronRight, ChevronUp, CircleX, RefreshCw, Server } from "lucide-react";
-import { type PaneBackend, type PaneId, navigate, pathLib, setActive, setSort, useAppState } from "@/store/pane.store";
+import {
+  type PaneBackend,
+  type PaneId,
+  getState,
+  navigate,
+  pathLib,
+  setActive,
+  setSort,
+  useAppState,
+} from "@/store/pane.store";
 import { disconnectRemote, reconnectRemote } from "@/store/sftp.store";
 import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -44,6 +53,7 @@ function SortHeader({
 function Breadcrumbs({ paneId, cwd, backend }: { paneId: PaneId; cwd: string; backend: PaneBackend }): React.JSX.Element {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(cwd);
+  const [error, setError] = useState<string | null>(null);
   const lib = pathLib(backend);
   const rootLabel = backend.kind === "sftp" ? backend.host : "Macintosh HD";
 
@@ -55,28 +65,48 @@ function Breadcrumbs({ paneId, cwd, backend }: { paneId: PaneId; cwd: string; ba
 
   if (editing) {
     return (
-      <form
-        className="flex-1"
-        onSubmit={(e) => {
-          e.preventDefault();
-          const target = draft.trim();
-          setEditing(false);
-          if (target && target !== cwd) void navigate(paneId, lib.normalize(target));
-        }}
-      >
-        <input
-          autoFocus
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onBlur={() => setEditing(false)}
-          onKeyDown={(e) => {
-            if (e.key === "Escape") setEditing(false);
-            e.stopPropagation();
+      <div className="relative flex-1">
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            const target = draft.trim();
+            if (!target || target === cwd) {
+              setEditing(false);
+              setError(null);
+              return;
+            }
+            setError(null);
+            void navigate(paneId, lib.normalize(target)).then((ok) => {
+              if (ok) {
+                setEditing(false);
+                return;
+              }
+              // Keep the editor open with the typed path so it can be corrected.
+              setError(getState().panes[paneId].error?.message ?? "Couldn’t open that path");
+            });
           }}
-          className="border-input bg-background focus:ring-ring w-full rounded-sm border px-1.5 py-0.5 font-mono text-xs outline-none focus:ring-1"
-          spellCheck={false}
-        />
-      </form>
+        >
+          <input
+            autoFocus
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onBlur={() => setEditing(false)}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") {
+                setError(null);
+                setEditing(false);
+              }
+              e.stopPropagation();
+            }}
+            className={cn(
+              "border-input bg-background focus:ring-ring w-full rounded-sm border px-1.5 py-0.5 font-mono text-xs outline-none focus:ring-1",
+              error && "border-destructive focus:ring-destructive",
+            )}
+            spellCheck={false}
+          />
+        </form>
+        {error && <p className="text-destructive absolute top-full left-0 z-20 mt-0.5 text-xs">{error}</p>}
+      </div>
     );
   }
 
@@ -135,6 +165,8 @@ export function Pane({ paneId }: { paneId: PaneId }): React.JSX.Element {
     isActive &&
       "after:bg-primary after:pointer-events-none after:absolute after:top-0 after:right-2 after:left-2 after:h-1 after:rounded-full",
   );
+
+  const failed = pane.error;
 
   return (
     <section
@@ -197,18 +229,36 @@ export function Pane({ paneId }: { paneId: PaneId }): React.JSX.Element {
       </div>
 
       <div className="relative flex min-h-0 flex-1 flex-col">
-        {pane.error ? (
+        {failed && !pane.cwd ? (
+          // No last-known listing to keep (e.g. first load failed): plain error state.
           <div className="flex flex-1 flex-col items-center justify-center gap-2 p-6 text-center">
             <AlertTriangle className="text-caution size-6" />
-            <p className="text-muted-foreground text-sm">{pane.error}</p>
+            <p className="text-muted-foreground text-sm">{failed.message}</p>
           </div>
         ) : (
-          <FileList
-            paneId={paneId}
-            pane={pane}
-            visible={visible}
-            isActive={isActive}
-          />
+          <>
+            {failed && (
+              <div className="bg-caution/10 flex shrink-0 items-center gap-2 border-b px-3 py-1.5 text-xs">
+                <AlertTriangle className="text-caution size-3.5 shrink-0" />
+                <span className="text-muted-foreground min-w-0 flex-1 truncate">
+                  Couldn’t open <span className="text-foreground font-mono">{failed.path}</span>: {failed.message}
+                </span>
+                <Button
+                  size="xs"
+                  variant="outline"
+                  onClick={() => void navigate(paneId, failed.path)}
+                >
+                  Retry
+                </Button>
+              </div>
+            )}
+            <FileList
+              paneId={paneId}
+              pane={pane}
+              visible={visible}
+              isActive={isActive}
+            />
+          </>
         )}
         {pane.backend.kind === "sftp" && pane.backend.status !== "connected" && (
           <div className="bg-background/70 absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 backdrop-blur-[1px]">

@@ -1,5 +1,5 @@
 import { ArrowLeft, ArrowRight, FolderPlus, Info, RotateCw, Trash2 } from "lucide-react";
-import { goBack, goForward, refresh, setInspectorOpen, useAppState } from "@/store/pane.store";
+import { goBack, goForward, isUsable, refresh, setInspectorOpen, useAppState } from "@/store/pane.store";
 import { newFolder, trashSelection } from "@/store/ops.store";
 import { cn } from "@/lib/utils";
 import { localPath } from "@shared/path/path.utils";
@@ -67,13 +67,13 @@ export function Toolbar(): React.JSX.Element {
           icon={FolderPlus}
           label="New Folder"
           onClick={() => void newFolder(app.active)}
-          disabled={!pane.cwd || !!pane.error}
+          disabled={!isUsable(pane)}
         />
         <ToolButton
           icon={Trash2}
           label="Move to Trash"
           onClick={() => void trashSelection(app.active)}
-          disabled={pane.selected.size === 0}
+          disabled={!isUsable(pane) || pane.selected.size === 0}
         />
         <ToolButton
           icon={Info}

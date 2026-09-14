@@ -38,8 +38,11 @@ export interface PaneState {
   entries: Entry[];
   availBytes: number | null;
   loading: boolean;
-  /** Listing failure for the current cwd (permission denied, vanished dir…). */
-  error: string | null;
+  /**
+   * Failed listing attempt, kept apart from the last usable cwd/history so
+   * breadcrumb, count, and listing survive a bad destination (plans/05).
+   */
+  error: { path: string; message: string } | null;
   sortKey: SortKey;
   sortDir: SortDir;
   /** Selection tracked by entry name; survives refreshes of the same dir. */
@@ -170,10 +173,15 @@ const generation: Record<PaneId, number> = { left: 0, right: 0 };
 
 export type NavigateMode = "push" | "replace" | "none";
 
-export async function navigate(id: PaneId, path: string, mode: NavigateMode = "push"): Promise<void> {
+/**
+ * Resolves to true only when the listing committed (cwd/history updated).
+ * `toIndex` is the history slot a Back/Forward is moving to; it moves with
+ * the commit, so a vanished destination leaves the index armed for a retry.
+ */
+export async function navigate(id: PaneId, path: string, mode: NavigateMode = "push", toIndex?: number): Promise<boolean> {
   const pane = state.panes[id];
   // Nothing to list until the right pane has a session.
-  if (pane.backend.kind === "none") return;
+  if (pane.backend.kind === "none") return false;
   const gen = ++generation[id];
   const samePath = pane.cwd === path;
   setPane(id, { loading: true, ...(samePath ? {} : { error: null }) });
@@ -181,7 +189,7 @@ export async function navigate(id: PaneId, path: string, mode: NavigateMode = "p
     const backend = pane.backend;
     const listing =
       backend.kind === "sftp" ? await window.pallet.sftp.list(backend.sessionId, path) : await window.pallet.fs.list(path);
-    if (gen !== generation[id]) return;
+    if (gen !== generation[id]) return false;
     const prev = state.panes[id];
     let history = prev.history;
     let historyIndex = prev.historyIndex;
@@ -200,17 +208,26 @@ export async function navigate(id: PaneId, path: string, mode: NavigateMode = "p
       loading: false,
       error: null,
       history,
-      historyIndex,
+      historyIndex: toIndex ?? historyIndex,
       ...(keepSelection
         ? {
             selected: new Set([...prev.selected].filter((n) => listing.entries.some((e) => e.name === n))),
           }
         : { selected: new Set<string>(), focused: null, anchor: null, renaming: null }),
     });
+    return true;
   } catch (err) {
-    if (gen !== generation[id]) return;
-    setPane(id, { loading: false, error: (err as Error).message });
+    if (gen !== generation[id]) return false;
+    // cwd, entries, and history stay on the last usable directory; the failed
+    // attempt is recorded so the UI can offer a retry at the same path.
+    setPane(id, { loading: false, error: { path, message: (err as Error).message } });
+    return false;
   }
+}
+
+/** True while a listing is present and not pending/failed: ops target exactly what's shown. */
+export function isUsable(pane: PaneState): boolean {
+  return pane.backend.kind !== "none" && pane.cwd !== "" && !pane.loading && pane.error === null;
 }
 
 export function refresh(id: PaneId): void {
@@ -225,17 +242,13 @@ export function refresh(id: PaneId): void {
 export function goBack(id: PaneId): void {
   const pane = state.panes[id];
   if (pane.historyIndex <= 0) return;
-  const idx = pane.historyIndex - 1;
-  setPane(id, { historyIndex: idx });
-  void navigate(id, pane.history[idx], "none");
+  void navigate(id, pane.history[pane.historyIndex - 1], "none", pane.historyIndex - 1);
 }
 
 export function goForward(id: PaneId): void {
   const pane = state.panes[id];
   if (pane.historyIndex >= pane.history.length - 1) return;
-  const idx = pane.historyIndex + 1;
-  setPane(id, { historyIndex: idx });
-  void navigate(id, pane.history[idx], "none");
+  void navigate(id, pane.history[pane.historyIndex + 1], "none", pane.historyIndex + 1);
 }
 
 export function goUp(id: PaneId): void {
