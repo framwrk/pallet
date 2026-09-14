@@ -55,7 +55,7 @@ function RenameInput({ paneId, entry }: { paneId: PaneId; entry: Entry }): React
       ref={ref}
       defaultValue={entry.name}
       spellCheck={false}
-      className="border-primary bg-background text-foreground w-full min-w-0 rounded-sm border px-1 py-0 text-[13px] outline-none"
+      className="border-primary bg-background text-foreground font-file w-full min-w-0 rounded-sm border px-1 py-0 text-[13px] outline-none"
       onBlur={commit}
       onKeyDown={(e) => {
         e.stopPropagation();
@@ -252,7 +252,7 @@ export function FileList({ paneId, pane, visible, isActive }: FileListProps): Re
               aria-rowindex={row.index + 1}
               aria-selected={selected}
               className={cn(
-                "absolute left-0 grid w-full grid-cols-[minmax(0,1fr)_5.5rem_11rem] items-center gap-2 px-3 text-[13px] outline-none",
+                "font-file absolute left-0 grid w-full grid-cols-[minmax(0,1fr)_5.5rem_11rem] items-center gap-2 px-3 text-[13px] outline-none",
                 // row.index % 2 === 1 && !selected && "bg-muted/40",
                 selected && (isActive ? "bg-primary text-primary-foreground" : "bg-muted text-foreground"),
               )}

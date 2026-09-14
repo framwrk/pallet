@@ -2,6 +2,8 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 @import "@fontsource-variable/inter";
+@import "@fontsource/ibm-plex-mono/400.css";
+@import "@fontsource/ibm-plex-mono/500.css";
 
 /* Tailwind's automatic detection only walks the renderer tree. Shared
    constants hold class names too (the favorite label swatches), and without
@@ -13,6 +15,9 @@
 @theme inline {
   --font-heading: var(--font-sans);
   --font-sans: "Inter Variable", sans-serif;
+  /* Scoped to the file panes (rows, breadcrumbs) so the rest of the UI,
+     including the sidebar count, keeps the sans stack. */
+  --font-file: "IBM Plex Mono", ui-monospace, monospace;
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);

@@ -100,7 +100,7 @@ function Breadcrumbs({ paneId, cwd, backend }: { paneId: PaneId; cwd: string; ba
               e.stopPropagation();
             }}
             className={cn(
-              "border-input bg-background focus:ring-ring w-full rounded-sm border px-1.5 py-0.5 font-mono text-xs outline-none focus:ring-1",
+              "border-input bg-background focus:ring-ring font-file w-full rounded-sm border px-1.5 py-0.5 text-xs outline-none focus:ring-1",
               error && "border-destructive focus:ring-destructive",
             )}
             spellCheck={false}
@@ -113,7 +113,7 @@ function Breadcrumbs({ paneId, cwd, backend }: { paneId: PaneId; cwd: string; ba
 
   return (
     <div
-      className="flex min-w-0 flex-1 items-center gap-0.5 overflow-hidden"
+      className="font-file flex min-w-0 flex-1 items-center gap-0.5 overflow-hidden"
       onDoubleClick={() => {
         setDraft(cwd);
         setEditing(true);
