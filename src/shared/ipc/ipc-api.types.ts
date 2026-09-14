@@ -2,6 +2,7 @@ import type { ConflictAction, ConflictPrompt, TransferJobSnapshot, TransferReque
 import type { ConnectProfile, ConnectResult, HostKeyPrompt, SessionStatusEvent } from "../sftp/sftp.types";
 import type { DirListing, Entry, KnownFolders, PreviewData, VolumeInfo } from "../fs/fs.types";
 import type { Favorite, FavoriteInput } from "../favorite/favorite.types";
+import type { UpdateDownloadState, UpdateInfo } from "../update/update.types";
 import type { ContextMenuItem } from "./ipc.types";
 import type { EditEventPayload } from "../edit/edit.types";
 import type { Preferences } from "../prefs/prefs.types";
@@ -85,12 +86,16 @@ export interface PalletApi {
   app: {
     version(): Promise<string>;
     /** Manual check; resolves with info when an update exists, else null. */
-    checkForUpdate(): Promise<{ version: string; url: string; prerelease: boolean } | null>;
+    checkForUpdate(): Promise<UpdateInfo | null>;
+    /** Download the release DMG into ~/Downloads and mount it; resolves with its path. */
+    downloadUpdate(info: UpdateInfo): Promise<string>;
     openExternal(url: string): Promise<void>;
     revealLog(): Promise<void>;
     /** Absolute path of the SQLite file, so it can be opened outside Pallet. */
     databasePath(): Promise<string>;
-    onUpdateAvailable(cb: (info: { version: string; url: string; prerelease: boolean }) => void): () => void;
+    onUpdateAvailable(cb: (info: UpdateInfo) => void): () => void;
+    /** Subscribe to in-app DMG download progress; returns unsubscribe. */
+    onUpdateDownloadState(cb: (state: UpdateDownloadState) => void): () => void;
   };
   folderSize: {
     /**

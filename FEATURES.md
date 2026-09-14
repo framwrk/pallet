@@ -380,13 +380,15 @@ Preferences live in the same local SQLite database as your favorites.
 ## Updates
 
 Pallet checks GitHub Releases on launch and once a day. If there's a newer version you get a
-dismissible toast with a link to the release page. Never a modal, never on the critical path.
+dismissible toast. Never a modal, never on the critical path.
 
 Releases that GitHub marks as prereleases are included by default. Version numbers themselves are
 always plain `MAJOR.MINOR.PATCH` — Pallet never ships a version like `0.1.0-beta.1`.
 
 Updates are **not** installed automatically — that requires code signing, which isn't in place yet.
-The toast takes you to the download.
+Instead the toast downloads the release's disk image into ~/Downloads (with a progress bar) and
+mounts it, so updating is: click **Download update**, then drag Pallet into Applications. If a
+release ships without a disk image, the toast falls back to a link to the release page.
 
 ---
 

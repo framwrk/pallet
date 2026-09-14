@@ -3,8 +3,10 @@ import * as localOps from "../services/local-ops";
 import { AppChannels, FsChannels, UiChannels } from "@shared/ipc/ipc.constants";
 import type { ContextMenuItem, IpcResult } from "@shared/ipc/ipc.types";
 import { app, ipcMain, shell } from "electron";
+import type { UpdateInfo } from "@shared/update/update.types";
 import { checkForUpdate } from "../services/update-checker";
 import { databasePath } from "../services/database";
+import { downloadUpdate } from "../services/update-downloader";
 import { logFilePath } from "../services/logger";
 import { popupContextMenu } from "../services/context-menu";
 import { registerFavoriteHandlers } from "./favorite";
@@ -63,6 +65,7 @@ export function registerIpcHandlers(): void {
 
   handle(AppChannels.version, () => app.getVersion());
   handle(AppChannels.checkForUpdate, () => checkForUpdate());
+  handle(AppChannels.downloadUpdate, (info: UpdateInfo) => downloadUpdate(info));
   handle(AppChannels.openExternal, (url: string) => {
     if (!/^https?:\/\//.test(url)) throw new Error("Only http(s) URLs can be opened");
     return shell.openExternal(url);
