@@ -138,7 +138,8 @@ export function Settings(): React.JSX.Element {
   const [prefs, setPrefs] = useState<Preferences | null>(null);
   // Held separately so a half-typed number doesn't fight the stored value.
   const [concurrencyText, setConcurrencyText] = useState("");
-  const [dbPath, setDbPath] = useState("");
+  const [dbPath, setDbPath] = useState<string | null>(null);
+  const [dbPathFailed, setDbPathFailed] = useState(false);
   const [copied, setCopied] = useState(false);
   const bodyRef = useRef<HTMLElement>(null);
 
@@ -148,7 +149,11 @@ export function Settings(): React.JSX.Element {
       setConcurrencyText(String(next.defaultConcurrency));
     }
     void window.pallet.prefs.get().then(adopt);
-    void window.pallet.app.databasePath().then(setDbPath);
+    // The main handler can't fail, but a rejected invoke beats a silently empty row.
+    void window.pallet.app
+      .databasePath()
+      .then(setDbPath)
+      .catch(() => setDbPathFailed(true));
     return window.pallet.prefs.onChange(adopt);
   }, []);
 
@@ -185,6 +190,7 @@ export function Settings(): React.JSX.Element {
   }
 
   function copyDbPath(): void {
+    if (dbPath === null) return;
     void navigator.clipboard.writeText(dbPath).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
@@ -365,15 +371,18 @@ export function Settings(): React.JSX.Element {
           <Group footnote="Favorites, known host keys, and transfer history live in this SQLite file — any SQLite client can open it. Quit Pallet before writing to it.">
             <Row label="Database Path">
               <div className="flex min-w-0 gap-2">
+                {/* CSS truncation keeps the full text in the accessibility tree;
+                    the title is only the visual tooltip. */}
                 <span
-                  title={dbPath}
+                  title={dbPath ?? undefined}
                   className="text-muted-foreground min-w-0 truncate font-mono text-[11px] select-text"
                 >
-                  {/* {dbPath} */}
+                  {dbPath ?? (dbPathFailed ? "Unavailable" : "")}
                 </span>
                 <Button
                   size="xs"
                   variant="outline"
+                  disabled={dbPath === null}
                   onClick={copyDbPath}
                 >
                   {copied ? "Copied" : "Copy"}
@@ -381,7 +390,10 @@ export function Settings(): React.JSX.Element {
                 <Button
                   size="xs"
                   variant="outline"
-                  onClick={() => void window.pallet.fs.reveal(dbPath)}
+                  disabled={dbPath === null}
+                  onClick={() => {
+                    if (dbPath !== null) void window.pallet.fs.reveal(dbPath);
+                  }}
                 >
                   Reveal
                 </Button>
