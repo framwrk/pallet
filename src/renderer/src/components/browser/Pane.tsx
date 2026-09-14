@@ -202,7 +202,7 @@ export function Pane({ paneId }: { paneId: PaneId }): React.JSX.Element {
         )}
       </div>
 
-      <div className="grid grid-cols-[minmax(0,1fr)_5.5rem_11rem] gap-2 border-b px-3 py-1">
+      <div className="grid grid-cols-[minmax(0,1fr)_5.5rem_12rem] gap-4 border-b px-3 py-1">
         <SortHeader
           paneId={paneId}
           label="Name"

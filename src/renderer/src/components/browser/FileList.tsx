@@ -252,7 +252,7 @@ export function FileList({ paneId, pane, visible, isActive }: FileListProps): Re
               aria-rowindex={row.index + 1}
               aria-selected={selected}
               className={cn(
-                "font-file absolute left-0 grid w-full grid-cols-[minmax(0,1fr)_5.5rem_11rem] items-center gap-2 px-3 text-[13px] outline-none",
+                "font-file absolute left-0 grid w-full grid-cols-[minmax(0,1fr)_5.5rem_12rem] items-center gap-4 px-3 text-[13px] outline-none",
                 // row.index % 2 === 1 && !selected && "bg-muted/40",
                 selected && (isActive ? "bg-primary text-primary-foreground" : "bg-muted text-foreground"),
               )}
