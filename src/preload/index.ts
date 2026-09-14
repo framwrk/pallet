@@ -16,6 +16,7 @@ import type { ConnectProfile, ConnectResult, HostKeyPrompt, SessionStatusEvent }
 import type { ContextMenuItem, IpcResult } from "@shared/ipc/ipc.types";
 import type { DirListing, Entry, KnownFolders, PreviewData, SizeTarget, VolumeInfo } from "@shared/fs/fs.types";
 import type { Favorite, FavoriteInput } from "@shared/favorite/favorite.types";
+import type { UpdateDownloadState, UpdateInfo } from "@shared/update/update.types";
 import { contextBridge, ipcRenderer } from "electron";
 import type { EditEventPayload } from "@shared/edit/edit.types";
 import type { PalletApi } from "@shared/ipc/ipc-api.types";
@@ -108,13 +109,14 @@ const pallet: PalletApi = {
   },
   app: {
     version: (): Promise<string> => invoke(AppChannels.version),
-    checkForUpdate: (): Promise<{ version: string; url: string; prerelease: boolean } | null> =>
-      invoke(AppChannels.checkForUpdate),
+    checkForUpdate: (): Promise<UpdateInfo | null> => invoke(AppChannels.checkForUpdate),
+    downloadUpdate: (info: UpdateInfo): Promise<string> => invoke(AppChannels.downloadUpdate, info),
     openExternal: (url: string): Promise<void> => invoke(AppChannels.openExternal, url),
     revealLog: (): Promise<void> => invoke(AppChannels.revealLog),
     databasePath: (): Promise<string> => invoke(AppChannels.databasePath),
-    onUpdateAvailable: (cb: (info: { version: string; url: string; prerelease: boolean }) => void): (() => void) =>
-      subscribe(AppChannels.updateAvailable, cb),
+    onUpdateAvailable: (cb: (info: UpdateInfo) => void): (() => void) => subscribe(AppChannels.updateAvailable, cb),
+    onUpdateDownloadState: (cb: (state: UpdateDownloadState) => void): (() => void) =>
+      subscribe(AppChannels.updateDownloadState, cb),
   },
   folderSize: {
     get: (target: SizeTarget, path: string): Promise<number | null> => invoke(FolderSizeChannels.get, target, path),

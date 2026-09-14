@@ -10,23 +10,19 @@
  */
 import { compareVersions, parseVersion } from "@shared/version/version.utils";
 import { getPreferenceRow, setPreferenceRow } from "./prefs-store";
+import type { UpdateInfo } from "@shared/update/update.types";
 import { app } from "electron";
 import { log } from "./logger";
 
 const REPO = "framwrk/pallet";
 const CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
 
-export interface UpdateInfo {
-  version: string;
-  url: string;
-  prerelease: boolean;
-}
-
-interface GithubRelease {
+export interface GithubRelease {
   tag_name: string;
   html_url: string;
   prerelease: boolean;
   draft: boolean;
+  assets?: Array<{ name: string; browser_download_url: string }>;
 }
 
 export async function checkForUpdate(): Promise<UpdateInfo | null> {
@@ -62,6 +58,9 @@ export async function checkForUpdate(): Promise<UpdateInfo | null> {
     version: best.version,
     url: best.release.html_url,
     prerelease: best.release.prerelease,
+    // electron-builder's dmg.artifactName is ${name}-${version}.${ext}; match
+    // loosely on extension so a rename upstream degrades to the web flow.
+    dmgUrl: best.release.assets?.find((a) => a.name.endsWith(".dmg"))?.browser_download_url ?? null,
   };
 }
 

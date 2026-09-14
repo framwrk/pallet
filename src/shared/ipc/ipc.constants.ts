@@ -47,12 +47,15 @@ export const SftpChannels = {
 
 export const AppChannels = {
   checkForUpdate: "app:checkForUpdate",
+  downloadUpdate: "app:downloadUpdate",
   openExternal: "app:openExternal",
   version: "app:version",
   revealLog: "app:revealLog",
   databasePath: "app:databasePath",
   /** main → renderer: a newer release exists. */
   updateAvailable: "app:updateAvailable",
+  /** main → renderer: progress of the in-app DMG download. */
+  updateDownloadState: "app:updateDownloadState",
 } as const;
 
 export const PrefChannels = {

@@ -42,6 +42,7 @@ function SortHeader({
         isActive && "text-foreground",
         className,
       )}
+      aria-label={isActive ? `Sort by ${label}, currently ${dir === "asc" ? "ascending" : "descending"}` : `Sort by ${label}`}
       onClick={() => setSort(paneId, colKey)}
     >
       <span className="truncate">{label}</span>
