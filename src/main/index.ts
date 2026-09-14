@@ -1,4 +1,4 @@
-import { AppChannels, SettingsChannels } from "@shared/ipc/ipc.constants";
+import { AppChannels, SettingsChannels, WindowChannels } from "@shared/ipc/ipc.constants";
 import { BrowserWindow, Menu, app, ipcMain, shell } from "electron";
 import { installCrashHandlers, log, logFilePath } from "./services/logger";
 import { is, optimizer } from "@electron-toolkit/utils";
@@ -8,8 +8,11 @@ import { registerIpcHandlers } from "./ipc/register";
 import { sessionManager } from "./ipc/sftp";
 import { startUpdateChecks } from "./services/update-checker";
 
+/** The file-manager window; the Close accelerator asks its renderer first. */
+let mainWindow: BrowserWindow | null = null;
+
 function createWindow(): void {
-  const mainWindow = new BrowserWindow({
+  const win = new BrowserWindow({
     width: 1200,
     height: 760,
     minWidth: 820,
@@ -23,19 +26,25 @@ function createWindow(): void {
     },
   });
 
-  mainWindow.on("ready-to-show", () => {
-    mainWindow.show();
+  mainWindow = win;
+
+  win.on("ready-to-show", () => {
+    win.show();
   });
 
-  mainWindow.webContents.setWindowOpenHandler((details) => {
+  win.on("closed", () => {
+    mainWindow = null;
+  });
+
+  win.webContents.setWindowOpenHandler((details) => {
     shell.openExternal(details.url);
     return { action: "deny" };
   });
 
   if (is.dev && process.env["ELECTRON_RENDERER_URL"]) {
-    mainWindow.loadURL(process.env["ELECTRON_RENDERER_URL"]);
+    win.loadURL(process.env["ELECTRON_RENDERER_URL"]);
   } else {
-    mainWindow.loadFile(join(__dirname, "../renderer/index.html"));
+    win.loadFile(join(__dirname, "../renderer/index.html"));
   }
 }
 
@@ -109,6 +118,22 @@ function buildMenu(): void {
     click: () => openSettingsWindow(),
   };
 
+  // ⌘W must not close the window outright while the remote pane is selected:
+  // the Close accelerator asks the main window's renderer, which disconnects
+  // the remote pane if it is active and closes the window otherwise. The
+  // stock fileMenu/windowMenu roles bake in a plain close, so they are
+  // spelled out here.
+  const closeItem: Electron.MenuItemConstructorOptions = {
+    label: "Close",
+    accelerator: "Cmd+W",
+    click: () => {
+      const focused = BrowserWindow.getFocusedWindow();
+      if (!focused) return;
+      if (focused === mainWindow) focused.webContents.send(WindowChannels.closeRequest);
+      else focused.close();
+    },
+  };
+
   const template: Electron.MenuItemConstructorOptions[] = [
     {
       label: app.name,
@@ -126,10 +151,16 @@ function buildMenu(): void {
         { role: "quit" },
       ],
     },
-    { role: "fileMenu" },
+    {
+      label: "File",
+      submenu: [closeItem],
+    },
     { role: "editMenu" },
     { role: "viewMenu" },
-    { role: "windowMenu" },
+    {
+      label: "Window",
+      submenu: [{ role: "minimize" }, { role: "zoom" }],
+    },
     {
       role: "help",
       submenu: [

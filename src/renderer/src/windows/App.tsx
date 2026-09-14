@@ -25,6 +25,7 @@ import {
   switchPane,
   useAppState,
 } from "@/store/pane.store";
+import { disconnectRemote, initSftpEvents } from "@/store/sftp.store";
 import { ConfirmDeleteDialog } from "@/components/browser/ConfirmDeleteDialog";
 import { ConflictDialog } from "@/components/transfer/ConflictDialog";
 import { ConnectDialog } from "@/components/connection/QuickConnect";
@@ -38,7 +39,6 @@ import { Sidebar } from "@/components/connection/Sidebar";
 import { Toasts } from "@/components/feedback/Toasts";
 import { Toolbar } from "@/components/browser/Toolbar";
 import { UpdateToast } from "@/components/feedback/UpdateToast";
-import { initSftpEvents } from "@/store/sftp.store";
 import { initTransferEvents } from "@/store/transfer.store";
 import { loadFavorites } from "@/store/favorite.store";
 import { useEffect } from "react";
@@ -219,6 +219,20 @@ function App(): React.JSX.Element {
   useEffect(() => {
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
+  // ⌘W arrives from the app menu (accelerators outrun renderer keydowns):
+  // with the remote pane selected it disconnects it, otherwise it closes the
+  // window as the stock Close would.
+  useEffect(() => {
+    return window.pallet.window.onCloseRequest(() => {
+      const state = getState();
+      if (state.active === "right" && state.panes.right.backend.kind === "sftp") {
+        void disconnectRemote();
+      } else {
+        window.close();
+      }
+    });
   }, []);
 
   return (

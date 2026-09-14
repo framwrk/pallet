@@ -65,6 +65,11 @@ export const PrefChannels = {
   changed: "prefs:changed",
 } as const;
 
+export const WindowChannels = {
+  /** main → renderer: ⌘W was pressed; the renderer disconnects or closes. */
+  closeRequest: "window:closeRequest",
+} as const;
+
 export const SettingsChannels = {
   /** Settings window only: size the window to the active tab's content. */
   resize: "settings:resize",

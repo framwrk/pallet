@@ -10,6 +10,7 @@ import {
   SftpChannels,
   TransferChannels,
   UiChannels,
+  WindowChannels,
 } from "@shared/ipc/ipc.constants";
 import type { ConflictAction, ConflictPrompt, TransferJobSnapshot, TransferRequest } from "@shared/transfer/transfer.types";
 import type { ConnectProfile, ConnectResult, HostKeyPrompt, SessionStatusEvent } from "@shared/sftp/sftp.types";
@@ -127,6 +128,9 @@ const pallet: PalletApi = {
     get: (): Promise<Preferences> => invoke(PrefChannels.get),
     set: (patch: Partial<Preferences>): Promise<Preferences> => invoke(PrefChannels.set, patch),
     onChange: (cb: (prefs: Preferences) => void): (() => void) => subscribe(PrefChannels.changed, cb),
+  },
+  window: {
+    onCloseRequest: (cb: () => void): (() => void) => subscribe(WindowChannels.closeRequest, cb),
   },
   settings: {
     resize: (contentHeight: number, title: string): Promise<void> => invoke(SettingsChannels.resize, contentHeight, title),

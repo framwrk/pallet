@@ -115,6 +115,10 @@ export interface PalletApi {
     /** Subscribe to changes from any window; returns unsubscribe. */
     onChange(cb: (prefs: Preferences) => void): () => void;
   };
+  window: {
+    /** Main window only: ⌘W pressed; disconnect the remote pane or close. */
+    onCloseRequest(cb: () => void): () => void;
+  };
   settings: {
     /** Settings window only: fit the window to the active tab and title it. */
     resize(contentHeight: number, title: string): Promise<void>;
