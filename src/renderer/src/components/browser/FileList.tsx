@@ -180,9 +180,14 @@ export function FileList({ paneId, pane, visible, isActive }: FileListProps): Re
       ref={scrollRef}
       className="min-h-0 flex-1 overflow-y-auto outline-none"
       tabIndex={0}
-      role="listbox"
+      role="grid"
       aria-label={`${paneId === "left" ? "Local" : "Remote"} files`}
       aria-multiselectable
+      aria-rowcount={visible.length}
+      // Grid pattern with the container holding DOM focus: the active row is
+      // exposed through aria-activedescendant instead of roving tabindex, so
+      // virtualization can mount and unmount rows freely around the cursor.
+      aria-activedescendant={focusedIndex >= 0 ? `pallet-${paneId}-row-${focusedIndex}` : undefined}
       // The pane holds DOM focus while rows are navigated: dialog dismissal
       // then restores here (Base UI returnFocus), and Tab from it swaps panes.
       onMouseDown={(e) => {
@@ -242,7 +247,9 @@ export function FileList({ paneId, pane, visible, isActive }: FileListProps): Re
           return (
             <div
               key={entry.name}
-              role="option"
+              id={`pallet-${paneId}-row-${row.index}`}
+              role="row"
+              aria-rowindex={row.index + 1}
               aria-selected={selected}
               className={cn(
                 "absolute left-0 grid w-full grid-cols-[minmax(0,1fr)_5.5rem_11rem] items-center gap-2 px-3 text-[13px] outline-none",
@@ -277,7 +284,10 @@ export function FileList({ paneId, pane, visible, isActive }: FileListProps): Re
                 void showRowContextMenu(paneId, entry);
               }}
             >
-              <span className="flex min-w-0 items-center gap-2">
+              <span
+                role="gridcell"
+                className="flex min-w-0 items-center gap-2"
+              >
                 {dirLike ? (
                   <Folder
                     className={cn("size-4 shrink-0", selected && isActive ? "text-primary-foreground" : "text-primary")}
@@ -303,6 +313,7 @@ export function FileList({ paneId, pane, visible, isActive }: FileListProps): Re
                 {entry.kind === "symlink" && <CornerUpRight className="size-3 shrink-0 opacity-60" />}
               </span>
               <span
+                role="gridcell"
                 className={cn(
                   "text-right tabular-nums",
                   !selected && "text-muted-foreground",
@@ -316,6 +327,7 @@ export function FileList({ paneId, pane, visible, isActive }: FileListProps): Re
                   : formatBytes(entry.size)}
               </span>
               <span
+                role="gridcell"
                 className={cn(
                   "truncate text-right tabular-nums",
                   !selected && "text-muted-foreground",

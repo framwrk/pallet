@@ -28,11 +28,26 @@ const APPEARANCES: Record<Appearance, string> = {
 };
 
 /** One inset group of rows, with the footnote that explains them below it. */
-function Group({ footnote, children }: { footnote?: string; children: React.ReactNode }): React.JSX.Element {
+function Group({
+  footnote,
+  footnoteId,
+  children,
+}: {
+  footnote?: string;
+  footnoteId?: string;
+  children: React.ReactNode;
+}): React.JSX.Element {
   return (
     <div>
       <div className="bg-card overflow-hidden rounded-lg border">{children}</div>
-      {footnote && <p className="text-muted-foreground mt-1.5 px-3 text-[11px] leading-snug">{footnote}</p>}
+      {footnote && (
+        <p
+          id={footnoteId}
+          className="text-muted-foreground mt-1.5 px-3 text-[11px] leading-snug"
+        >
+          {footnote}
+        </p>
+      )}
     </div>
   );
 }
@@ -40,12 +55,33 @@ function Group({ footnote, children }: { footnote?: string; children: React.Reac
 /**
  * Label leading, control trailing — the macOS grouped-form row. `indent` marks
  * a row as subordinate to the one above it, which also gets the hairline that
- * separates them.
+ * separates them. `htmlFor` turns the label into a real control label; the
+ * switches and select are buttons underneath, so a wrapping <label> would not
+ * associate.
  */
-function Row({ label, indent, children }: { label: string; indent?: boolean; children: React.ReactNode }): React.JSX.Element {
+function Row({
+  label,
+  indent,
+  htmlFor,
+  children,
+}: {
+  label: string;
+  indent?: boolean;
+  htmlFor?: string;
+  children: React.ReactNode;
+}): React.JSX.Element {
   return (
     <div className={cn("flex min-h-10 items-center justify-between gap-6 px-3 py-1.5", indent && "border-t pl-7")}>
-      <span className="text-[13px]">{label}</span>
+      {htmlFor ? (
+        <label
+          htmlFor={htmlFor}
+          className="text-[13px]"
+        >
+          {label}
+        </label>
+      ) : (
+        <span className="text-[13px]">{label}</span>
+      )}
       {children}
     </div>
   );
@@ -56,10 +92,13 @@ function Stepper({
   onStep,
   canDecrement,
   canIncrement,
+  subject,
 }: {
   onStep: (delta: number) => void;
   canDecrement: boolean;
   canIncrement: boolean;
+  /** Names the value in the button labels; "Increase" alone is anonymous. */
+  subject: string;
 }): React.JSX.Element {
   const half =
     "flex flex-1 w-4 items-center justify-center text-muted-foreground hover:text-foreground active:bg-foreground/10 disabled:pointer-events-none disabled:opacity-40";
@@ -70,7 +109,7 @@ function Stepper({
         className={half}
         disabled={!canIncrement}
         onClick={() => onStep(1)}
-        aria-label="Increase"
+        aria-label={`Increase ${subject}`}
       >
         <ChevronUp
           className="size-2.5"
@@ -83,7 +122,7 @@ function Stepper({
         className={half}
         disabled={!canDecrement}
         onClick={() => onStep(-1)}
-        aria-label="Decrease"
+        aria-label={`Decrease ${subject}`}
       >
         <ChevronDown
           className="size-2.5"
@@ -193,17 +232,33 @@ export function Settings(): React.JSX.Element {
       >
         {prefs === null ? null : tab === "general" ? (
           <div className="flex flex-col gap-4">
-            <Group footnote="Also toggled with ⇧⌘. in the file browser.">
-              <Row label="Show hidden files">
+            <Group
+              footnote="Also toggled with ⇧⌘. in the file browser."
+              footnoteId="note-show-hidden"
+            >
+              <Row
+                label="Show hidden files"
+                htmlFor="pref-show-hidden"
+              >
                 <Switch
+                  id="pref-show-hidden"
+                  aria-describedby="note-show-hidden"
                   checked={prefs.showHidden}
                   onCheckedChange={(checked) => save({ showHidden: checked })}
                 />
               </Row>
             </Group>
-            <Group footnote="Totals the contents of each folder instead of showing “--”. Local folders only, unless you include remote ones — sizing a tree over SSH is far slower than reading it off disk.">
-              <Row label="Calculate folder sizes">
+            <Group
+              footnote="Totals the contents of each folder instead of showing “--”. Local folders only, unless you include remote ones — sizing a tree over SSH is far slower than reading it off disk."
+              footnoteId="note-folder-sizes"
+            >
+              <Row
+                label="Calculate folder sizes"
+                htmlFor="pref-folder-sizes"
+              >
                 <Switch
+                  id="pref-folder-sizes"
+                  aria-describedby="note-folder-sizes"
                   checked={prefs.calculateFolderSizes}
                   onCheckedChange={(checked) => save({ calculateFolderSizes: checked })}
                 />
@@ -212,8 +267,11 @@ export function Settings(): React.JSX.Element {
                 <Row
                   label="Include remote folders"
                   indent
+                  htmlFor="pref-remote-folder-sizes"
                 >
                   <Switch
+                    id="pref-remote-folder-sizes"
+                    aria-describedby="note-folder-sizes"
                     checked={prefs.calculateRemoteFolderSizes}
                     onCheckedChange={(checked) => save({ calculateRemoteFolderSizes: checked })}
                   />
@@ -222,8 +280,14 @@ export function Settings(): React.JSX.Element {
             </Group>
           </div>
         ) : tab === "appearance" ? (
-          <Group footnote="System follows the macOS appearance setting.">
-            <Row label="Appearance">
+          <Group
+            footnote="System follows the macOS appearance setting."
+            footnoteId="note-appearance"
+          >
+            <Row
+              label="Appearance"
+              htmlFor="pref-appearance"
+            >
               <Select
                 items={APPEARANCES}
                 value={prefs.appearance}
@@ -231,7 +295,11 @@ export function Settings(): React.JSX.Element {
               >
                 {/* The size variant sets its own height, so the override has to
                     match that variant to win. */}
-                <SelectTrigger className="w-32 rounded-sm py-0 pr-1.5 text-[13px] data-[size=default]:h-6 [&>svg]:hidden">
+                <SelectTrigger
+                  id="pref-appearance"
+                  aria-describedby="note-appearance"
+                  className="w-32 rounded-sm py-0 pr-1.5 text-[13px] data-[size=default]:h-6 [&>svg]:hidden"
+                >
                   <SelectValue />
                   <span className="text-muted-foreground flex">
                     <ChevronsUpDown
@@ -262,17 +330,30 @@ export function Settings(): React.JSX.Element {
             </Row>
           </Group>
         ) : tab === "transfers" ? (
-          <Group footnote="Seeds the parallel transfer channels field when you connect to a server.">
-            <Row label="Default concurrency">
+          <Group
+            footnote="Seeds the parallel transfer channels field when you connect to a server."
+            footnoteId="note-concurrency"
+          >
+            <Row
+              label="Default concurrency"
+              htmlFor="pref-concurrency"
+            >
               <div className="flex items-center gap-1.5">
                 <Input
+                  id="pref-concurrency"
                   inputMode="numeric"
+                  role="spinbutton"
+                  aria-describedby="note-concurrency"
+                  aria-valuemin={MIN_CONCURRENCY}
+                  aria-valuemax={MAX_CONCURRENCY}
+                  aria-valuenow={prefs.defaultConcurrency}
                   className="h-6 w-12 rounded-sm px-2 text-center text-[13px] tabular-nums"
                   value={concurrencyText}
                   onChange={(e) => onConcurrencyChange(e.target.value)}
                   onBlur={() => setConcurrencyText(String(prefs.defaultConcurrency))}
                 />
                 <Stepper
+                  subject="default concurrency"
                   onStep={stepConcurrency}
                   canDecrement={prefs.defaultConcurrency > MIN_CONCURRENCY}
                   canIncrement={prefs.defaultConcurrency < MAX_CONCURRENCY}
