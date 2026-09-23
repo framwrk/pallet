@@ -178,7 +178,7 @@ try {
   docker(
     "exec",
     "-e",
-    "PALLET_TEST_NETWORK=poor",
+    "PALLET_TEST_NETWORK=weak",
     ...["DOWNLOAD_KBIT", "UPLOAD_KBIT", "DELAY_MS", "JITTER_MS", "LOSS_PERCENT"].flatMap((name) => [
       "-e",
       `PALLET_TEST_${name}=`,
@@ -190,7 +190,7 @@ try {
   assert.equal(shaping("pallet-up").options.rate.rate, 62_500);
   assert.equal(shaping("eth0").options.delay.delay, 0.15);
   assert(Math.abs(shaping("pallet-up").options["loss-random"].loss - 0.02) < 0.0001);
-  console.log("✓ Poor profile applies slower rates, higher delay, and packet loss");
+  console.log("✓ weak profile applies slower rates, higher delay, and packet loss");
 
   // tc reports bytes/second; netem rounds delay to the kernel's psched tick, so assert a
   // ceiling instead of exact equality like the slower profiles above.

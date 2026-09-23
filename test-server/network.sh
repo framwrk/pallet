@@ -25,12 +25,12 @@ fi
 
 case "$profile" in
   realistic) download=10000; upload=2000; delay=40; jitter=10; loss=0.1 ;;
-  poor) download=1500; upload=500; delay=150; jitter=50; loss=2 ;;
+  weak) download=1500; upload=500; delay=150; jitter=50; loss=2 ;;
   optimal) download=100000; upload=50000; delay=10; jitter=2; loss=0 ;;
   performant) download=1000000; upload=1000000; delay=1; jitter=0; loss=0 ;;
   offline) download=10000; upload=2000; delay=0; jitter=0; loss=100 ;;
   off) ;;
-  *) fail "Unknown profile '$profile'. Use realistic, poor, optimal, performant, offline, or off." ;;
+  *) fail "Unknown profile '$profile'. Use realistic, weak, optimal, performant, offline, or off." ;;
 esac
 
 if [ "$profile" != off ]; then

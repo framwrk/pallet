@@ -123,12 +123,12 @@ passive data connections. Choose a profile when starting or recreating them:
 | `performant`          | 1000 Mbit/s  | 1000 Mbit/s  | 1 ms                        | 0%                          |
 | `optimal`             | 100 Mbit/s   | 50 Mbit/s    | 10 ms ± 2 ms                | 0%                          |
 | `realistic` (default) | 10 Mbit/s    | 2 Mbit/s     | 40 ms ± 10 ms               | 0.1%                        |
-| `poor`                | 1.5 Mbit/s   | 0.5 Mbit/s   | 150 ms ± 50 ms              | 2%                          |
+| `weak`                | 1.5 Mbit/s   | 0.5 Mbit/s   | 150 ms ± 50 ms              | 2%                          |
 | `offline`             | n/a          | n/a          | n/a                         | 100%                        |
 | `off`                 | Unrestricted | Unrestricted | None                        | None                        |
 
 These are synthetic test presets, not measurements of a particular network. The default adds roughly
-80 ms of round-trip latency before queuing and retransmissions; `poor` adds roughly 300 ms, while
+80 ms of round-trip latency before queuing and retransmissions; `weak` adds roughly 300 ms, while
 `optimal` and `performant` add roughly 20 ms and 2 ms for high-throughput and low-latency checks.
 `performant` still shapes traffic, so it exercises throttling at gigabit rates; only `off` removes
 shaping entirely. Bandwidth is shared by all connections **per server**, not allocated separately to
@@ -136,7 +136,7 @@ every transfer. Packet loss is random, so repeated runs can behave differently. 
 some loss, so runs on these profiles can still succeed.
 
 ```bash
-PALLET_TEST_NETWORK=poor bun run server
+PALLET_TEST_NETWORK=weak bun run server
 PALLET_TEST_NETWORK=off bun run server
 ```
 

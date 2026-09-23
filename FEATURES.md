@@ -466,7 +466,7 @@ Deliberate omissions in the beta, not bugs:
 - **Resume across app restarts or FTP and FTPS checkpoints**: checkpoint resume covers only large
   local and SFTP files within a running job.
 - **Undo for transfers or deletes**: undo covers local rename and move only.
-- **Search**: a good remote search needs server-side `find` with cancellation; a poor one is worse
+- **Search**: a good remote search needs server-side `find` with cancellation; a weak one is worse
   than none.
 - **Directory tree sidebar, grid and column views, tabs, Finder tags**
 - **S3 and SMB**: additional remote-storage protocols are not in this release.
