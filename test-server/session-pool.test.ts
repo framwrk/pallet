@@ -1,4 +1,4 @@
-import { PassThrough, Readable, Writable } from "node:stream";
+import { PassThrough, Readable } from "node:stream";
 import { EventEmitter } from "node:events";
 import type { SFTPWrapper } from "ssh2";
 import { SessionManager } from "../src/main/services/sftp/session-manager";
@@ -152,20 +152,17 @@ test("SFTP replacement never unlinks the original when atomic rename fails", asy
 
 test("SFTP upload waits for CLOSE and propagates a late server error", async () => {
   let broken = false;
-  const inner = new Writable({
-    autoDestroy: false,
-    write(_chunk, _encoding, callback) {
-      callback();
-    },
-    final(callback) {
-      callback();
-      setTimeout(() => inner.destroy(new Error("Disk quota exceeded on CLOSE")), 10);
-    },
-  });
   const manager = {
     protocol: () => "sftp",
     acquireTransferChannel: async () => ({
-      sftp: { createWriteStream: () => inner },
+      sftp: {
+        open: (_p: string, _flags: string, _mode: number, callback: (err: Error | null, handle: Buffer) => void) =>
+          callback(null, Buffer.from("handle")),
+        write: (_h: Buffer, _b: Buffer, _o: number, _l: number, _pos: number, callback: (err: Error | null) => void) =>
+          callback(null),
+        close: (_h: Buffer, callback: (err: Error | null) => void) =>
+          setTimeout(() => callback(new Error("Disk quota exceeded on CLOSE")), 10),
+      },
       release: (failed = false) => {
         broken ||= failed;
       },

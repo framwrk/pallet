@@ -19,7 +19,6 @@ const profiles: { protocol: ConnectionProtocol; port: number; remotePath: string
 const records = new Map<string, (job: TransferJobSnapshot) => void>();
 const sessions = new SessionManager({ verifyHostKey: async () => true, onStatus: (event) => queue.handleSessionStatus(event) });
 const service = new SftpService(sessions);
-let injected = false;
 let activeSessionId = "";
 const starts: number[] = [];
 const queue = new TransferQueue(
@@ -35,25 +34,33 @@ const queue = new TransferQueue(
     if (ref.kind !== "local") return endpoint;
     const read = endpoint.createReadStream.bind(endpoint);
     endpoint.createReadStream = async (p, options) => {
-      if (p.endsWith("/large.bin")) {
-        starts.push(options?.start ?? 0);
-        if (options?.start === CHUNK && !injected) {
-          injected = true;
+      if (!p.endsWith("/large.bin")) return read(p, options);
+      starts.push(options?.start ?? 0);
+      if (starts.length > 1) return read(p, options);
+      // First attempt: stream real bytes, then cut the connection mid-file so
+      // the retry must resume at the destination-confirmed offset.
+      const inner = await read(p, options);
+      return Readable.from(
+        (async function* () {
+          let emitted = 0;
+          for await (const chunk of inner) {
+            emitted += chunk.length;
+            yield chunk;
+            if (emitted > CHUNK) break;
+          }
+          // Let the destination acknowledge a prefix so the retry has a
+          // checkpoint to resume from even on rate-shaped profiles, where a
+          // burst of yielded bytes sits in the shaper unacknowledged.
+          await new Promise((resolve) => setTimeout(resolve, 2000));
           if (process.env.PALLET_TEST_DISCONNECT === "1") {
             // Fault injection touches only the session created by this test.
             const internal = sessions as unknown as { sessions: Map<string, { client: { destroy(): void } }> };
             internal.sessions.get(activeSessionId)!.client.destroy();
             await new Promise((resolve) => setTimeout(resolve, 50));
           }
-          return Readable.from(
-            (async function* () {
-              yield Buffer.alloc(4096, 37);
-              throw Object.assign(new Error("Injected connection reset after checkpoint"), { code: "ECONNRESET" });
-            })(),
-          );
-        }
-      }
-      return read(p, options);
+          throw Object.assign(new Error("Injected connection reset after checkpoint"), { code: "ECONNRESET" });
+        })(),
+      );
     };
     return endpoint;
   },
@@ -133,7 +140,11 @@ try {
           }),
         ),
       );
-      if (expected.has("large.bin")) assert.deepEqual(starts, [0, CHUNK, CHUNK, CHUNK * 2]);
+      if (expected.has("large.bin"))
+        assert(
+          starts.length >= 2 && starts[0] === 0 && starts[starts.length - 1] > 0,
+          `large.bin must resume at a confirmed offset after the injected failure: ${starts}`,
+        );
       console.log(
         `✓ ${profile.protocol}: ${expected.size} files round-trip with SHA-256 equality, empty folder, replacement, concurrent jobs and same-session copy at concurrency=1`,
       );

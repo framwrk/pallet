@@ -289,9 +289,10 @@ A job paused by a dropped connection shows **"Paused — connection lost"** and 
 You can't manually resume that one; it's waiting on the network, not on you.
 
 **If a transfer is interrupted,** local and SFTP transfers of at least 16 MiB resume from the last
-confirmed 8 MiB checkpoint during the same job. Only the interrupted chunk is repeated. Small
-files and transfers involving FTP/FTPS restart the affected file. Completed files remain completed
-when pausing or recovering automatically. The Retry button starts a new attempt and checks conflicts again.
+destination-confirmed byte during the same job. Only bytes beyond that checkpoint are repeated.
+Small files and transfers involving FTP/FTPS restart the affected file. Completed files remain
+completed when pausing or recovering automatically. The Retry button starts a new attempt and
+checks conflicts again.
 
 **If a transfer stalls** — no bytes at all for 60 seconds — Pallet abandons that channel and retries
 with a fresh one. Transient stream and metadata failures receive up to five retries with backoff;

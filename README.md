@@ -29,8 +29,9 @@ across. That's the whole loop.
   so progress bars show real totals. Files are written to staged temp files, verified, and renamed
   into place; an existing destination is never damaged by a failed transfer.
 - **Self-healing connections:** a dropped Wi-Fi or sleeping laptop pauses the queue and resumes on
-  its own with backoff. Large SFTP transfers checkpoint every 8 MiB and resume from the last
-  confirmed chunk. Stalled channels are abandoned and retried on fresh ones.
+  its own with backoff. Large SFTP transfers keep a deep request pipeline in flight (so throughput
+  is not one round trip per chunk) and resume from the last destination-confirmed byte. Stalled
+  channels are abandoned and retried on fresh ones.
 - **Keyboard-first:** F5/F6 to copy/move across panes, ⌘K to connect, Return to rename, ⌘⌫ to
   Trash, ⌘⇧. for hidden files. The full map is in [FEATURES.md](FEATURES.md).
 - **Favorites with real secrets hygiene:** connections saved in SQLite on your machine;
@@ -216,9 +217,15 @@ force a real SSH disconnect in the SFTP test and check automatic recovery.
 Use `PALLET_TEST_PROTOCOL=sftp` (or `ftp` / `ftps`) to select a protocol,
 `PALLET_TEST_FILE_COUNT=2100` for a larger batch, and `PALLET_TEST_TRANSFER_TIMEOUT_MS=900000` when
 deliberately using a slow network profile. The SFTP test includes a file larger than 16 MiB and an
-injected interruption after the first checkpoint. Use `PALLET_TEST_LARGE_FILE=0` for a small smoke
-test on a deliberately slow link. Test artifacts use unique temporary directories and are removed
-when the test exits normally.
+injected interruption partway through it, then checks that the queue resumes at a confirmed offset.
+Use `PALLET_TEST_LARGE_FILE=0` for a small smoke test on a deliberately slow link. Test artifacts
+use unique temporary directories and are removed when the test exits normally.
+
+`bun run bench:transfers` measures upload/download throughput for one large file and a batch of
+small files, comparing the queue with the OpenSSH `sftp` client against the same server (it uses
+`expect` to supply the password). Size it with `BENCH_SIZE_MB`, `BENCH_MANY_COUNT`, and
+`BENCH_MANY_KB`; combine it with the container's `PALLET_TEST_NETWORK` profiles to see how each
+side behaves under latency.
 
 ## Contributing
 

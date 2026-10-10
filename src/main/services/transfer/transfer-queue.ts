@@ -2,6 +2,12 @@
  * TransferQueue: bounded folder transfers, unique staging files verified before
  * replacement, checkpointed local/SFTP copies, and pause/cancel/retry recovery.
  *
+ * Large files stream through a single read/write pair per attempt. SFTP
+ * streams pipeline requests, so throughput is not one round trip per chunk,
+ * and checkpoints advance from destination-confirmed offsets instead of
+ * re-opening the file every 8 MiB. A failure resumes from the last confirmed
+ * offset (see the endpoint's confirmedBytes).
+ *
  * Electron-free so the Docker integration tests can drive it directly.
  */
 import type {
@@ -12,9 +18,15 @@ import type {
   TransferRequest,
   TransferState,
 } from "@shared/transfer/transfer.types";
-import { type EndpointStat, type TransferEndpoint, joinPath, makeEndpoint } from "./transfer-endpoint";
+import {
+  type EndpointStat,
+  type TransferEndpoint,
+  type TransferWriteStream,
+  joinPath,
+  makeEndpoint,
+} from "./transfer-endpoint";
 import { PART_SUFFIX, TERMINAL_TRANSFER_STATES } from "@shared/transfer/transfer.constants";
-import { type Readable, Transform, type Writable } from "stream";
+import { type Readable, Transform } from "stream";
 import type { SessionManager } from "../sftp/session-manager";
 import type { SessionStatusEvent } from "@shared/sftp/sftp.types";
 import { keepBothName } from "@shared/transfer/transfer.utils";
@@ -39,7 +51,7 @@ const MAX_CHANNEL_RETRIES = 5;
  * counters — the bar tracks bytes actually transferred, not chunk bursts.
  */
 const PROGRESS_TICK_MS = 100;
-const CHUNK_SIZE = 8 * 1024 * 1024;
+/** Files at least this large are streamed with resume checkpoints. */
 const CHUNK_THRESHOLD = 16 * 1024 * 1024;
 
 interface PlanFile {
@@ -62,7 +74,7 @@ interface Conflict {
 interface InFlight {
   relPath: string;
   src: Readable | null;
-  dst: Writable | null;
+  dst: TransferWriteStream | null;
   partPath: string | null;
   /** Force-fails the transfer promise; stream destroy alone can hang on a dead channel. */
   abort: ((err: Error) => void) | null;
@@ -494,9 +506,35 @@ export class TransferQueue {
       }, STALL_TIMEOUT_MS);
     };
     const checkpointed = !!(job.from.supportsRanges && job.to.supportsRanges && file.size >= CHUNK_THRESHOLD);
-    let credited = 0;
-    let committing = false;
     const sourcePath = joinPath(job.request.sourceBase, file.relPath);
+    /**
+     * Bytes credited to job.doneBytes for this file that the destination has
+     * not confirmed. Destination streams report their confirmed offset (SFTP
+     * write acks, fs.WriteStream.bytesWritten) while an attempt runs; a failed
+     * attempt rolls the unconfirmed portion back so the retry resumes from the
+     * last byte the destination actually applied.
+     */
+    let uncredited = 0;
+    const credit = (bytes: number): void => {
+      if (bytes <= 0) return;
+      job.doneBytes += bytes;
+      uncredited += bytes;
+    };
+    const confirm = (offset: number): void => {
+      if (offset <= file.checkpoint) return;
+      uncredited = Math.max(0, uncredited - (offset - file.checkpoint));
+      file.checkpoint = offset;
+    };
+    const rollback = (): void => {
+      if (uncredited > 0) job.doneBytes -= uncredited;
+      uncredited = 0;
+    };
+    const discard = (): void => {
+      rollback();
+      job.doneBytes -= file.checkpoint;
+      file.checkpoint = 0;
+    };
+    let committing = false;
     const checkSource = async (): Promise<void> => {
       const current = job.from.fileVersion ? await job.from.fileVersion(sourcePath) : await job.from.statOrNull(sourcePath);
       // FTP LIST can omit timestamps or round to the minute. Capture MDTM
@@ -518,82 +556,82 @@ export class TransferQueue {
       await checkSource();
       if (file.checkpoint > 0) {
         const part = await job.to.statOrNull(partPath);
+        // Never resume from the part file's size: a killed stream can leave
+        // holes below its end (queued writes dropped at CLOSE), so only the
+        // destination-acknowledged frontier is a safe resume point.
         if (!part || part.isDir || part.isSymlink || part.size < file.checkpoint || part.size > file.size) {
-          job.doneBytes -= file.checkpoint;
-          file.checkpoint = 0;
+          discard();
         }
       }
-      let offset = file.checkpoint;
-      // Empty files still need a real, successfully closed destination stream.
-      let empty = file.size === 0;
-      while (offset < file.size || empty) {
-        empty = false;
-        controller.signal.throwIfAborted();
-        const end = checkpointed ? Math.min(file.size, offset + CHUNK_SIZE) : file.size;
-        armStall();
-        const src = await Promise.race([
-          job.from
-            .createReadStream(sourcePath, {
-              ...(checkpointed ? { start: offset, end: end - 1 } : {}),
-              signal: controller.signal,
-            })
-            .then((stream) => {
-              stream.on("error", () => {});
-              if (controller.signal.aborted) stream.destroy();
-              return stream;
-            }),
-          aborted,
-        ]);
-        flight.src = src;
-        const dst = await Promise.race([
-          job.to
-            .createWriteStream(partPath, file.mode, {
-              start: offset,
-              signal: controller.signal,
-            })
-            .then((stream) => {
-              stream.on("error", () => {});
-              if (controller.signal.aborted) stream.destroy();
-              return stream;
-            }),
-          aborted,
-        ]);
-        flight.dst = dst;
-        let bytes = 0;
-        const counter = new Transform({
-          transform: (chunk: Buffer, _enc, cb) => {
-            armStall();
-            bytes += chunk.length;
-            if (bytes > end - offset) {
-              cb(new Error(`Source grew during transfer: ${file.relPath}`));
-              return;
-            }
-            credited += chunk.length;
-            job.doneBytes += chunk.length;
-            job.samples.push({ t: Date.now(), bytes: job.doneBytes });
-            if (job.samples.length > 200) job.samples.splice(0, 100);
-            this.emit(job);
-            cb(null, chunk);
-          },
-        });
-        await Promise.race([pipeline(src, counter, dst), aborted]);
-        clearTimeout(timer);
-        controller.signal.throwIfAborted();
-        if (bytes !== end - offset) throw new Error(`Source ended early: ${file.relPath}`);
-        // Checkpoint only bytes acknowledged by the destination and reflected in its size.
-        if (checkpointed) {
-          const part = await job.to.statOrNull(partPath);
-          if (!part || part.size !== end) throw new Error(`Size mismatch in staged file: ${file.relPath}`);
-          file.checkpoint = end;
-          credited = 0;
-        }
-        offset = end;
-        flight.src = null;
-        flight.dst = null;
-      }
+      // One read/write pair per attempt. The SFTP streams pipeline requests
+      // internally and the checkpoint advances from destination confirmations,
+      // so there is no stop-and-go at arbitrary chunk boundaries.
+      const offset = file.checkpoint;
+      controller.signal.throwIfAborted();
+      armStall();
+      const src = await Promise.race([
+        job.from
+          .createReadStream(sourcePath, {
+            ...(checkpointed ? { start: offset, end: file.size - 1 } : {}),
+            signal: controller.signal,
+          })
+          .then((stream) => {
+            stream.on("error", () => {});
+            if (controller.signal.aborted) stream.destroy();
+            return stream;
+          }),
+        aborted,
+      ]);
+      flight.src = src;
+      const dst = await Promise.race([
+        job.to.createWriteStream(partPath, file.mode, { start: offset, signal: controller.signal }).then((stream) => {
+          stream.on("error", () => {});
+          if (controller.signal.aborted) stream.destroy();
+          return stream;
+        }),
+        aborted,
+      ]);
+      flight.dst = dst;
+      let bytes = 0;
+      const counter = new Transform({
+        transform: (chunk: Buffer, _enc, cb) => {
+          armStall();
+          if (bytes + chunk.length > file.size - offset) {
+            cb(new Error(`Source grew during transfer: ${file.relPath}`));
+            return;
+          }
+          bytes += chunk.length;
+          credit(chunk.length);
+          if (checkpointed) confirm(dst.confirmedBytes?.() ?? offset);
+          job.samples.push({ t: Date.now(), bytes: job.doneBytes });
+          if (job.samples.length > 200) job.samples.splice(0, 100);
+          this.emit(job);
+          cb(null, chunk);
+        },
+      });
+      await Promise.race([pipeline(src, counter, dst), aborted]);
+      clearTimeout(timer);
+      controller.signal.throwIfAborted();
+      if (bytes !== file.size - offset) throw new Error(`Source ended early: ${file.relPath}`);
+      // The pipeline only finishes after every write and the final CLOSE were
+      // acknowledged, so the whole file is confirmed now. Files below the
+      // checkpoint threshold keep no resume offset: their retries start over.
+      if (checkpointed) confirm(file.size);
+      flight.src = null;
+      flight.dst = null;
 
       await checkSource();
-      const writtenSize = job.to.fileSize ? await job.to.fileSize(partPath) : (await job.to.statOrNull(partPath))?.size;
+      // A stream that confirmed the whole file needs no extra stat: SFTP write
+      // acks, fs write callbacks, and ftp's 226 are the same contract the
+      // resume checkpoints trust. Endpoints that cannot report stay verified
+      // by stat/SIZE.
+      const confirmedSize = dst.confirmedBytes?.();
+      const writtenSize =
+        confirmedSize === file.size
+          ? file.size
+          : job.to.fileSize
+            ? await job.to.fileSize(partPath)
+            : (await job.to.statOrNull(partPath))?.size;
       if (writtenSize !== file.size) {
         throw new Error(`Size mismatch in staged file: ${file.relPath}`);
       }
@@ -611,8 +649,12 @@ export class TransferQueue {
       controller.abort();
       flight.src?.destroy();
       flight.dst?.destroy();
-      // Roll back only this attempt's bytes; other workers keep their progress.
-      job.doneBytes -= credited;
+      // Writes acknowledged after the last progress poll still count: take the
+      // final destination frontier before rolling unconfirmed bytes back.
+      if (checkpointed) confirm(flight.dst?.confirmedBytes?.() ?? file.checkpoint);
+      // Roll back only this attempt's unconfirmed bytes; other workers keep
+      // theirs, and a resume starts at the last confirmed offset.
+      rollback();
       job.samples = [];
       let retry = false;
       if (!job.canceled && !committing) {
@@ -631,8 +673,7 @@ export class TransferQueue {
       }
       if (retry && !job.canceled) job.queue.unshift(file);
       else {
-        job.doneBytes -= file.checkpoint;
-        file.checkpoint = 0;
+        discard();
         if (!job.canceled)
           job.errors.push({
             relPath: file.relPath,
