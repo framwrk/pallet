@@ -164,22 +164,28 @@ test("verification failure preserves existing destination and unrelated staging 
   }
 });
 
-test("large-file retry resumes at last acknowledged chunk, and keep-both name is stable", async () => {
+test("large-file retry resumes at the last acknowledged offset, and keep-both name is stable", async () => {
   const f = await fixture();
   try {
     const payload = randomBytes(CHUNK * 2 + 17003);
     await fs.writeFile(`${f.source}/large`, payload);
     await fs.writeFile(`${f.dest}/large`, "original");
     const starts: number[] = [];
-    let failed = false;
     const source = wrap(f.local, {
       createReadStream: async (p, options) => {
         starts.push(options?.start ?? 0);
-        if (options?.start === CHUNK && !failed) {
-          failed = true;
+        if (starts.length === 1) {
+          // Fail after enough real data has flowed for the destination to have
+          // confirmed part of it, so the retry must resume at that offset.
+          const inner = await f.local.createReadStream(p, options);
           return Readable.from(
             (async function* () {
-              yield payload.subarray(CHUNK, CHUNK + 4096);
+              let emitted = 0;
+              for await (const chunk of inner) {
+                emitted += chunk.length;
+                yield chunk;
+                if (emitted > CHUNK) break;
+              }
               throw Object.assign(new Error("Connection reset"), { code: "ECONNRESET" });
             })(),
           );
@@ -189,11 +195,38 @@ test("large-file retry resumes at last acknowledged chunk, and keep-both name is
     });
     const result = await harness(source, f.local, "keepBoth").run(f.source, f.dest, ["large"]);
     assert.equal(result.state, "completed", JSON.stringify(result.errors));
-    assert.deepEqual(starts, [0, CHUNK, CHUNK, CHUNK * 2]);
+    assert.equal(starts.length, 2);
+    assert.equal(starts[0], 0);
+    assert(starts[1] > 0 && starts[1] <= CHUNK + 256 * 1024, "retry must resume at the confirmed offset");
     assert.equal(result.doneBytes, payload.length);
     assert.deepEqual(await fs.readFile(`${f.dest}/large (2)`), payload);
     assert.equal(await fs.readFile(`${f.dest}/large`, "utf8"), "original");
     assert.deepEqual((await fs.readdir(f.dest)).sort(), ["large", "large (2)"]);
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test("a channel error during commit retries the whole small file", async () => {
+  const f = await fixture();
+  try {
+    const payload = Buffer.alloc(8192, 9);
+    await fs.writeFile(`${f.source}/a`, payload);
+    let calls = 0;
+    const dest = wrap(f.local, {
+      setMeta: async (p, meta) => {
+        if (++calls === 1) throw Object.assign(new Error("Connection reset"), { code: "ECONNRESET" });
+        return f.local.setMeta(p, meta);
+      },
+    });
+    const result = await harness(f.local, dest).run(f.source, f.dest, ["a"]);
+    assert.equal(result.state, "completed", JSON.stringify(result.errors));
+    assert.equal(calls, 2);
+    assert.deepEqual(await fs.readFile(`${f.dest}/a`), payload);
+    assert.deepEqual(
+      (await fs.readdir(f.dest)).filter((name) => name.endsWith(".pallet-part")),
+      [],
+    );
   } finally {
     await f.cleanup();
   }
@@ -298,7 +331,7 @@ test("jobs sharing a session run within one connection budget", async () => {
   }
 });
 
-test("pause during chunk two resumes from checkpoint without a second keep-both name", async () => {
+test("pause mid-file resumes from the confirmed offset without a second keep-both name", async () => {
   const f = await fixture();
   try {
     const payload = Buffer.alloc(CHUNK * 2 + 99, 27);
@@ -308,35 +341,63 @@ test("pause during chunk two resumes from checkpoint without a second keep-both 
     const source = wrap(f.local, {
       createReadStream: async (p, options) => {
         starts.push(options?.start ?? 0);
-        if (options?.start === CHUNK && !paused) {
-          paused = true;
-          const id = h.queue.snapshots()[0].id;
-          h.queue.pause(id);
-          setTimeout(() => h.queue.resume(id), 20);
-        }
-        return f.local.createReadStream(p, options);
+        const read = await f.local.createReadStream(p, options);
+        if (starts.length > 1 || paused) return read;
+        paused = true;
+        return Readable.from(
+          (async function* () {
+            let emitted = 0;
+            for await (const chunk of read) {
+              emitted += chunk.length;
+              yield chunk;
+              if (emitted > CHUNK) {
+                const id = h.queue.snapshots()[0].id;
+                h.queue.pause(id);
+                setTimeout(() => h.queue.resume(id), 20);
+                break;
+              }
+            }
+          })(),
+        );
       },
     });
     const h = harness(source, f.local);
     const result = await h.run(f.source, f.dest, ["a"]);
     assert.equal(result.state, "completed", JSON.stringify(result.errors));
     assert.equal(result.doneBytes, payload.length);
-    assert.deepEqual(starts, [0, CHUNK, CHUNK, CHUNK * 2]);
+    assert.equal(starts[0], 0);
+    assert(starts.length >= 2 && starts[1] > 0, "resume starts at the confirmed offset");
+    assert.deepEqual(await fs.readdir(f.dest), ["a"], "a paused retry must not allocate a keep-both name");
     assert.deepEqual(await fs.readFile(`${f.dest}/a`), payload);
   } finally {
     await f.cleanup();
   }
 });
 
-test("cancel after checkpoint cleans staging and leaves old destination intact", async () => {
+test("cancel mid-file cleans staging and leaves old destination intact", async () => {
   const f = await fixture();
   try {
     await fs.writeFile(`${f.source}/a`, Buffer.alloc(CHUNK * 2, 27));
     await fs.writeFile(`${f.dest}/a`, "original");
+    let canceled = false;
     const source = wrap(f.local, {
       createReadStream: async (p, options) => {
-        if (options?.start === CHUNK) h.queue.cancel(h.queue.snapshots()[0].id);
-        return f.local.createReadStream(p, options);
+        const read = await f.local.createReadStream(p, options);
+        if (canceled) return read;
+        canceled = true;
+        return Readable.from(
+          (async function* () {
+            let emitted = 0;
+            for await (const chunk of read) {
+              emitted += chunk.length;
+              yield chunk;
+              if (emitted >= CHUNK) {
+                h.queue.cancel(h.queue.snapshots()[0].id);
+                break;
+              }
+            }
+          })(),
+        );
       },
     });
     const h = harness(source, f.local);

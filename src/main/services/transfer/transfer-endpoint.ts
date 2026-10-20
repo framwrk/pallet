@@ -7,6 +7,7 @@
  */
 import { type FileInfo, FileType, type Client as FtpClient } from "basic-ftp";
 import { PassThrough, type Readable, Writable } from "stream";
+import { createPipelinedReadStream, createPipelinedWriteStream } from "../sftp/pipelined-streams";
 import { createReadStream, createWriteStream, promises as fs } from "fs";
 import { isDirMode, isSymlinkMode } from "../../utils/file-mode";
 import type { SFTPWrapper } from "ssh2";
@@ -31,6 +32,12 @@ export interface WriteOptions {
   signal?: AbortSignal;
 }
 
+/** Writable whose destination can report how many bytes it has confirmed. */
+export interface TransferWriteStream extends Writable {
+  /** Highest contiguous destination-confirmed byte offset, when known. */
+  confirmedBytes?(): number;
+}
+
 export interface TransferEndpoint {
   /** Supports bounded reads and writing at a confirmed checkpoint. */
   supportsRanges?: boolean;
@@ -43,7 +50,7 @@ export interface TransferEndpoint {
   listEntries(dir: string): Promise<{ name: string; stat: EndpointStat }[]>;
   mkdirp(p: string): Promise<void>;
   createReadStream(p: string, options?: ReadOptions): Promise<Readable>;
-  createWriteStream(p: string, mode?: number, options?: WriteOptions): Promise<Writable>;
+  createWriteStream(p: string, mode?: number, options?: WriteOptions): Promise<TransferWriteStream>;
   setMeta(p: string, meta: { mtimeMs: number; mode?: number }): Promise<void>;
   /** Rename, replacing an existing destination. */
   renameReplacing(from: string, to: string): Promise<void>;
@@ -107,9 +114,13 @@ class LocalEndpoint implements TransferEndpoint {
     return createReadStream(p, { ...options, highWaterMark: 256 * 1024 });
   }
 
-  async createWriteStream(p: string, _mode?: number, options: WriteOptions = {}): Promise<Writable> {
+  async createWriteStream(p: string, _mode?: number, options: WriteOptions = {}): Promise<TransferWriteStream> {
     options.signal?.throwIfAborted();
-    return createWriteStream(p, { ...options, flags: options.start ? "r+" : "w", mode: 0o600 });
+    const start = options.start ?? 0;
+    const stream = createWriteStream(p, { ...options, flags: start > 0 ? "r+" : "w", mode: 0o600 });
+    // fs.WriteStream.bytesWritten counts bytes the OS accepted; polling it gives
+    // the queue a destination-confirmed checkpoint without an extra stat.
+    return Object.assign(stream, { confirmedBytes: () => start + stream.bytesWritten });
   }
 
   async setMeta(p: string, meta: { mtimeMs: number; mode?: number }): Promise<void> {
@@ -132,11 +143,6 @@ class LocalEndpoint implements TransferEndpoint {
 }
 
 // --- sftp -------------------------------------------------------------------
-
-interface Lease {
-  sftp: SFTPWrapper;
-  release: (broken?: boolean) => void;
-}
 
 const META_TIMEOUT_MS = 20_000;
 
@@ -261,16 +267,25 @@ class SftpEndpoint implements TransferEndpoint {
   }
 
   async createReadStream(p: string, options: ReadOptions = {}): Promise<Readable> {
+    options.signal?.throwIfAborted();
     const lease = await this.sessions.acquireTransferChannel(this.sessionId);
     try {
-      options.signal?.throwIfAborted();
-      const stream = lease.sftp.createReadStream(p, {
-        start: options.start,
-        end: options.end,
-        autoClose: true,
-        highWaterMark: 256 * 1024,
-      });
-      hookRelease(stream, lease, options.signal);
+      const stream = await createPipelinedReadStream(lease.sftp, p, { start: options.start, end: options.end });
+      let released = false;
+      const finish = (broken: boolean): void => {
+        if (released) return;
+        released = true;
+        options.signal?.removeEventListener("abort", abort);
+        lease.release(broken);
+      };
+      const abort = (): void => {
+        finish(true);
+        stream.destroy(new Error("Transfer interrupted"));
+      };
+      stream.once("close", () => finish(!stream.completed));
+      stream.once("error", () => finish(true));
+      options.signal?.addEventListener("abort", abort, { once: true });
+      if (options.signal?.aborted) abort();
       return stream;
     } catch (err) {
       lease.release(true);
@@ -278,50 +293,28 @@ class SftpEndpoint implements TransferEndpoint {
     }
   }
 
-  async createWriteStream(p: string, _mode?: number, options: WriteOptions = {}): Promise<Writable> {
+  async createWriteStream(p: string, mode?: number, options: WriteOptions = {}): Promise<TransferWriteStream> {
+    options.signal?.throwIfAborted();
     const lease = await this.sessions.acquireTransferChannel(this.sessionId);
     try {
-      options.signal?.throwIfAborted();
-      const stream = lease.sftp.createWriteStream(p, {
-        flags: options.start ? "r+" : "w",
-        start: options.start,
-        mode: 0o600,
-      });
-      hookRelease(stream, lease, options.signal);
-      // ssh2 emits finish before its asynchronous CLOSE reply. The outer
-      // writable must not finish until CLOSE succeeds (some servers report
-      // quota/disk failures there rather than on WRITE).
-      let closed = false;
-      const closing = new Promise<void>((resolve, reject) => {
-        stream.once("close", () => {
-          closed = true;
-          resolve();
-        });
-        stream.once("error", reject);
-      });
-      void closing.catch(() => {});
-      const output = new Writable({
-        write(chunk, encoding, callback) {
-          stream.write(chunk, encoding, callback);
-        },
-        final(callback) {
-          stream.end();
-          closing.then(
-            () => callback(),
-            (err) => callback(err as Error),
-          );
-        },
-        destroy(err, callback) {
-          if (!closed) {
-            lease.release(true);
-            stream.destroy();
-          }
-          callback(err);
-        },
-      });
-      output.on("error", () => {});
-      stream.on("error", (err) => output.destroy(err));
-      return output;
+      const stream = await createPipelinedWriteStream(lease.sftp, p, mode, { start: options.start });
+      let released = false;
+      const finish = (broken: boolean): void => {
+        if (released) return;
+        released = true;
+        options.signal?.removeEventListener("abort", abort);
+        lease.release(broken);
+      };
+      const abort = (): void => {
+        finish(true);
+        stream.destroy(new Error("Transfer interrupted"));
+      };
+      // The write only counts once CLOSE is acknowledged (late quota/disk errors).
+      stream.once("close", () => finish(!stream.committed));
+      stream.once("error", () => finish(true));
+      options.signal?.addEventListener("abort", abort, { once: true });
+      if (options.signal?.aborted) abort();
+      return stream;
     } catch (err) {
       lease.release(true);
       throw err;
@@ -331,12 +324,15 @@ class SftpEndpoint implements TransferEndpoint {
   setMeta(p: string, meta: { mtimeMs: number; mode?: number }): Promise<void> {
     return this.withMeta(async (sftp) => {
       const t = Math.floor(meta.mtimeMs / 1000);
-      await new Promise<void>((resolve, reject) => sftp.utimes(p, t, t, (err) => (err ? reject(err) : resolve())));
+      const requests: Promise<void>[] = [
+        new Promise<void>((resolve, reject) => sftp.utimes(p, t, t, (err) => (err ? reject(err) : resolve()))),
+      ];
       if (meta.mode != null) {
-        await new Promise<void>((resolve, reject) =>
-          sftp.chmod(p, meta.mode! & 0o7777, (err) => (err ? reject(err) : resolve())),
+        requests.push(
+          new Promise<void>((resolve, reject) => sftp.chmod(p, meta.mode! & 0o7777, (err) => (err ? reject(err) : resolve()))),
         );
       }
+      await Promise.all(requests);
     });
   }
 
@@ -591,27 +587,6 @@ class FtpEndpoint implements TransferEndpoint {
   dispose(): void {
     // Each operation releases its own lease.
   }
-}
-
-/** Release the channel lease when the stream finishes or dies. */
-function hookRelease(stream: Readable | Writable, lease: Lease, signal?: AbortSignal): void {
-  let done = false;
-  const finish = (broken: boolean): void => {
-    if (!done) {
-      done = true;
-      signal?.removeEventListener("abort", abort);
-      lease.release(broken);
-    }
-  };
-  const abort = (): void => {
-    // ssh2 may never emit close on a dead channel; release explicitly on abort.
-    finish(true);
-    stream.destroy(new Error("Transfer interrupted"));
-  };
-  stream.once("close", () => finish(false));
-  stream.on("error", () => finish(true));
-  signal?.addEventListener("abort", abort, { once: true });
-  if (signal?.aborted) abort();
 }
 
 export function makeEndpoint(

@@ -30,9 +30,9 @@ pane.
   bars show actual totals. Files are written to staged temporary files, verified, and renamed into
   place, so a failed transfer leaves the existing destination intact.
 - **Automatic recovery:** a dropped Wi-Fi connection or a sleeping laptop pauses the queue, and
-  Pallet resumes it with backoff after the connection returns. Large SFTP transfers checkpoint every
-  8 MiB and resume from the last confirmed chunk. Pallet abandons stalled channels and retries them
-  on fresh ones.
+  Pallet resumes it with backoff after the connection returns. Large SFTP transfers keep a deep
+  request pipeline in flight — so throughput is not one round trip per chunk — and resume from the
+  last destination-confirmed byte. Pallet abandons stalled channels and retries them on fresh ones.
 - **Keyboard-first:** F5 and F6 to copy or move across panes, ⌘K to connect, Return to rename, ⌘⌫
   to move files to the Trash, and ⌘⇧. for hidden files. The full list, including the known
   limitations, is in [FEATURES.md](FEATURES.md).
@@ -45,6 +45,9 @@ pane.
   inline image and text preview, and full path details.
 - **No telemetry:** no analytics, no crash reporting, and no other outbound requests. The only
   outbound request Pallet makes is a GitHub Releases version check.
+
+See [FEATURES.md](FEATURES.md) for everything Pallet can do, including the complete keyboard
+shortcuts and a candid list of what it doesn't do yet.
 
 ## Installing
 
@@ -217,10 +220,16 @@ force a real SSH disconnect in the SFTP test and check automatic recovery.
 
 Use `PALLET_TEST_PROTOCOL=sftp` (or `ftp` or `ftps`) to select a protocol,
 `PALLET_TEST_FILE_COUNT=2100` for a larger batch, and `PALLET_TEST_TRANSFER_TIMEOUT_MS=900000` when
-you deliberately use a slow network profile. The SFTP test includes a file larger than 16 MiB and an
-injected interruption after the first checkpoint. Use `PALLET_TEST_LARGE_FILE=0` for a small smoke
-test on a deliberately slow link. Test artifacts use unique temporary directories; the tests remove
-them when they exit normally.
+deliberately use a slow network profile. The SFTP test includes a file larger than 16 MiB and an
+injected interruption partway through it, then checks that the queue resumes at a confirmed offset.
+Use `PALLET_TEST_LARGE_FILE=0` for a small smoke test on a deliberately slow link. Test artifacts
+use unique temporary directories; the tests remove them when they exit normally.
+
+`bun run bench:transfers` measures upload/download throughput for one large file and a batch of
+small files, comparing the queue with the OpenSSH `sftp` client against the same server (it uses
+`expect` to supply the password). Size it with `BENCH_SIZE_MB`, `BENCH_MANY_COUNT`, and
+`BENCH_MANY_KB`; combine it with the container's `PALLET_TEST_NETWORK` profiles to see how each
+side behaves under latency.
 
 ## Contributing
 
