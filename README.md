@@ -24,8 +24,9 @@ Pallet pairs a Finder-familiar local pane with a remote pane. The left pane is y
 pane is the server. Press **⌘K** to connect, select a file, and press **F5** to send it to the other
 pane.
 
-- **SFTP, FTP, and explicit FTPS:** password or private-key authentication, per-connection
-  keepalive, concurrency, and compression options, and SSH trust-on-first-use host key verification.
+- **SFTP, FTP, and explicit FTPS:** password or private-key authentication, plus SSH agent
+  authentication for SFTP (including 1Password's agent), per-connection keepalive, concurrency, and
+  compression options, and SSH trust-on-first-use host key verification.
 - **Real transfer totals:** Pallet enumerates every job before the first byte moves, so progress
   bars show actual totals. Files are written to staged temporary files, verified, and renamed into
   place, so a failed transfer leaves the existing destination intact.
@@ -38,7 +39,7 @@ pane.
   limitations, is in [FEATURES.md](FEATURES.md).
 - **Favorites with encrypted secrets:** connections are saved in SQLite on your machine. Pallet
   encrypts passwords and key passphrases through macOS Keychain and stores no secrets in the
-  database.
+  database. SSH agent favorites store neither a key nor a secret.
 - **Built for large directories:** virtualized file lists render 10,000-entry folders without
   loading every row, and optional folder-size calculation walks only the rows on screen.
 - **Inspector:** a permissions matrix with octal and symbolic views (editable on remote files),
@@ -108,6 +109,13 @@ changes, and safe replacement:
 
 ```bash
 bun run test:transfers
+```
+
+SSH agent authentication is covered against a temporary local `ssh-agent`, including missing and
+dead `SSH_AUTH_SOCK` paths and a successful login:
+
+```bash
+bun run test:agent
 ```
 
 ### Local test servers

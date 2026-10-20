@@ -4,7 +4,8 @@
  * This file must stay dependency-free: no Node imports, no Electron imports.
  */
 
-export type AuthSpec = { method: "password"; password: string } | { method: "key"; keyPath: string; passphrase?: string };
+export type AuthSpec =
+  { method: "password"; password: string } | { method: "key"; keyPath: string; passphrase?: string } | { method: "agent" };
 
 /** Remote connection protocol. Missing values from older callers mean SFTP. */
 export type ConnectionProtocol = "sftp" | "ftp" | "ftps";
