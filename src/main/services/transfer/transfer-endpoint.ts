@@ -30,6 +30,8 @@ export interface ReadOptions {
 export interface WriteOptions {
   start?: number;
   signal?: AbortSignal;
+  /** Final mode/mtime to apply to the staged file when the endpoint supports it. */
+  meta?: { mtimeMs: number; mode?: number };
 }
 
 /** Writable whose destination can report how many bytes it has confirmed. */
@@ -51,6 +53,8 @@ export interface TransferEndpoint {
   mkdirp(p: string): Promise<void>;
   createReadStream(p: string, options?: ReadOptions): Promise<Readable>;
   createWriteStream(p: string, mode?: number, options?: WriteOptions): Promise<TransferWriteStream>;
+  /** True when createWriteStream applies options.meta on close, so no separate setMeta is needed. */
+  writesMeta?: boolean;
   setMeta(p: string, meta: { mtimeMs: number; mode?: number }): Promise<void>;
   /** Rename, replacing an existing destination. */
   renameReplacing(from: string, to: string): Promise<void>;
@@ -173,6 +177,7 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
 class SftpEndpoint implements TransferEndpoint {
   kind = "sftp" as const;
   supportsRanges = true;
+  writesMeta = true;
 
   constructor(
     private sessions: SessionManager,
@@ -297,7 +302,7 @@ class SftpEndpoint implements TransferEndpoint {
     options.signal?.throwIfAborted();
     const lease = await this.sessions.acquireTransferChannel(this.sessionId);
     try {
-      const stream = await createPipelinedWriteStream(lease.sftp, p, mode, { start: options.start });
+      const stream = await createPipelinedWriteStream(lease.sftp, p, mode, { start: options.start, meta: options.meta });
       let released = false;
       const finish = (broken: boolean): void => {
         if (released) return;

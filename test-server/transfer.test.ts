@@ -20,6 +20,44 @@ function wrap(endpoint: TransferEndpoint, overrides: Partial<TransferEndpoint>):
     },
   });
 }
+/** Models the SFTP channel pool: a stream holds one channel until it closes. */
+function withChannelPool(endpoint: TransferEndpoint, capacity: number): TransferEndpoint {
+  let used = 0;
+  const waiters: (() => void)[] = [];
+  const acquire = async (): Promise<void> => {
+    if (used >= capacity) await new Promise<void>((resolve) => waiters.push(resolve));
+    used++;
+  };
+  const release = (): void => {
+    used--;
+    waiters.shift()?.();
+  };
+  const hold = (stream: Readable | Writable): void => void stream.once("close", release);
+  return wrap(endpoint, {
+    createReadStream: async (p, options) => {
+      await acquire();
+      try {
+        const stream = await endpoint.createReadStream(p, options);
+        hold(stream);
+        return stream;
+      } catch (err) {
+        release();
+        throw err;
+      }
+    },
+    createWriteStream: async (p, mode, options) => {
+      await acquire();
+      try {
+        const stream = await endpoint.createWriteStream(p, mode, options);
+        hold(stream);
+        return stream;
+      } catch (err) {
+        release();
+        throw err;
+      }
+    },
+  });
+}
 async function fixture(): Promise<{
   root: string;
   source: string;
@@ -40,6 +78,7 @@ function harness(
   dest: TransferEndpoint,
   action = "replace",
   onUpdate?: (s: TransferJobSnapshot, q: TransferQueue) => void,
+  concurrency = 3,
 ): {
   queue: TransferQueue;
   run: (sourceBase: string, destDir: string, names: string[]) => Promise<TransferJobSnapshot>;
@@ -57,7 +96,7 @@ function harness(
         waiters.get(s.id)?.(s);
       },
     },
-    3,
+    concurrency,
     (_sessions, ref) => (ref.kind === "local" ? source : dest),
   );
   return {
@@ -469,6 +508,96 @@ test("FTP timestamp verification uses a consistent precise baseline", async () =
     assert.equal(result.state, "completed");
     assert.equal(calls, 2);
     assert.equal(await fs.readFile(`${f.dest}/a`, "utf8"), "data");
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test("small-file reads are bounded to the enumerated size", async () => {
+  const f = await fixture();
+  try {
+    const payload = Buffer.alloc(4096, 3);
+    await fs.writeFile(`${f.source}/a`, payload);
+    const ends: (number | undefined)[] = [];
+    const source = wrap(f.local, {
+      createReadStream: async (p, options) => {
+        ends.push(options?.end);
+        return f.local.createReadStream(p, options);
+      },
+    });
+    const result = await harness(source, f.local).run(f.source, f.dest, ["a"]);
+    assert.equal(result.state, "completed", JSON.stringify(result.errors));
+    // Without the bound the SFTP reader probes EOF at offset size, a wasted RTT.
+    assert.deepEqual(ends, [payload.length - 1]);
+    assert.deepEqual(await fs.readFile(`${f.dest}/a`), payload);
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test("a worker starts the next file before the previous commit finishes", { timeout: 5000 }, async () => {
+  const f = await fixture();
+  try {
+    await fs.writeFile(`${f.source}/a`, Buffer.alloc(4096, 1));
+    await fs.writeFile(`${f.source}/b`, Buffer.alloc(4096, 2));
+    let commits = 0;
+    let writes = 0;
+    let releaseFirstCommit: (() => void) | null = null;
+    const secondWriteStarted = new Promise<void>((resolve) => {
+      releaseFirstCommit = resolve;
+    });
+    const dest = wrap(f.local, {
+      setMeta: async (p, meta) => {
+        // Block the first commit until the second file is already streaming.
+        if (commits++ === 0) await secondWriteStarted;
+        return f.local.setMeta(p, meta);
+      },
+      createWriteStream: async (p, mode, options) => {
+        const stream = await f.local.createWriteStream(p, mode, options);
+        if (++writes === 2) releaseFirstCommit?.();
+        return stream;
+      },
+    });
+    // One worker: only the one-deep pipeline can overlap the second file.
+    const h = harness(f.local, dest, "replace", undefined, 1);
+    const result = await h.run(f.source, f.dest, ["a", "b"]);
+    assert.equal(result.state, "completed", JSON.stringify(result.errors));
+    assert.equal(result.doneFiles, 2);
+    assert.deepEqual(await fs.readdir(f.dest), ["a", "b"]);
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test("same-session copies do not deadlock the shared channel pool", { timeout: 5000 }, async () => {
+  const f = await fixture();
+  try {
+    await fs.writeFile(`${f.source}/a`, Buffer.alloc(4096, 1));
+    await fs.writeFile(`${f.source}/b`, Buffer.alloc(4096, 2));
+    // Pool fits exactly one file's read + write pair. Pipelining a second file
+    // would hold both reads and wait forever for the writes.
+    const pooled = withChannelPool(f.local, 2);
+    const waiters = new Map<string, (s: TransferJobSnapshot) => void>();
+    const queue = new TransferQueue(
+      { status: () => "connected", transferConcurrency: () => 1 } as unknown as SessionManager,
+      {
+        onUpdate: () => {},
+        onConflict: (p) => queue.resolveConflict(p.jobId, "replace", true),
+        record: (s) => waiters.get(s.id)?.(s),
+      },
+      1,
+      () => pooled,
+    );
+    const id = queue.enqueue({
+      from: { kind: "sftp", sessionId: "same" },
+      to: { kind: "sftp", sessionId: "same" },
+      sourceBase: f.source,
+      destDir: f.dest,
+      names: ["a", "b"],
+    });
+    const result = await new Promise<TransferJobSnapshot>((resolve) => waiters.set(id, resolve));
+    assert.equal(result.state, "completed", JSON.stringify(result.errors));
+    assert.deepEqual((await fs.readdir(f.dest)).sort(), ["a", "b"]);
   } finally {
     await f.cleanup();
   }
