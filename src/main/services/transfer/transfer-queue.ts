@@ -115,6 +115,8 @@ class Job {
   resumeWaiters: (() => void)[] = [];
   conflictWaiter: (() => void) | null = null;
   settled: Promise<void> = Promise.resolve();
+  /** One-deep stream pipeline; off for same-session copies that share a pool. */
+  pipeline = true;
   from!: TransferEndpoint;
   to!: TransferEndpoint;
 
@@ -437,28 +439,55 @@ export class TransferQueue {
 
     job.queue = [...job.planFiles];
     const refs = [job.request.from, job.request.to].filter((ref) => ref.kind === "sftp");
+    // A same-session copy needs one read and one write channel per file. A
+    // worker that pipelines two files could hold a read channel while waiting
+    // for a write channel and deadlock the shared pool, so keep it serial.
+    const sameSession = refs.length === 2 && refs[0].sessionId === refs[1].sessionId;
+    job.pipeline = !sameSession;
     let limit = Math.max(1, Math.floor(this.concurrency));
     for (const ref of refs) {
       const configured = this.sessions.transferConcurrency(ref.sessionId);
-      const sameSession = refs.length === 2 && refs[0].sessionId === refs[1].sessionId;
       limit = Math.min(limit, sameSession ? Math.floor((configured + 1) / 2) : configured);
     }
     const workers = Array.from({ length: Math.min(limit, job.queue.length || 1) }, () => this.worker(job));
     await Promise.all(workers);
   }
 
+  /**
+   * One worker's file loop. The next file starts streaming before the previous
+   * file's verify/setMeta/rename settle, so the commit latency of file N
+   * overlaps the data transfer of file N+1 instead of stalling the worker for
+   * one commit per file. transferFile owns its own retry/unshift behavior, so a
+   * one-deep pipeline keeps the same per-file failure semantics.
+   */
   private async worker(job: Job): Promise<void> {
+    let inflight: Promise<void> | null = null;
     for (;;) {
-      if (job.canceled) return;
+      if (job.canceled) break;
       try {
         await this.ready(job);
       } catch {
-        return;
+        break;
       }
       const file = job.queue.shift();
-      if (!file) return;
-      await this.transferFile(job, file);
+      if (!file) {
+        // The queue looks drained, but the in-flight file can still re-queue
+        // itself on a retriable failure. Settle it, then look again.
+        if (!inflight) break;
+        const settling = inflight;
+        inflight = null;
+        await settling;
+        continue;
+      }
+      if (!job.pipeline) {
+        await this.transferFile(job, file);
+        continue;
+      }
+      const previous = inflight;
+      inflight = this.transferFile(job, file);
+      if (previous) await previous;
     }
+    await inflight;
   }
 
   private destPathsFor(job: Job, file: PlanFile): { finalPath: string; partPath: string } | "skip" {
@@ -572,7 +601,10 @@ export class TransferQueue {
       const src = await Promise.race([
         job.from
           .createReadStream(sourcePath, {
-            ...(checkpointed ? { start: offset, end: file.size - 1 } : {}),
+            // Bound every read to the enumerated size. A small non-checkpointed
+            // read otherwise runs to EOF, costing an extra probe round trip;
+            // a grown source is still caught by the post-copy checkSource.
+            ...(file.size > 0 ? { start: offset, end: file.size - 1 } : {}),
             signal: controller.signal,
           })
           .then((stream) => {
@@ -584,11 +616,19 @@ export class TransferQueue {
       ]);
       flight.src = src;
       const dst = await Promise.race([
-        job.to.createWriteStream(partPath, file.mode, { start: offset, signal: controller.signal }).then((stream) => {
-          stream.on("error", () => {});
-          if (controller.signal.aborted) stream.destroy();
-          return stream;
-        }),
+        job.to
+          .createWriteStream(partPath, file.mode, {
+            start: offset,
+            signal: controller.signal,
+            // SFTP applies mode/mtime on the open handle at close, so the
+            // staged file is already finalized when the pipeline ends.
+            ...(job.to.writesMeta ? { meta: { mtimeMs: file.mtimeMs, mode: file.mode } } : {}),
+          })
+          .then((stream) => {
+            stream.on("error", () => {});
+            if (controller.signal.aborted) stream.destroy();
+            return stream;
+          }),
         aborted,
       ]);
       flight.dst = dst;
@@ -636,8 +676,12 @@ export class TransferQueue {
         throw new Error(`Size mismatch in staged file: ${file.relPath}`);
       }
       controller.signal.throwIfAborted();
-      await job.to.setMeta(partPath, { mtimeMs: file.mtimeMs, mode: file.mode });
-      controller.signal.throwIfAborted();
+      // SFTP folds mode/mtime into close; other endpoints need a separate
+      // metadata request after the stream is committed.
+      if (!job.to.writesMeta) {
+        await job.to.setMeta(partPath, { mtimeMs: file.mtimeMs, mode: file.mode });
+        controller.signal.throwIfAborted();
+      }
       // Do not retry an ambiguous rename: the server may already have committed it.
       committing = true;
       await job.to.renameReplacing(partPath, finalPath);

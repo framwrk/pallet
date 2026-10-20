@@ -24,6 +24,8 @@ export interface PipelinedReadOptions {
 
 export interface PipelinedWriteOptions {
   start?: number;
+  /** Metadata applied with FSETSTAT to the open handle during CLOSE. */
+  meta?: { mtimeMs: number; mode?: number };
 }
 
 /** Readable that issues up to WINDOW concurrent sftp.read requests. */
@@ -63,7 +65,7 @@ export function createPipelinedWriteStream(
     const start = options.start ?? 0;
     sftp.open(path, start > 0 ? "r+" : "w", mode ?? 0o600, (err, handle) => {
       if (err) reject(err);
-      else resolve(new WriteStream(sftp, handle, start));
+      else resolve(new WriteStream(sftp, handle, start, options.meta));
     });
   });
 }
@@ -186,6 +188,7 @@ class WriteStream extends Writable {
     private sftp: SFTPWrapper,
     handle: Buffer,
     start: number,
+    private meta?: { mtimeMs: number; mode?: number },
   ) {
     super();
     this.handle = handle;
@@ -268,10 +271,27 @@ class WriteStream extends Writable {
       callback?.();
       return;
     }
-    this.sftp.close(handle, (err) => {
-      if (!err) this.committed = true;
-      callback(err as Error | undefined);
-    });
+    // FSETSTAT rides along with CLOSE on the same handle: the metadata write
+    // and the close acknowledgement land after one round trip instead of a
+    // separate setstat after close. One channel handles requests in order, so
+    // the mode/mtime are applied before the handle is closed.
+    const setMeta = this.meta
+      ? new Promise<void>((resolve, reject) => {
+          const t = Math.floor(this.meta!.mtimeMs / 1000);
+          const mode = this.meta!.mode != null ? this.meta!.mode & 0o7777 : undefined;
+          this.sftp.fsetstat(handle, { mode, atime: t, mtime: t }, (err) => (err ? reject(err) : resolve()));
+        })
+      : Promise.resolve();
+    const close = new Promise<void>((resolve, reject) =>
+      this.sftp.close(handle, (err) => {
+        if (!err) this.committed = true;
+        err ? reject(err) : resolve();
+      }),
+    );
+    Promise.all([setMeta, close]).then(
+      () => callback(),
+      (err: Error) => callback(err),
+    );
   }
 
   _destroy(err: Error | null, callback: (error?: Error | null) => void): void {

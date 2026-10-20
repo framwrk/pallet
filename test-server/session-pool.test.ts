@@ -172,3 +172,60 @@ test("SFTP upload waits for CLOSE and propagates a late server error", async () 
   await assert.rejects(pipeline(Readable.from(Buffer.from("data")), await endpoint.createWriteStream("/part")), /quota/);
   assert(broken);
 });
+
+test("SFTP upload applies mode and mtime on the open handle under CLOSE", async () => {
+  const calls: string[] = [];
+  let attrs: { mode?: number | string; atime?: number | Date; mtime?: number | Date } = {};
+  const manager = {
+    protocol: () => "sftp",
+    acquireTransferChannel: async () => ({
+      sftp: {
+        open: (_p: string, _f: string, _m: number, callback: (err: Error | null, handle: Buffer) => void) => {
+          calls.push("open");
+          callback(null, Buffer.from("handle"));
+        },
+        write: (_h: Buffer, _b: Buffer, _o: number, _l: number, _pos: number, callback: (err: Error | null) => void) => {
+          calls.push("write");
+          callback(null);
+        },
+        fsetstat: (_h: Buffer, value: typeof attrs, callback: (err: Error | null) => void) => {
+          calls.push("fsetstat");
+          attrs = value;
+          callback(null);
+        },
+        close: (_h: Buffer, callback: (err: Error | null) => void) => {
+          calls.push("close");
+          callback(null);
+        },
+      },
+      release: () => {},
+    }),
+  } as unknown as SessionManager;
+  const endpoint = makeEndpoint(manager, { kind: "sftp", sessionId: "sftp" });
+  assert.equal(endpoint.writesMeta, true);
+  const stream = await endpoint.createWriteStream("/part", 0o644, { meta: { mtimeMs: 1_700_000_000_000, mode: 0o640 } });
+  await pipeline(Readable.from(Buffer.from("data")), stream);
+  assert.deepEqual(calls, ["open", "write", "fsetstat", "close"]);
+  assert.equal(attrs.mode, 0o640);
+  assert.equal(attrs.mtime, 1_700_000_000);
+});
+
+test("SFTP upload fails when close-time metadata is rejected", async () => {
+  const manager = {
+    protocol: () => "sftp",
+    acquireTransferChannel: async () => ({
+      sftp: {
+        open: (_p: string, _f: string, _m: number, callback: (err: Error | null, handle: Buffer) => void) =>
+          callback(null, Buffer.from("handle")),
+        write: (_h: Buffer, _b: Buffer, _o: number, _l: number, _pos: number, callback: (err: Error | null) => void) =>
+          callback(null),
+        fsetstat: (_h: Buffer, _a: unknown, callback: (err: Error | null) => void) => callback(new Error("Permission denied")),
+        close: (_h: Buffer, callback: (err: Error | null) => void) => callback(null),
+      },
+      release: () => {},
+    }),
+  } as unknown as SessionManager;
+  const endpoint = makeEndpoint(manager, { kind: "sftp", sessionId: "sftp" });
+  const stream = await endpoint.createWriteStream("/part", 0o644, { meta: { mtimeMs: 1, mode: 0o644 } });
+  await assert.rejects(pipeline(Readable.from(Buffer.from("data")), stream), /Permission/);
+});
