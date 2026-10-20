@@ -24,14 +24,15 @@ interface Row {
 }
 
 function fromRow(row: Row): Favorite {
+  const protocol = row.protocol === "ftp" || row.protocol === "ftps" ? row.protocol : "sftp";
   return {
     id: row.id,
     name: row.name,
-    protocol: row.protocol === "ftp" || row.protocol === "ftps" ? row.protocol : "sftp",
+    protocol,
     host: row.host,
     port: row.port,
     username: row.username,
-    authMethod: row.auth_method === "key" ? "key" : "password",
+    authMethod: protocol === "sftp" && row.auth_method === "agent" ? "agent" : row.auth_method === "key" ? "key" : "password",
     secretStored: row.secret_stored === 1,
     ...(row.private_key_path ? { privateKeyPath: row.private_key_path } : {}),
     tlsRejectUnauthorized: row.tls_reject_unauthorized !== 0,
@@ -73,11 +74,12 @@ export function saveFavorite(input: FavoriteInput, secret?: string | null): Favo
   const existing = input.id ? getFavorite(input.id) : null;
   const id = existing?.id ?? randomUUID();
   const protocol = input.protocol === "ftp" || input.protocol === "ftps" ? input.protocol : "sftp";
-  const authMethod = protocol === "sftp" && input.authMethod === "key" ? "key" : "password";
+  const authMethod =
+    protocol === "sftp" && (input.authMethod === "key" || input.authMethod === "agent") ? input.authMethod : "password";
   const privateKeyPath = authMethod === "key" ? (input.privateKeyPath ?? null) : null;
 
   let secretStored = existing?.secretStored ?? false;
-  if (secret === null || (secret === undefined && existing && existing.authMethod !== authMethod)) {
+  if (authMethod === "agent" || secret === null || (secret === undefined && existing && existing.authMethod !== authMethod)) {
     deleteSecret(id);
     secretStored = false;
   } else if (typeof secret === "string" && secret.length > 0) {
