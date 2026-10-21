@@ -25,43 +25,55 @@ function handle<Args extends unknown[], T>(channel: string, fn: (...args: Args) 
 async function connectFavorite(id: string): Promise<ConnectResult & { favorite: Favorite }> {
   const favorite = store.getFavorite(id);
   if (!favorite) throw new Error("Favorite not found");
-  const secret = favorite.secretStored ? readSecret(id) : null;
 
   let profile: ConnectProfile;
-  if (favorite.authMethod === "password") {
-    if (secret == null) {
-      const err: NodeJS.ErrnoException = new Error("No stored password for this favorite");
-      err.code = "ENOSECRET";
-      throw err;
-    }
+  if (favorite.authMethod === "agent") {
+    if (favorite.protocol !== "sftp") throw new Error("SSH agent authentication is only available for SFTP");
     profile = {
       protocol: favorite.protocol,
       host: favorite.host,
       port: favorite.port,
       username: favorite.username,
-      auth: { method: "password", password: secret },
-      ...(favorite.protocol === "ftps" ? { tlsRejectUnauthorized: favorite.tlsRejectUnauthorized !== false } : {}),
+      auth: { method: "agent" },
       ...(favorite.remotePath ? { remotePath: favorite.remotePath } : {}),
     };
   } else {
-    if (favorite.protocol !== "sftp") throw new Error("FTP and FTPS favorites require password authentication");
-    if (!favorite.privateKeyPath) {
-      const err: NodeJS.ErrnoException = new Error("Favorite has no private key path");
-      err.code = "ENOSECRET";
-      throw err;
+    const secret = favorite.secretStored ? readSecret(id) : null;
+    if (favorite.authMethod === "password") {
+      if (secret == null) {
+        const err: NodeJS.ErrnoException = new Error("No stored password for this favorite");
+        err.code = "ENOSECRET";
+        throw err;
+      }
+      profile = {
+        protocol: favorite.protocol,
+        host: favorite.host,
+        port: favorite.port,
+        username: favorite.username,
+        auth: { method: "password", password: secret },
+        ...(favorite.protocol === "ftps" ? { tlsRejectUnauthorized: favorite.tlsRejectUnauthorized !== false } : {}),
+        ...(favorite.remotePath ? { remotePath: favorite.remotePath } : {}),
+      };
+    } else {
+      if (favorite.protocol !== "sftp") throw new Error("FTP and FTPS favorites require password authentication");
+      if (!favorite.privateKeyPath) {
+        const err: NodeJS.ErrnoException = new Error("Favorite has no private key path");
+        err.code = "ENOSECRET";
+        throw err;
+      }
+      profile = {
+        protocol: favorite.protocol,
+        host: favorite.host,
+        port: favorite.port,
+        username: favorite.username,
+        auth: {
+          method: "key",
+          keyPath: favorite.privateKeyPath,
+          ...(secret ? { passphrase: secret } : {}),
+        },
+        ...(favorite.remotePath ? { remotePath: favorite.remotePath } : {}),
+      };
     }
-    profile = {
-      protocol: favorite.protocol,
-      host: favorite.host,
-      port: favorite.port,
-      username: favorite.username,
-      auth: {
-        method: "key",
-        keyPath: favorite.privateKeyPath,
-        ...(secret ? { passphrase: secret } : {}),
-      },
-      ...(favorite.remotePath ? { remotePath: favorite.remotePath } : {}),
-    };
   }
 
   const result = await sessionManager.connect(profile);

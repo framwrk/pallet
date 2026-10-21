@@ -15,7 +15,7 @@ export interface Favorite {
   host: string;
   port: number;
   username: string;
-  authMethod: "password" | "key";
+  authMethod: "password" | "key" | "agent";
   /** True when an encrypted secret exists for this favorite (never the secret itself). */
   secretStored: boolean;
   privateKeyPath?: string;
@@ -38,7 +38,7 @@ export interface FavoriteInput {
   host: string;
   port: number;
   username: string;
-  authMethod: "password" | "key";
+  authMethod: "password" | "key" | "agent";
   privateKeyPath?: string;
   tlsRejectUnauthorized?: boolean;
   remotePath?: string;

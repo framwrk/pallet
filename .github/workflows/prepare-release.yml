@@ -1,0 +1,164 @@
+name: Prepare release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "major, minor, patch, or an explicit X.Y.Z version"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  prepare:
+    name: Bump version and push release branch
+    runs-on: macos-15
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v5
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Set up Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.3
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Validate release version
+        env:
+          VERSION_INPUT: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+
+          git fetch origin main --tags
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "error: the working tree is not clean" >&2
+            exit 1
+          fi
+          git checkout -B main origin/main
+          git branch --set-upstream-to=origin/main main
+          if [ "$(git rev-parse HEAD)" != "$(git rev-parse origin/main)" ]; then
+            echo "error: HEAD does not match origin/main" >&2
+            exit 1
+          fi
+
+          semver_re='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'
+          current=$(bun -e 'process.stdout.write(require("./package.json").version)')
+          if ! [[ $current =~ $semver_re ]]; then
+            echo "error: package.json version '$current' is not MAJOR.MINOR.PATCH" >&2
+            exit 1
+          fi
+          current_major="${BASH_REMATCH[1]}"
+          current_minor="${BASH_REMATCH[2]}"
+          current_patch="${BASH_REMATCH[3]}"
+
+          if [[ $VERSION_INPUT =~ ^(major|minor|patch)$ ]]; then
+            case "$VERSION_INPUT" in
+              major) version="$((10#$current_major + 1)).0.0" ;;
+              minor) version="${current_major}.$((10#$current_minor + 1)).0" ;;
+              patch) version="${current_major}.${current_minor}.$((10#$current_patch + 1))" ;;
+            esac
+          elif [[ $VERSION_INPUT =~ $semver_re ]]; then
+            version="$VERSION_INPUT"
+          else
+            echo "error: version must be major, minor, patch, or X.Y.Z (got '$VERSION_INPUT')" >&2
+            exit 1
+          fi
+
+          order=$(VERSION="$version" CURRENT="$current" bun -e 'process.stdout.write(String(Bun.semver.order(process.env.VERSION, process.env.CURRENT)))')
+          if [ "$order" -le 0 ]; then
+            echo "error: $version is not newer than the current version $current" >&2
+            exit 1
+          fi
+
+          tag="v$version"
+          if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
+            echo "error: tag $tag already exists locally" >&2
+            exit 1
+          fi
+          if ! remote_tag=$(git ls-remote --tags origin "refs/tags/$tag"); then
+            echo "error: could not check origin for tag $tag" >&2
+            exit 1
+          fi
+          if [ -n "$remote_tag" ]; then
+            echo "error: tag $tag already exists on origin" >&2
+            exit 1
+          fi
+
+          echo "RELEASE_VERSION=$version" >> "$GITHUB_ENV"
+
+      - name: Bump package.json
+        env:
+          VERSION_INPUT: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+
+          bun pm version "$VERSION_INPUT" --no-git-tag-version
+          bumped=$(bun -e 'process.stdout.write(require("./package.json").version)')
+          if [ "$bumped" != "$RELEASE_VERSION" ]; then
+            echo "error: package.json is $bumped after the bump, expected $RELEASE_VERSION" >&2
+            exit 1
+          fi
+
+      - name: Commit and push the release branch
+        run: |
+          set -euo pipefail
+
+          branch="release/v$RELEASE_VERSION"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          if ! remote_branch=$(git ls-remote --heads origin "refs/heads/$branch"); then
+            echo "error: could not check origin for branch $branch" >&2
+            exit 1
+          fi
+          if [ -n "$remote_branch" ]; then
+            echo "error: branch $branch already exists on origin" >&2
+            exit 1
+          fi
+
+          changed=$(git status --porcelain)
+          case "$changed" in
+            " M package.json" | "M  package.json") ;;
+            *)
+              echo "error: expected only package.json to change, found:" >&2
+              printf '%s\n' "$changed" >&2
+              exit 1
+              ;;
+          esac
+
+          git checkout -b "$branch"
+          git add package.json
+          git commit -m "Bump version to $RELEASE_VERSION" -- package.json
+          git push origin "$branch"
+
+      - name: Report the pull request link
+        run: |
+          set -euo pipefail
+
+          branch="release/v$RELEASE_VERSION"
+          compare_url="https://github.com/$GITHUB_REPOSITORY/compare/main...$branch?expand=1"
+
+          {
+            echo "## Release branch pushed"
+            echo
+            echo "Open the pull request: $compare_url"
+            echo
+            echo "Suggested title: Bump version to $RELEASE_VERSION"
+            echo
+            echo "No tag or release is created by this workflow. After the pull request merges, run the separate **Tag & release** dispatch."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          echo "Open the pull request: $compare_url"
+          echo "Suggested title: Bump version to $RELEASE_VERSION"

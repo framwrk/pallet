@@ -164,18 +164,18 @@ the right pane; click the **×** on the server chip in the left pane (or the too
 Local Pane** button) to move the local disk back at the folder you left. A new connection replaces
 the selected pane when the right pane is already connected, and otherwise opens in the right pane.
 
-| Field                               | Notes                                                                                                                            |
-| ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| **Protocol**                        | SFTP, FTP, or explicit FTPS. SFTP is selected by default.                                                                        |
-| **Server**                          | Hostname or IP.                                                                                                                  |
-| **Port**                            | Defaults to 22 for SFTP and 21 for FTP and FTPS; Pallet preserves custom ports when you switch protocols.                        |
-| **Username**                        |                                                                                                                                  |
-| **Authenticate**                    | Password for every protocol; **Private Key** is also available for SFTP.                                                         |
-| **Password** / **Key + Passphrase** | Key auth takes a path to your private key; the passphrase field appears with it.                                                 |
-| **Remote Path**                     | Where to start browsing. Blank means your server-side home directory.                                                            |
-| **Local Path**                      | Optional. Sets the _left_ pane to this folder when you connect, so a favorite can restore both sides of a working setup at once. |
-| **Note**                            | Free text, shown when editing the favorite.                                                                                      |
-| **Color Label**                     | A dot for spotting the connection in a long favorites list.                                                                      |
+| Field                               | Notes                                                                                                                               |
+| ----------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| **Protocol**                        | SFTP, FTP, or explicit FTPS. SFTP is selected by default.                                                                           |
+| **Server**                          | Hostname or IP.                                                                                                                     |
+| **Port**                            | Defaults to 22 for SFTP and 21 for FTP and FTPS; Pallet preserves custom ports when you switch protocols.                           |
+| **Username**                        |                                                                                                                                     |
+| **Authenticate**                    | Password for every protocol; **Private Key** and **SSH Agent** are also available for SFTP.                                         |
+| **Password** / **Key + Passphrase** | Key auth takes a path to your private key; the passphrase field appears with it. Agent auth uses keys already loaded in your agent. |
+| **Remote Path**                     | Where to start browsing. Blank means your server-side home directory.                                                               |
+| **Local Path**                      | Optional. Sets the _left_ pane to this folder when you connect, so a favorite can restore both sides of a working setup at once.    |
+| **Note**                            | Free text, shown when editing the favorite.                                                                                         |
+| **Color Label**                     | A dot for spotting the connection in a long favorites list.                                                                         |
 
 **Options** reveals connection-specific controls:
 
@@ -188,6 +188,11 @@ the selected pane when the right pane is already connected, and otherwise opens 
   private or test server that uses a self-signed certificate.
 
 Click **Connect** to connect once, or **Add to Favorites** to save the settings for next time.
+
+**SSH agent authentication** (SFTP only) signs with a key held by your SSH agent over `SSH_AUTH_SOCK`,
+including 1Password's SSH agent. Pallet never reads or stores the key. The agent must be running with
+at least one usable key loaded; if `SSH_AUTH_SOCK` is unset, the socket is unreachable, or the agent
+has no usable keys, the connection form says what to fix.
 
 **If the connection drops** (Wi-Fi dies, the laptop sleeps, the server restarts), Pallet grays out
 the pane, marks the session _reconnecting_, and retries with backoff (1, 2, 4, 8, 15 seconds). Any
@@ -228,7 +233,8 @@ Saved connections live in the Favorites section of the sidebar, each with its co
 
 Favorites are stored in SQLite on your machine, alongside your settings. Pallet encrypts passwords
 and key passphrases through macOS Keychain with Electron's `safeStorage`; the database stores only
-the chosen authentication method and whether a secret exists.
+the chosen authentication method and whether a secret exists. SSH agent favorites store neither a
+key nor a secret and reconnect through whatever key is loaded in your agent.
 
 Favorites also record when you last used them.
 
@@ -471,8 +477,6 @@ safe to attach to a bug report, though check it first for file paths you would r
 
 Deliberate omissions in the beta, not bugs:
 
-- **SSH agent authentication**: password and private key only. Agent support, which includes
-  1Password's SSH agent, is the first addition planned after the beta.
 - **Remote-to-remote move**: copy, then delete.
 - **Resume across app restarts or FTP and FTPS checkpoints**: checkpoint resume covers only large
   local and SFTP files within a running job.

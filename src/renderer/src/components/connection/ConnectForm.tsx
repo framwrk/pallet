@@ -1,5 +1,15 @@
 import { COLOR_LABELS, LABEL_COLOR_CLASSES } from "@shared/favorite/favorite.constants";
-import { ChevronDown, KeyRound, LoaderCircle, LockKeyhole, Server, Settings2, Star, UserRound } from "lucide-react";
+import {
+  ChevronDown,
+  Fingerprint,
+  KeyRound,
+  LoaderCircle,
+  LockKeyhole,
+  Server,
+  Settings2,
+  Star,
+  UserRound,
+} from "lucide-react";
 import type { ColorLabel, Favorite, FavoriteInput } from "@shared/favorite/favorite.types";
 import type { ConnectProfile, ConnectionProtocol } from "@shared/sftp/sftp.types";
 import { type PaneId, pushToast } from "@/store/pane.store";
@@ -125,7 +135,7 @@ export function ConnectForm({
   const [port, setPort] = useState(String(seed?.port ?? defaultPort(initialProtocol)));
   const portTouched = useRef(seed ? seed.port !== defaultPort(initialProtocol) : false);
   const [username, setUsername] = useState(seed?.username ?? "");
-  const [authMethod, setAuthMethod] = useState<"password" | "key">(
+  const [authMethod, setAuthMethod] = useState<"password" | "key" | "agent">(
     initialProtocol === "sftp" ? (seed?.authMethod ?? "password") : "password",
   );
   const [password, setPassword] = useState("");
@@ -186,7 +196,7 @@ export function ConnectForm({
 
   /** The secret to persist alongside a favorite: password or key passphrase. */
   function enteredSecret(): string | undefined {
-    const secret = authMethod === "password" ? password : passphrase;
+    const secret = authMethod === "password" ? password : authMethod === "key" ? passphrase : "";
     return secret.length > 0 ? secret : undefined;
   }
 
@@ -204,7 +214,9 @@ export function ConnectForm({
       auth:
         authMethod === "password"
           ? { method: "password", password }
-          : { method: "key", keyPath: keyPath.trim(), ...(passphrase ? { passphrase } : {}) },
+          : authMethod === "key"
+            ? { method: "key", keyPath: keyPath.trim(), ...(passphrase ? { passphrase } : {}) }
+            : { method: "agent" },
       ...(remotePathField.trim() ? { remotePath: remotePathField.trim() } : {}),
       keepaliveIntervalMs: Math.max(0, Number.parseInt(keepalive, 10) || 15) * 1000,
       compression,
@@ -254,19 +266,32 @@ export function ConnectForm({
         <LockKeyhole data-icon="inline-start" /> Password
       </Button>
       {protocol === "sftp" && (
-        <Button
-          type="button"
-          size="xs"
-          variant={authMethod === "key" ? "secondary" : "ghost"}
-          className="flex-1 rounded-[6px]"
-          aria-pressed={authMethod === "key"}
-          onClick={() => setAuthMethod("key")}
-        >
-          <KeyRound data-icon="inline-start" />
-          <span>
-            <span className="pallet-private-key-prefix">Private </span>Key
-          </span>
-        </Button>
+        <>
+          <Button
+            type="button"
+            size="xs"
+            variant={authMethod === "key" ? "secondary" : "ghost"}
+            className="flex-1 rounded-[6px]"
+            aria-pressed={authMethod === "key"}
+            onClick={() => setAuthMethod("key")}
+          >
+            <KeyRound data-icon="inline-start" />
+            <span>
+              <span className="pallet-private-key-prefix">Private </span>Key
+            </span>
+          </Button>
+          <Button
+            type="button"
+            size="xs"
+            variant={authMethod === "agent" ? "secondary" : "ghost"}
+            className="flex-1 rounded-[6px]"
+            aria-pressed={authMethod === "agent"}
+            onClick={() => setAuthMethod("agent")}
+          >
+            <Fingerprint data-icon="inline-start" />
+            <span>SSH Agent</span>
+          </Button>
+        </>
       )}
     </div>
   );
@@ -335,26 +360,38 @@ export function ConnectForm({
                 />
               </div>
             </Row>
-            <Row
-              label={authMethod === "password" ? "Password" : "Passphrase"}
-              layout="stacked"
-            >
-              <div className="relative">
-                {authMethod === "password" ? (
-                  <LockKeyhole className="text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2" />
-                ) : (
-                  <KeyRound className="text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2" />
-                )}
-                <Input
-                  className={cn(fieldInputCls, "pl-8")}
-                  type="password"
-                  value={authMethod === "password" ? password : passphrase}
-                  onChange={(e) => (authMethod === "password" ? setPassword(e.target.value) : setPassphrase(e.target.value))}
-                  placeholder={authMethod === "key" ? secretPlaceholder || "Optional" : secretPlaceholder}
-                  autoFocus={autoFocus && !!seed}
-                />
-              </div>
-            </Row>
+            {authMethod === "agent" ? (
+              <Row
+                label="SSH Agent"
+                layout="stacked"
+              >
+                <div className="text-muted-foreground flex h-9 items-center gap-2 text-xs">
+                  <Fingerprint className="size-3.5 shrink-0" />
+                  <span>Uses SSH_AUTH_SOCK, including 1Password</span>
+                </div>
+              </Row>
+            ) : (
+              <Row
+                label={authMethod === "password" ? "Password" : "Passphrase"}
+                layout="stacked"
+              >
+                <div className="relative">
+                  {authMethod === "password" ? (
+                    <LockKeyhole className="text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2" />
+                  ) : (
+                    <KeyRound className="text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2" />
+                  )}
+                  <Input
+                    className={cn(fieldInputCls, "pl-8")}
+                    type="password"
+                    value={authMethod === "password" ? password : passphrase}
+                    onChange={(e) => (authMethod === "password" ? setPassword(e.target.value) : setPassphrase(e.target.value))}
+                    placeholder={authMethod === "key" ? secretPlaceholder || "Optional" : secretPlaceholder}
+                    autoFocus={autoFocus && !!seed}
+                  />
+                </div>
+              </Row>
+            )}
           </div>
 
           {authMethod === "key" && (
@@ -442,6 +479,10 @@ export function ConnectForm({
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder={secretPlaceholder}
               />
+            </Row>
+          ) : authMethod === "agent" ? (
+            <Row label="SSH Agent">
+              <span className="text-muted-foreground text-xs">Uses SSH_AUTH_SOCK, including 1Password</span>
             </Row>
           ) : (
             <>

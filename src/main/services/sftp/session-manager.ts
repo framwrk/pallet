@@ -6,7 +6,7 @@
  * integration tests can drive it directly. Host-key decisions and status
  * events are injected via SessionManagerHooks.
  */
-import { type ConnectConfig, type SFTPWrapper, Client as SshClient } from "ssh2";
+import { type BaseAgent, type ConnectConfig, type SFTPWrapper, Client as SshClient, createAgent } from "ssh2";
 import type {
   ConnectProfile,
   ConnectResult,
@@ -130,6 +130,36 @@ export function fingerprintOf(keyBlob: Buffer): string {
   return "SHA256:" + createHash("sha256").update(keyBlob).digest("base64").replace(/=+$/, "");
 }
 
+/** Resolve SSH_AUTH_SOCK up front so agent failures reach the form as clear errors. */
+async function resolveSshAgent(): Promise<BaseAgent> {
+  const socketPath = process.env.SSH_AUTH_SOCK;
+  if (!socketPath?.trim()) {
+    const err: NodeJS.ErrnoException = new Error("SSH agent authentication is unavailable: SSH_AUTH_SOCK is not set");
+    err.code = "ENOAGENT";
+    throw err;
+  }
+  const agent = createAgent(socketPath);
+  const keys = await new Promise<unknown[]>((resolve, reject) => {
+    agent.getIdentities((error, identities) => {
+      if (error) {
+        const err: NodeJS.ErrnoException = new Error(`Unable to connect to the SSH agent at ${socketPath}: ${error.message}`);
+        err.code = "ENOAGENT";
+        reject(err);
+        return;
+      }
+      resolve(identities ?? []);
+    });
+  });
+  if (keys.length === 0) {
+    const err: NodeJS.ErrnoException = new Error(
+      `The SSH agent at ${socketPath} has no usable keys. Add a key to the agent and try again.`,
+    );
+    err.code = "ENOAGENT";
+    throw err;
+  }
+  return agent;
+}
+
 export class SessionManager {
   private sessions = new Map<string, Session>();
   private seq = 0;
@@ -165,6 +195,9 @@ export class SessionManager {
     };
     if (profile.auth.method === "password") {
       return { ...base, password: profile.auth.password };
+    }
+    if (profile.auth.method === "agent") {
+      return { ...base, agent: await resolveSshAgent() };
     }
     const privateKey = await fs.readFile(profile.auth.keyPath);
     return {
