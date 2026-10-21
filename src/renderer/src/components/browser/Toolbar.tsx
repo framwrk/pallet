@@ -1,8 +1,17 @@
-import { ArrowLeft, ArrowRight, FolderPlus, Info, RotateCw, Trash2 } from "lucide-react";
-import { goBack, goForward, isUsable, refresh, setInspectorOpen, useAppState } from "@/store/pane.store";
+import { ArrowLeft, ArrowRight, FolderPlus, HardDrive, Info, RotateCw, Server, Trash2 } from "lucide-react";
+import {
+  goBack,
+  goForward,
+  isUsable,
+  openQuickConnect,
+  pathLib,
+  refresh,
+  setInspectorOpen,
+  useAppState,
+} from "@/store/pane.store";
 import { newFolder, trashSelection } from "@/store/ops.store";
 import { cn } from "@/lib/utils";
-import { localPath } from "@shared/path/path.utils";
+import { disconnectPane } from "@/store/sftp.store";
 
 function ToolButton({
   icon: Icon,
@@ -38,7 +47,13 @@ function ToolButtonGroup({ children }: { children: React.ReactNode }): React.JSX
 export function Toolbar(): React.JSX.Element {
   const app = useAppState();
   const pane = app.panes[app.active];
-  const folderTitle = pane.cwd === "/" ? "Macintosh HD" : localPath.basename(pane.cwd || "");
+  const leftIsLocal = app.panes.left.backend.kind === "local";
+  const folderTitle =
+    pane.cwd === "/"
+      ? pane.backend.kind === "sftp"
+        ? pane.backend.host
+        : "Macintosh HD"
+      : pathLib(pane.backend).basename(pane.cwd || "");
 
   return (
     <header className="flex h-11 shrink-0 items-center gap-4 px-2 [-webkit-app-region:drag]">
@@ -58,6 +73,14 @@ export function Toolbar(): React.JSX.Element {
       </ToolButtonGroup>
       <div className="flex-1 truncate text-[13px] font-semibold">{folderTitle}</div>
       <ToolButtonGroup>
+        <ToolButton
+          icon={leftIsLocal ? Server : HardDrive}
+          label={leftIsLocal ? "Replace Local Pane with Remote…" : "Restore Local Pane"}
+          onClick={() => {
+            if (leftIsLocal) openQuickConnect(null, "left");
+            else void disconnectPane("left");
+          }}
+        />
         <ToolButton
           icon={RotateCw}
           label="Refresh"

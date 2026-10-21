@@ -306,6 +306,7 @@ export async function showRowContextMenu(id: PaneId, entry: Entry): Promise<void
     const singleRemote = getState().panes[id].selected.size === 1;
     const usable = isUsable(pane);
     const sessionId = pane.backend.sessionId;
+    const other = getState().panes[otherPane(id)].backend;
     const remoteChoice = await window.pallet.ui.contextMenu([
       { id: "open", label: "Open", enabled: usable && isDirLike(entry) },
       {
@@ -317,9 +318,9 @@ export async function showRowContextMenu(id: PaneId, entry: Entry): Promise<void
       { id: "rename", label: "Rename", enabled: usable && singleRemote },
       { id: "copy", label: "Copy", enabled: usable },
       {
-        id: "transferToLocal",
-        label: "Transfer to Local",
-        enabled: usable && getState().panes[otherPane(id)].backend.kind === "local",
+        id: "transferToOther",
+        label: other.kind === "sftp" ? "Transfer to Other Server" : "Transfer to Local",
+        enabled: usable && other.kind !== "none",
       },
       { type: "separator" },
       { id: "delete", label: "Delete", enabled: usable },
@@ -336,7 +337,7 @@ export async function showRowContextMenu(id: PaneId, entry: Entry): Promise<void
       case "copy":
         copySelection(id);
         break;
-      case "transferToLocal":
+      case "transferToOther":
         void copyToOther(id);
         break;
       case "rename":
@@ -353,6 +354,7 @@ export async function showRowContextMenu(id: PaneId, entry: Entry): Promise<void
   }
   const single = getState().panes[id].selected.size === 1;
   const usable = isUsable(getState().panes[id]);
+  const other = getState().panes[otherPane(id)].backend;
   const choice = await window.pallet.ui.contextMenu([
     { id: "open", label: "Open", enabled: usable },
     { id: "reveal", label: "Reveal in Finder", enabled: usable },
@@ -360,9 +362,9 @@ export async function showRowContextMenu(id: PaneId, entry: Entry): Promise<void
     { id: "rename", label: "Rename", enabled: usable && single },
     { id: "copy", label: "Copy", enabled: usable },
     {
-      id: "transferToRemote",
-      label: "Transfer to Remote",
-      enabled: usable && getState().panes[otherPane(id)].backend.kind === "sftp",
+      id: "transferToOther",
+      label: other.kind === "sftp" ? "Transfer to Remote" : "Transfer to Other Pane",
+      enabled: usable && other.kind !== "none",
     },
     { type: "separator" },
     { id: "trash", label: "Move to Trash", enabled: usable },
@@ -380,7 +382,7 @@ export async function showRowContextMenu(id: PaneId, entry: Entry): Promise<void
     case "copy":
       copySelection(id);
       break;
-    case "transferToRemote":
+    case "transferToOther":
       void copyToOther(id);
       break;
     case "trash":

@@ -178,7 +178,7 @@ The palette follows the user's macOS appearance. Dark and light are equally auth
 
 ## Layout
 
-Pallet keeps its left-local/right-remote dual-pane workspace. The outer frame is edge-to-edge and window-native, inspired by VS Code's disciplined tool geometry rather than card-based web dashboards. Regions join through hairlines and material changes; they do not float as unrelated rounded cards.
+Pallet keeps its dual-pane workspace: the left pane starts local, and the right pane is the server. The left pane can be replaced with a second server for remote-to-remote work and restored to the local disk. The outer frame is edge-to-edge and window-native, inspired by VS Code's disciplined tool geometry rather than card-based web dashboards. Regions join through hairlines and material changes; they do not float as unrelated rounded cards.
 
 - **Unified titlebar/toolbar:** `46–52px` high, draggable where empty, with traffic-light clearance, history controls leading, active-location title centered or optically centered, and task controls trailing.
 - **Primary sidebar:** `232–264px` wide, full height beneath the titlebar material, translucent, optionally resizable, and never narrower than an icon plus a readable favorite name. Devices, Folders, and Favorites preserve their order.
