@@ -1,5 +1,6 @@
 /** Renderer-side SFTP session flow: connect/disconnect panes, events (M3). */
 import {
+  type PaneId,
   closeQuickConnect,
   getState,
   navigate,
@@ -12,6 +13,14 @@ import {
 import type { ConnectProfile } from "@shared/sftp/sftp.types";
 
 let eventsBound = false;
+/** Last local directory shown by the left pane, restored after a remote visit. */
+let leftLocalCwd: string | null = null;
+
+/** Remember the current local directory before replacing the left pane with a server. */
+export function rememberLeftLocalPane(): void {
+  const pane = getState().panes.left;
+  if (pane.backend.kind === "local") leftLocalCwd = pane.cwd || null;
+}
 
 /** Bind main-process event streams once, at app startup. */
 export function initSftpEvents(): void {
@@ -33,9 +42,15 @@ export function initSftpEvents(): void {
   });
 }
 
-/** The server always lands in the right pane; `localPath` steers the left one. */
-export async function connectRemote(profile: ConnectProfile, localPath?: string): Promise<void> {
-  const previousBackend = getState().panes.right.backend;
+/**
+ * Connect a pane to a server. The right pane is the default target; the left
+ * pane opts in for remote-to-remote work.
+ */
+export async function connectRemote(profile: ConnectProfile, localPath?: string, paneId: PaneId = "right"): Promise<void> {
+  const previousBackend = getState().panes[paneId].backend;
+  if (paneId === "left" && previousBackend.kind === "local") {
+    rememberLeftLocalPane();
+  }
   const result = await window.pallet.sftp.connect(profile);
 
   // Keep the current workspace intact while connecting. Once the replacement
@@ -48,7 +63,7 @@ export async function connectRemote(profile: ConnectProfile, localPath?: string)
     }
   }
 
-  setBackend("right", {
+  setBackend(paneId, {
     kind: "sftp",
     protocol: profile.protocol ?? "sftp",
     sessionId: result.sessionId,
@@ -56,27 +71,43 @@ export async function connectRemote(profile: ConnectProfile, localPath?: string)
     username: profile.username,
     status: "connected",
   });
-  setActive("right");
-  await navigate("right", result.initialPath, "replace");
+  setActive(paneId);
+  await navigate(paneId, result.initialPath, "replace");
   closeQuickConnect();
-  if (localPath) await navigate("left", localPath);
+  // A favorite's local path only belongs to a local left pane.
+  if (paneId === "right" && localPath && getState().panes.left.backend.kind === "local") {
+    await navigate("left", localPath);
+  }
 }
 
-export async function disconnectRemote(): Promise<void> {
-  const backend = getState().panes.right.backend;
+/** Disconnect a remote pane; the left pane returns to the local disk. */
+export async function disconnectPane(paneId: PaneId): Promise<void> {
+  const backend = getState().panes[paneId].backend;
   if (backend.kind !== "sftp") return;
   try {
     await window.pallet.sftp.disconnect(backend.sessionId);
   } catch {
-    // Session may already be gone; the remote pane closes either way.
+    // Session may already be gone; the pane closes either way.
   }
-  setBackend("right", { kind: "none" });
-  setActive("left");
+  if (paneId === "left") {
+    const restore = leftLocalCwd;
+    setBackend("left", { kind: "local" });
+    // The local disk returns to the left, so retire the copy the sidebar put right.
+    if (getState().panes.right.backend.kind === "local") setBackend("right", { kind: "none" });
+    setActive("left");
+    const home = await window.pallet.fs.homeDir();
+    if (!(await navigate("left", restore ?? home, "replace")) && restore && restore !== home) {
+      await navigate("left", home, "replace");
+    }
+  } else {
+    setBackend("right", { kind: "none" });
+    setActive("left");
+  }
   closeQuickConnect();
 }
 
-export function reconnectRemote(): void {
-  const backend = getState().panes.right.backend;
+export function reconnectPane(paneId: PaneId): void {
+  const backend = getState().panes[paneId].backend;
   if (backend.kind !== "sftp") return;
   window.pallet.sftp.reconnect(backend.sessionId).catch((err) => pushToast(err.message));
 }

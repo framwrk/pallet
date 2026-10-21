@@ -20,12 +20,15 @@ servers.
 
 ## Features
 
-Pallet pairs a Finder-familiar local pane with a remote pane. The left pane is your Mac; the right
-pane is the server. Press **⌘K** to connect, select a file, and press **F5** to send it to the other
-pane.
+Pallet pairs a Finder-familiar local pane with a remote pane. The left pane starts on your Mac and
+the right pane is the server. Press **⌘K** to connect, select a file, and press **F5** to send it to
+the other pane. Replace the local pane with a second server from the toolbar to transfer between
+remote hosts.
 
 - **SFTP, FTP, and explicit FTPS:** password or private-key authentication, per-connection
   keepalive, concurrency, and compression options, and SSH trust-on-first-use host key verification.
+- **Remote to remote:** replace the local pane with a second server from the toolbar, then copy
+  between the two remote panes with F5 or drag and drop.
 - **Real transfer totals:** Pallet enumerates every job before the first byte moves, so progress
   bars show actual totals. Files are written to staged temporary files, verified, and renamed into
   place, so a failed transfer leaves the existing destination intact.

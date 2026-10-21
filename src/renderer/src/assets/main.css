@@ -97,7 +97,7 @@
   --sidebar-primary: var(--primary);
   --sidebar-primary-foreground: var(--primary-foreground);
   --sidebar-accent: var(--background);
-  --sidebar-accent-foreground: var(--accent-foreground);
+  --sidebar-accent-foreground: var(--sidebar-foreground);
   --sidebar-border: var(--border);
   --sidebar-ring: var(--ring);
   --caution: oklch(0.769 0.188 70.08);
@@ -141,7 +141,7 @@
   --sidebar-primary: var(--primary);
   --sidebar-primary-foreground: var(--primary-foreground);
   --sidebar-accent: var(--background);
-  --sidebar-accent-foreground: var(--accent-foreground);
+  --sidebar-accent-foreground: var(--sidebar-foreground);
   --sidebar-border: var(--border);
   --sidebar-ring: var(--ring);
   --caution: oklch(0.769 0.188 70.08);

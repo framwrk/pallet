@@ -1,6 +1,6 @@
 import { CircleArrowDown, Dock, File, Film, HardDrive, Home, Image, Music, Plug, Server, Usb } from "lucide-react";
-import { connectFavorite, favoriteContextMenu, reorderFavorites } from "@/store/favorite.store";
-import { navigate, openQuickConnect, setEditingFavorite, useAppState } from "@/store/pane.store";
+import { favoriteContextMenu, reorderFavorites, requestFavoriteConnection } from "@/store/favorite.store";
+import { localPaneId, openLocal, openQuickConnect, setEditingFavorite, useAppState } from "@/store/pane.store";
 import { useRef, useState } from "react";
 import type { Favorite } from "@shared/favorite/favorite.types";
 import { LABEL_COLOR_CLASSES } from "@shared/favorite/favorite.constants";
@@ -15,26 +15,29 @@ function SidebarItem({
   label,
   path,
   currentPath,
+  disabled = false,
 }: {
   icon: React.ComponentType<{ className?: string }>;
   label: string;
   path: string;
   currentPath: string;
+  disabled?: boolean;
 }): React.JSX.Element {
   const isCurrent = currentPath === path;
 
   return (
     <button
       type="button"
+      disabled={disabled}
       aria-current={isCurrent ? "location" : undefined}
       className={cn(
         "group flex h-8 w-full items-center gap-2 rounded-[6px] px-2 text-left text-[13px] outline-none",
         "text-sidebar-foreground/85 hover:bg-sidebar-accent/70 hover:text-sidebar-foreground",
         "focus-visible:ring-primary/55 focus-visible:ring-2 focus-visible:ring-inset",
-        "transition-[background-color,color,box-shadow] duration-150",
+        "transition-[background-color,color,box-shadow] duration-150 disabled:pointer-events-none disabled:opacity-40",
         isCurrent && "bg-sidebar-accent text-sidebar-accent-foreground shadow-[inset_0_0_0_1px_var(--sidebar-border)]",
       )}
-      onClick={() => void navigate("left", path)}
+      onClick={() => openLocal(path)}
     >
       <Icon
         className={cn(
@@ -77,7 +80,7 @@ function FavoriteItem({
         "transition-[background-color,color,box-shadow] duration-150",
         dragTarget && "pallet-sidebar-drop-target",
       )}
-      onClick={() => void connectFavorite(favorite.id)}
+      onClick={() => void requestFavoriteConnection(favorite.id)}
       onContextMenu={(e) => {
         e.preventDefault();
         void favoriteContextMenu(favorite).then((action) => {
@@ -103,8 +106,13 @@ function FavoriteItem({
 
 export function Sidebar(): React.JSX.Element {
   const app = useAppState();
-  // Devices and folders drive the left pane, so it is the one they highlight.
-  const common = { currentPath: app.panes.left.cwd };
+  // Devices and folders drive the local pane: the left disk, or the right one
+  // while the left pane is a server and the right is free.
+  const localId = localPaneId();
+  const common = {
+    currentPath: localId ? app.panes[localId].cwd : "",
+    disabled: localId === null && app.panes.right.backend.kind === "sftp",
+  };
   const kf = app.knownFolders;
   const dragIndex = useRef<number | null>(null);
   const [dropIndex, setDropIndex] = useState<number | null>(null);

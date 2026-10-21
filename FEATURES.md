@@ -27,17 +27,18 @@ to send it to the other pane. The rest of this document covers the details.
 
 ## The window
 
-Pallet is a dual-pane file manager with a fixed layout: the left pane is your Mac, and the right
-pane is the server. Until you connect a server, the right pane shows
-[Quick Connect](#connecting-to-a-server) instead of a file list.
+Pallet is a dual-pane file manager with a fixed layout: the left pane starts on your Mac, and the
+right pane is the server. Until you connect a server, the right pane shows
+[Quick Connect](#connecting-to-a-server) instead of a file list. The toolbar can replace the local
+left pane with a second server for [remote-to-remote transfers](#transferring-files).
 
-| Region           | What it is                                                                                                                                  |
-| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Toolbar**      | Back, Forward, Refresh, New Folder, Move to Trash, Get Info. Acts on the **active pane**.                                                   |
-| **Sidebar**      | `Connect to Server`, then Devices (mounted volumes), Folders (Home, Desktop, Documents, Downloads, Movies, Music, Pictures), and Favorites. |
-| **Panes**        | Local on the left, server on the right, each with its own breadcrumb bar and status line.                                                   |
-| **Queue drawer** | Collapsible transfer queue along the bottom. Appears when you start a transfer.                                                             |
-| **Inspector**    | Right-hand info panel. Toggle with **⌘I** or **Space**.                                                                                     |
+| Region           | What it is                                                                                                                                     |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Toolbar**      | Back, Forward, Replace Local Pane with Remote / Restore Local Pane, Refresh, New Folder, Move to Trash, Get Info. Acts on the **active pane**. |
+| **Sidebar**      | `Connect to Server`, then Devices (mounted volumes), Folders (Home, Desktop, Documents, Downloads, Movies, Music, Pictures), and Favorites.    |
+| **Panes**        | Either pane can show the local disk or a server, each with its own breadcrumb bar and status line.                                             |
+| **Queue drawer** | Collapsible transfer queue along the bottom. Appears when you start a transfer.                                                                |
+| **Inspector**    | Right-hand info panel. Toggle with **⌘I** or **Space**.                                                                                        |
 
 **The active pane** is the pane with the accent-colored top border. Every toolbar button and
 keyboard shortcut applies to it. Click a pane or press **⇥** to switch. Keyboard focus and the
@@ -154,7 +155,14 @@ default app.
 
 **Quick Connect** fills the right pane whenever no server is attached to it: at launch, and again
 after you disconnect. To open it over a connected pane, press **⌘K** or click **Connect to Server**
-at the top of the sidebar. **Cancel** returns you to the file list.
+at the top of the sidebar. It lists saved favorites above the server fields, so you can pick one
+without retyping its settings. **Cancel** returns you to the file list.
+
+**Remote to remote:** click the **Replace Local Pane with Remote** button in the toolbar to connect
+a server in the left pane. While that pane is remote, a local folder picked in the sidebar opens in
+the right pane; click the **×** on the server chip in the left pane (or the toolbar's **Restore
+Local Pane** button) to move the local disk back at the folder you left. A new connection replaces
+the selected pane when the right pane is already connected, and otherwise opens in the right pane.
 
 | Field                               | Notes                                                                                                                            |
 | ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
@@ -185,8 +193,8 @@ Click **Connect** to connect once, or **Add to Favorites** to save the settings 
 the pane, marks the session _reconnecting_, and retries with backoff (1, 2, 4, 8, 15 seconds). Any
 running transfer pauses and resumes automatically once the connection returns.
 
-Disconnect with the **×** on the server chip in the right pane's breadcrumb bar. The pane shows
-Quick Connect again.
+Disconnect with the **×** on the server chip in a pane's breadcrumb bar. The right pane shows Quick
+Connect again; the left pane returns to the local disk.
 
 ---
 
@@ -210,13 +218,13 @@ don't dismiss it unless you know why the key changed.
 
 Saved connections live in the Favorites section of the sidebar, each with its color dot.
 
-| Action   | How                                   |
-| -------- | ------------------------------------- |
-| Save one | **Add to Favorites** in Quick Connect |
-| Connect  | Click it in the sidebar               |
-| Edit     | Right-click → **Edit**                |
-| Delete   | Right-click → **Delete**              |
-| Reorder  | Drag it up or down the list           |
+| Action   | How                                      |
+| -------- | ---------------------------------------- |
+| Save one | **Add to Favorites** in Quick Connect    |
+| Connect  | Click it in the sidebar or Quick Connect |
+| Edit     | Right-click → **Edit**                   |
+| Delete   | Right-click → **Delete**                 |
+| Reorder  | Drag it up or down the list              |
 
 Favorites are stored in SQLite on your machine, alongside your settings. Pallet encrypts passwords
 and key passphrases through macOS Keychain with Electron's `safeStorage`; the database stores only
@@ -235,18 +243,21 @@ Once a pane is connected, most local operations work the same way:
 - **Delete**: ⌘⌫ (permanent, with a confirmation dialog; there is no server-side Trash)
 - **Change permissions**: in [the inspector](#the-inspector)
 
-**Right-click a remote file**: Open · Edit in External Editor · Copy · Rename · Delete · Refresh.
+**Right-click a remote file**: Open · Edit in External Editor · Copy · Transfer to Local or the other
+server · Rename · Delete · Refresh.
 
-**One limitation:** remote-to-remote moves are not supported. Copy the files, then delete the
-originals. A move attempt fails with an explanation instead of silently copying and deleting,
-because a failure partway through that sequence loses data.
+**One limitation:** remote-to-remote moves (copy then delete in one command) are not supported.
+Copy the files, then delete the originals. A move attempt fails with an explanation instead of
+silently copying and deleting, because a failure partway through that sequence loses data.
 
 ---
 
 ## Transferring files
 
 **Drag and drop** files from one pane to the other. Drop onto a folder to go inside it, or anywhere
-else in the pane to drop at the current directory. The drop target highlights.
+else in the pane to drop at the current directory. The drop target highlights. Both panes can be
+remote, so the same copy paths (F5, ⌘C/⌘V, drag and drop, and the row context menu) work between
+two servers.
 
 Use the keyboard instead: **F5** or **⌘D** to copy to the other pane, **F6** to move (local only),
 or **⌘C** and **⌘V** to copy and paste.

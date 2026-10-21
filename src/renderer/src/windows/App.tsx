@@ -25,7 +25,7 @@ import {
   switchPane,
   useAppState,
 } from "@/store/pane.store";
-import { disconnectRemote, initSftpEvents } from "@/store/sftp.store";
+import { disconnectPane, initSftpEvents } from "@/store/sftp.store";
 import { ConfirmDeleteDialog } from "@/components/browser/ConfirmDeleteDialog";
 import { ConflictDialog } from "@/components/transfer/ConflictDialog";
 import { ConnectDialog } from "@/components/connection/QuickConnect";
@@ -207,7 +207,7 @@ function handleKeyDown(e: KeyboardEvent): void {
 
 function App(): React.JSX.Element {
   const app = useAppState();
-  const hasRemotePane = app.panes.right.backend.kind === "sftp";
+  const hasRightPane = app.panes.right.backend.kind !== "none";
 
   useEffect(() => {
     initSftpEvents();
@@ -222,13 +222,13 @@ function App(): React.JSX.Element {
   }, []);
 
   // ⌘W arrives from the app menu (accelerators outrun renderer keydowns):
-  // with the remote pane selected it disconnects it, otherwise it closes the
+  // with a remote pane selected it disconnects it, otherwise it closes the
   // window as the stock Close would.
   useEffect(() => {
     return window.pallet.window.onCloseRequest(() => {
       const state = getState();
-      if (state.active === "right" && state.panes.right.backend.kind === "sftp") {
-        void disconnectRemote();
+      if (state.panes[state.active].backend.kind === "sftp") {
+        void disconnectPane(state.active);
       } else {
         window.close();
       }
@@ -242,7 +242,7 @@ function App(): React.JSX.Element {
         <Toolbar />
         <div className="flex min-h-0 flex-1">
           <Pane paneId="left" />
-          {hasRemotePane && (
+          {hasRightPane && (
             <>
               <div className="bg-border w-px shrink-0" />
               <Pane paneId="right" />

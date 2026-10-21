@@ -5,12 +5,12 @@ import { DEFAULT_PREFERENCES } from "@shared/prefs/prefs.constants";
 import type { Favorite } from "@shared/favorite/favorite.types";
 import { useSyncExternalStore } from "react";
 
-/** Left is always the local disk, right is always the server (§3.1). */
+/** The left pane starts on the local disk but can host a second server; the right pane is the server (§3.1). */
 export type PaneId = "left" | "right";
 
 export type PaneBackend =
   | { kind: "local" }
-  /** The right pane before a session exists; it is hidden until connected. */
+  /** A remote pane before its session exists; the right pane is hidden until connected. */
   | { kind: "none" }
   | {
       kind: "sftp";
@@ -78,6 +78,8 @@ export interface AppState {
   goToOpen: boolean;
   /** Whether the modal connection form is open. */
   quickConnectOpen: boolean;
+  /** Pane the connection form will replace. */
+  quickConnectPane: PaneId;
   /** Prefill for the connection dialog (retry a favorite without a stored secret). */
   quickConnectPrefill: Favorite | null;
   /** Favorite being edited; the dialog switches to edit mode. */
@@ -125,6 +127,7 @@ let state: AppState = {
   knownFolders: null,
   goToOpen: false,
   quickConnectOpen: false,
+  quickConnectPane: "right",
   quickConnectPrefill: null,
   editingFavorite: null,
   favorites: [],
@@ -180,7 +183,7 @@ export type NavigateMode = "push" | "replace" | "none";
  */
 export async function navigate(id: PaneId, path: string, mode: NavigateMode = "push", toIndex?: number): Promise<boolean> {
   const pane = state.panes[id];
-  // Nothing to list until the right pane has a session.
+  // Nothing to list until the pane has a session.
   if (pane.backend.kind === "none") return false;
   const gen = ++generation[id];
   const samePath = pane.cwd === path;
@@ -313,13 +316,44 @@ export function setGoToOpen(open: boolean): void {
   setApp({ goToOpen: open });
 }
 
+/** Pane showing the local disk, if any. */
+export function localPaneId(): PaneId | null {
+  if (state.panes.left.backend.kind === "local") return "left";
+  if (state.panes.right.backend.kind === "local") return "right";
+  return null;
+}
+
+/**
+ * Pane a new connection replaces. The right pane is the server slot: while a
+ * live server holds it, a second connection replaces the selected pane, and
+ * otherwise it takes the right pane unless the caller names one (the toolbar
+ * shortcut).
+ */
+export function connectionTargetPane(explicit?: PaneId): PaneId {
+  if (explicit) return explicit;
+  const right = state.panes.right.backend;
+  return right.kind === "sftp" && right.status === "connected" ? state.active : "right";
+}
+
+/**
+ * Open a local directory from the sidebar. The right pane hosts the local disk
+ * while the left pane is remote and the right pane is free.
+ */
+export function openLocal(path: string): void {
+  const paneId = localPaneId() ?? "right";
+  const backend = state.panes[paneId].backend;
+  if (backend.kind === "sftp") return;
+  if (backend.kind === "none") setBackend(paneId, { kind: "local" });
+  void navigate(paneId, path);
+}
+
 /** Open the connection dialog without disturbing the active workspace pane. */
-export function openQuickConnect(prefill: Favorite | null = null): void {
-  setApp({ quickConnectOpen: true, quickConnectPrefill: prefill });
+export function openQuickConnect(prefill: Favorite | null = null, pane?: PaneId): void {
+  setApp({ quickConnectOpen: true, quickConnectPane: connectionTargetPane(pane), quickConnectPrefill: prefill });
 }
 
 export function closeQuickConnect(): void {
-  setApp({ quickConnectOpen: false, quickConnectPrefill: null });
+  setApp({ quickConnectOpen: false, quickConnectPane: "right", quickConnectPrefill: null });
 }
 
 export function setEditingFavorite(favorite: Favorite | null): void {
@@ -361,10 +395,12 @@ export function setBackend(id: PaneId, backend: PaneBackend): void {
 }
 
 export function updateSessionStatus(sessionId: string, status: SessionStatus, detail?: string): void {
-  const backend = state.panes.right.backend;
-  if (backend.kind === "sftp" && backend.sessionId === sessionId) {
-    setPane("right", { backend: { ...backend, status, statusDetail: detail } });
-    if (status === "connected") refresh("right");
+  for (const id of ["left", "right"] as const) {
+    const backend = state.panes[id].backend;
+    if (backend.kind === "sftp" && backend.sessionId === sessionId) {
+      setPane(id, { backend: { ...backend, status, statusDetail: detail } });
+      if (status === "connected") refresh(id);
+    }
   }
 }
 

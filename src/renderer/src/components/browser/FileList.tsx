@@ -181,7 +181,7 @@ export function FileList({ paneId, pane, visible, isActive }: FileListProps): Re
       className="min-h-0 flex-1 overflow-y-auto outline-none"
       tabIndex={0}
       role="grid"
-      aria-label={`${paneId === "left" ? "Local" : "Remote"} files`}
+      aria-label={`${pane.backend.kind === "local" ? "Local" : "Remote"} files`}
       aria-multiselectable
       aria-rowcount={visible.length}
       // Grid pattern with the container holding DOM focus: the active row is

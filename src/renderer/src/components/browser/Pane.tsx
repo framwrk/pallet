@@ -9,7 +9,7 @@ import {
   setSort,
   useAppState,
 } from "@/store/pane.store";
-import { disconnectRemote, reconnectRemote } from "@/store/sftp.store";
+import { disconnectPane, reconnectPane } from "@/store/sftp.store";
 import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { FileList } from "./FileList";
@@ -179,14 +179,14 @@ export function Pane({ paneId }: { paneId: PaneId }): React.JSX.Element {
         {pane.backend.kind === "sftp" && (
           <span
             className="bg-primary/10 text-primary flex shrink-0 items-center gap-1 rounded-full py-0.5 pr-0.5 pl-2 text-[11px] font-medium"
-            title={`${pane.backend.protocol.toUpperCase()} — ${pane.backend.username}@${pane.backend.host} — click × to disconnect`}
+            title={`${pane.backend.protocol.toUpperCase()} — ${pane.backend.username}@${pane.backend.host} — click × to ${paneId === "left" ? "return to the local disk" : "disconnect"}`}
           >
             <Server className="size-3" />
             {pane.backend.host}
             <button
               className="hover:bg-primary/20 rounded-full p-0.5"
               aria-label="Disconnect"
-              onClick={() => void disconnectRemote()}
+              onClick={() => void disconnectPane(paneId)}
             >
               <CircleX className="size-3.5" />
             </button>
@@ -271,14 +271,14 @@ export function Pane({ paneId }: { paneId: PaneId }): React.JSX.Element {
                 <div className="flex gap-2">
                   <Button
                     size="xs"
-                    onClick={() => reconnectRemote()}
+                    onClick={() => reconnectPane(paneId)}
                   >
                     <RefreshCw data-icon="inline-start" /> Reconnect
                   </Button>
                   <Button
                     size="xs"
                     variant="outline"
-                    onClick={() => void disconnectRemote()}
+                    onClick={() => void disconnectPane(paneId)}
                   >
                     Disconnect
                   </Button>

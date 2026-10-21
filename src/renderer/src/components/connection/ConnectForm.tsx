@@ -2,6 +2,7 @@ import { COLOR_LABELS, LABEL_COLOR_CLASSES } from "@shared/favorite/favorite.con
 import { ChevronDown, KeyRound, LoaderCircle, LockKeyhole, Server, Settings2, Star, UserRound } from "lucide-react";
 import type { ColorLabel, Favorite, FavoriteInput } from "@shared/favorite/favorite.types";
 import type { ConnectProfile, ConnectionProtocol } from "@shared/sftp/sftp.types";
+import { type PaneId, pushToast } from "@/store/pane.store";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -9,7 +10,6 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { connectRemote } from "@/store/sftp.store";
-import { pushToast } from "@/store/pane.store";
 import { saveFavorite } from "@/store/favorite.store";
 
 const PROTOCOLS: Record<ConnectionProtocol, string> = {
@@ -105,6 +105,7 @@ export function ConnectForm({
   defaultConcurrency,
   autoFocus,
   onClose,
+  targetPane = "right",
 }: {
   editing: Favorite | null;
   prefill: Favorite | null;
@@ -113,6 +114,8 @@ export function ConnectForm({
   autoFocus: boolean;
   /** Omitted where there is nothing to dismiss the form back to. */
   onClose?: () => void;
+  /** Workspace pane a new connection replaces. */
+  targetPane?: PaneId;
 }): React.JSX.Element {
   const seed = editing ?? prefill;
   const initialProtocol = seed?.protocol ?? "sftp";
@@ -211,7 +214,7 @@ export function ConnectForm({
     setBusy(true);
     setError(null);
     try {
-      await connectRemote(profile, localPathField.trim() || undefined);
+      await connectRemote(profile, targetPane === "right" ? localPathField.trim() || undefined : undefined, targetPane);
     } catch (err) {
       setBusy(false);
       setError((err as Error).message);
@@ -530,19 +533,21 @@ export function ConnectForm({
               spellCheck={false}
             />
           </Row>
-          <Row
-            label="Local Path"
-            layout={fieldLayout}
-            className={cn(isPane && "pallet-options-span col-span-2")}
-          >
-            <Input
-              className={fieldInputCls}
-              value={localPathField}
-              onChange={(e) => setLocalPathField(e.target.value)}
-              placeholder="Optional, opens in the left pane"
-              spellCheck={false}
-            />
-          </Row>
+          {!(isPane && targetPane === "left") && (
+            <Row
+              label="Local Path"
+              layout={fieldLayout}
+              className={cn(isPane && "pallet-options-span col-span-2")}
+            >
+              <Input
+                className={fieldInputCls}
+                value={localPathField}
+                onChange={(e) => setLocalPathField(e.target.value)}
+                placeholder="Optional, opens in the left pane"
+                spellCheck={false}
+              />
+            </Row>
+          )}
           {protocol === "sftp" && (
             <Row
               label="Keepalive (s)"
