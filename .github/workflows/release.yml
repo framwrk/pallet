@@ -1,12 +1,6 @@
 name: Release
 
 on:
-  workflow_dispatch:
-    inputs:
-      version:
-        description: "X.Y.Z version already merged into main"
-        required: true
-        type: string
   push:
     tags:
       - "v*"
@@ -20,18 +14,10 @@ concurrency:
 
 jobs:
   release:
-    name: Build, verify, and draft the release
+    name: Build and publish the release
     runs-on: macos-15
     steps:
-      - name: Checkout main
-        if: github.event_name == 'workflow_dispatch'
-        uses: actions/checkout@v5
-        with:
-          ref: main
-          fetch-depth: 0
-
       - name: Checkout the pushed tag
-        if: github.event_name == 'push'
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
@@ -49,66 +35,7 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Validate manual release
-        if: github.event_name == 'workflow_dispatch'
-        env:
-          VERSION_INPUT: ${{ inputs.version }}
-        run: |
-          set -euo pipefail
-
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
-          git fetch --force origin main --tags
-          if [ -n "$(git status --porcelain)" ]; then
-            echo "error: the working tree is not clean" >&2
-            exit 1
-          fi
-          git checkout -B main origin/main
-          git branch --set-upstream-to=origin/main main
-          if [ "$(git rev-parse HEAD)" != "$(git rev-parse origin/main)" ]; then
-            echo "error: HEAD does not match origin/main; merge the version bump pull request first" >&2
-            exit 1
-          fi
-
-          semver_re='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'
-          if ! [[ $VERSION_INPUT =~ $semver_re ]]; then
-            echo "error: version must be X.Y.Z (got '$VERSION_INPUT')" >&2
-            exit 1
-          fi
-          version="$VERSION_INPUT"
-
-          current=$(bun -e 'process.stdout.write(require("./package.json").version)')
-          if [ "$current" != "$version" ]; then
-            echo "error: package.json version is $current, expected $version; merge the version bump pull request first" >&2
-            exit 1
-          fi
-
-          tag="v$version"
-          if ! remote_tag=$(git ls-remote --tags origin "refs/tags/$tag"); then
-            echo "error: could not check origin for tag $tag" >&2
-            exit 1
-          fi
-          if [ -n "$remote_tag" ]; then
-            git fetch --force origin "refs/tags/$tag:refs/tags/$tag"
-            tag_commit=$(git rev-parse "$tag^{commit}")
-            if [ "$tag_commit" != "$(git rev-parse origin/main)" ]; then
-              echo "error: tag $tag already exists but does not point at origin/main" >&2
-              exit 1
-            fi
-          elif git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
-            tag_commit=$(git rev-parse "$tag^{commit}")
-            if [ "$tag_commit" != "$(git rev-parse origin/main)" ]; then
-              echo "error: local tag $tag already exists but does not point at origin/main" >&2
-              exit 1
-            fi
-          fi
-
-          echo "RELEASE_VERSION=$version" >> "$GITHUB_ENV"
-          echo "RELEASE_TAG=$tag" >> "$GITHUB_ENV"
-
       - name: Validate pushed tag
-        if: github.event_name == 'push'
         env:
           TAG_NAME: ${{ github.ref_name }}
         run: |
@@ -159,73 +86,23 @@ jobs:
         run: bun run build:mac
 
       - name: Verify the release
-        run: bash scripts/verify-release.sh "v$RELEASE_VERSION"
+        run: bash scripts/verify-release.sh "$RELEASE_TAG"
 
-      - name: Create and push the tag
-        if: github.event_name == 'workflow_dispatch'
-        run: |
-          set -euo pipefail
-
-          tag="$RELEASE_TAG"
-          git fetch --force origin main --tags
-          if [ "$(git rev-parse HEAD)" != "$(git rev-parse origin/main)" ]; then
-            echo "error: origin/main moved while the release was building; re-run from the new main" >&2
-            exit 1
-          fi
-
-          if ! remote_tag=$(git ls-remote --tags origin "refs/tags/$tag"); then
-            echo "error: could not check origin for tag $tag" >&2
-            exit 1
-          fi
-
-          if [ -n "$remote_tag" ]; then
-            tag_commit=$(git rev-parse "$tag^{commit}")
-            if [ "$tag_commit" != "$(git rev-parse origin/main)" ]; then
-              echo "error: tag $tag already exists but does not point at origin/main" >&2
-              exit 1
-            fi
-          else
-            if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
-              tag_commit=$(git rev-parse "$tag^{commit}")
-              if [ "$tag_commit" != "$(git rev-parse origin/main)" ]; then
-                echo "error: local tag $tag already exists but does not point at origin/main" >&2
-                exit 1
-              fi
-            else
-              git tag -a "$tag" -m "$tag"
-            fi
-            git push origin "refs/tags/$tag"
-          fi
-
-      - name: Check for an existing release
+      - name: Create the release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
 
-          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            echo "error: a release for $RELEASE_TAG already exists" >&2
-            exit 1
-          fi
-
-      - name: Create the draft release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-
-          tag="$RELEASE_TAG"
-          version="$RELEASE_VERSION"
           args=(
-            release create "$tag"
-            "dist/pallet-${version}.dmg"
+            release create "$RELEASE_TAG"
+            "dist/pallet-${RELEASE_VERSION}.dmg"
             "dist/checksums.txt"
             --verify-tag
-            --draft
-            --title "Pallet - $tag"
+            --title "Pallet - $RELEASE_TAG"
             --generate-notes
           )
-          if [ "${version%%.*}" = "0" ]; then
+          if [ "${RELEASE_VERSION%%.*}" = "0" ]; then
             args+=(--prerelease)
           fi
           gh "${args[@]}"
