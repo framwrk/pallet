@@ -56,7 +56,9 @@ export function UpdateToast(): React.JSX.Element | null {
             </p>
           </div>
         ) : download?.status === "done" ? (
-          <p className="text-muted-foreground mt-2 text-xs">Saved to Downloads and opened — drag Pallet into Applications.</p>
+          <p className="text-muted-foreground mt-2 text-xs">
+            Saved to Downloads and opened — Pallet is closing, drag it into Applications.
+          </p>
         ) : (
           <div className="mt-2 flex items-center gap-2">
             {info.dmgUrl ? (
