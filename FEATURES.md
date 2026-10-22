@@ -409,8 +409,9 @@ does not ship versions like `0.1.0-beta.1`.
 
 Updates are not installed automatically; that requires code signing, which is not in place.
 Instead, the toast downloads the release disk image into `~/Downloads` (with a progress bar) and
-mounts it. To update, click **Download update**, then drag Pallet into Applications. If a release
-has no disk image, the toast links to the release page.
+mounts it. To update, click **Download update**, then drag Pallet into Applications. Pallet closes
+once the disk image is open, so the drag-to-Applications window is the last thing left on screen.
+If a release has no disk image, the toast links to the release page.
 
 ---
 
