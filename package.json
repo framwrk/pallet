@@ -33,7 +33,7 @@
     "build": "bun run typecheck && electron-vite build",
     "rebuild": "electron-rebuild --only better-sqlite3",
     "build:unpack": "bun run build && electron-builder --dir",
-    "build:mac": "electron-vite build && electron-builder --mac"
+    "build:mac": "electron-vite build && electron-builder --mac --publish never"
   },
   "trustedDependencies": [
     "electron",
