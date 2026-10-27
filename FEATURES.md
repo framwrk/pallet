@@ -307,6 +307,11 @@ The queue drawer shows progress, transfer rate, and bytes moved for each job:
 running jobs. These controls and the live progress reporting apply to every transfer direction,
 including copies between two remote servers.
 
+A canceled job keeps the progress it measured: its row shows **Canceled** with the bytes that
+completed before cancellation, and a job canceled while scanning keeps the files and bytes discovered
+so far. Staged partial files are cleaned up, so the reported bytes are the ones left on the
+destination.
+
 A job that a dropped connection paused shows **"Paused — connection lost"** and resumes
 automatically. You cannot resume it manually; it waits for the network.
 

@@ -761,6 +761,87 @@ test("remote-to-remote cancel stops conflict detection instead of scanning every
   }
 });
 
+test("remote-to-remote cancel during scan reports partial progress and stops scanning", { timeout: 15000 }, async () => {
+  const f = await fixture();
+  try {
+    const first = Buffer.alloc(4096, 3);
+    await fs.writeFile(`${f.source}/a`, first);
+    for (const name of ["a", "b", "c"]) {
+      await fs.mkdir(`${f.source}/tree/${name}`, { recursive: true });
+      await fs.writeFile(`${f.source}/tree/${name}/file`, name);
+    }
+    let sourceLists = 0;
+    const source = wrap(f.local, {
+      listEntries: async (p) => {
+        const entries = await f.local.listEntries(p);
+        // The root listing completes first; cancel while scanning "tree".
+        if (++sourceLists === 2) h.queue.cancel(h.queue.snapshots()[0].id);
+        return entries;
+      },
+    });
+    const updates: TransferJobSnapshot[] = [];
+    const h = remoteHarness(source, f.local, "replace", (s) => updates.push(s));
+    const result = await h.run(f.source, f.dest, ["a", "tree"]);
+    assert.equal(result.state, "canceled");
+    assert.equal(sourceLists, 2, "cancellation must stop the source scan");
+    assert.equal(result.totalFiles, 1);
+    assert.equal(result.totalBytes, first.length);
+    assert.equal(result.doneBytes, 0);
+    const canceled = updates.filter((s) => s.state === "canceled");
+    assert(canceled.length > 0, "expected the drawer to receive a canceled update");
+    assert.equal(canceled.at(-1)?.totalFiles, 1);
+    assert.equal(canceled.at(-1)?.totalBytes, first.length);
+    assert.deepEqual(await fs.readdir(f.dest), []);
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test("remote-to-remote cancel after a completed file reports partial byte progress", { timeout: 30000 }, async () => {
+  const f = await fixture();
+  try {
+    const first = Buffer.alloc(4096, 5);
+    await fs.writeFile(`${f.source}/a`, first);
+    await fs.writeFile(`${f.source}/b`, Buffer.alloc(CHUNK * 2, 6));
+    let canceled = false;
+    const source = wrap(f.local, {
+      createReadStream: async (p, options) => {
+        const read = await f.local.createReadStream(p, options);
+        if (!p.endsWith("/b") || canceled) return read;
+        canceled = true;
+        // "b" may start pipelining before "a" commits. Wait for that commit so
+        // the canceled snapshot has completed progress to report.
+        for (let i = 0; i < 500 && h.queue.snapshots()[0].doneFiles === 0; i++)
+          await new Promise((resolve) => setTimeout(resolve, 10));
+        return Readable.from(
+          (async function* () {
+            let emitted = 0;
+            for await (const chunk of read) {
+              emitted += chunk.length;
+              yield chunk;
+              if (emitted >= CHUNK / 2) {
+                h.queue.cancel(h.queue.snapshots()[0].id);
+                break;
+              }
+            }
+          })(),
+        );
+      },
+    });
+    const h = remoteHarness(source, f.local);
+    const result = await h.run(f.source, f.dest, ["a", "b"]);
+    assert.equal(result.state, "canceled");
+    assert.equal(result.doneFiles, 1);
+    assert.equal(result.doneBytes, first.length);
+    assert.equal(result.totalFiles, 2);
+    assert.equal(result.totalBytes, first.length + CHUNK * 2);
+    assert.deepEqual(await fs.readFile(`${f.dest}/a`), first);
+    assert.deepEqual(await fs.readdir(f.dest), ["a"]);
+  } finally {
+    await f.cleanup();
+  }
+});
+
 test("remote-to-remote partial failure keeps completed files and removes staging", { timeout: 15000 }, async () => {
   const f = await fixture();
   try {

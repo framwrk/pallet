@@ -23,7 +23,9 @@ function JobRow({ job }: { job: TransferJobSnapshot }): React.JSX.Element {
               ? `Done · ${formatBytes(job.doneBytes)}${job.skippedFiles ? ` · ${job.skippedFiles} skipped` : ""}`
               : job.state === "failed"
                 ? `Failed · ${job.errors[0]?.message ?? ""}`
-                : "Canceled";
+                : job.totalBytes > 0
+                  ? `Canceled · ${formatBytes(job.doneBytes)} of ${formatBytes(job.totalBytes)}`
+                  : "Canceled";
 
   return (
     <div className="flex items-center gap-3 border-t px-3 py-2 first:border-t-0">
@@ -41,9 +43,15 @@ function JobRow({ job }: { job: TransferJobSnapshot }): React.JSX.Element {
                 "h-full rounded-full",
                 // Bridge the queue's 100 ms counter updates without easing to a stop between them.
                 job.state === "running" && "transition-[width] duration-300 ease-linear motion-reduce:transition-none",
-                job.state === "failed" ? "bg-destructive" : job.state === "completed" ? "bg-green-500" : "bg-primary",
+                job.state === "failed"
+                  ? "bg-destructive"
+                  : job.state === "completed"
+                    ? "bg-green-500"
+                    : job.state === "canceled"
+                      ? "bg-muted-foreground"
+                      : "bg-primary",
               )}
-              style={{ width: `${terminal && job.state !== "completed" ? 100 : pct}%` }}
+              style={{ width: `${job.state === "failed" ? 100 : pct}%` }}
             />
           </div>
           <span className="text-muted-foreground w-24 shrink-0 text-right text-[11px] tabular-nums">
