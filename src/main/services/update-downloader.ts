@@ -24,6 +24,9 @@ const BROADCAST_INTERVAL_MS = 100;
 /** Grace period before quitting, so Finder can paint the drag-to-Applications window. */
 const QUIT_DELAY_MS = 250;
 
+/** How long to wait for the disk image to open before treating it as failed. */
+const OPEN_TIMEOUT_MS = 10_000;
+
 let active: Promise<string> | null = null;
 
 function emit(state: UpdateDownloadState): void {
@@ -44,14 +47,35 @@ export function downloadUpdate(info: UpdateInfo): Promise<string> {
 }
 
 /**
- * Mount the disk image in Finder and quit Pallet. The next step is the user
- * dragging the app into Applications, so a running instance would only get in
- * the way. `shell.openPath` resolves with an error string instead of
- * rejecting, so an empty string is the only success.
+ * Mount the disk image in Finder and quit Pallet, but only once the open
+ * request succeeds. `shell.openPath` resolves with an error string instead of
+ * rejecting, so an empty string is the only success. A request that fails,
+ * rejects, or never settles leaves Pallet running: quitting there would strand
+ * the user without a window to retry from, so the failure is surfaced instead.
  */
 async function openDiskImage(dest: string): Promise<void> {
-  const failure = await shell.openPath(dest);
-  if (failure) throw new Error(`Could not open the disk image: ${failure}`);
+  const opening = shell.openPath(dest).then(
+    (failure) => ({ failure }),
+    (err: unknown) => ({ error: err instanceof Error ? err.message : String(err) }),
+  );
+  let timer: NodeJS.Timeout | undefined;
+  const timedOut = new Promise<"timeout">((resolve) => {
+    timer = setTimeout(() => resolve("timeout"), OPEN_TIMEOUT_MS);
+  });
+
+  let result: { failure: string } | { error: string } | "timeout";
+  try {
+    result = await Promise.race([opening, timedOut]);
+  } finally {
+    clearTimeout(timer);
+  }
+
+  if (result === "timeout") {
+    throw new Error("The disk image took too long to open — Pallet is still running.");
+  }
+  if ("error" in result) throw new Error(`Could not open the disk image: ${result.error}`);
+  if (result.failure) throw new Error(`Could not open the disk image: ${result.failure}`);
+
   setTimeout(() => app.quit(), QUIT_DELAY_MS);
 }
 
@@ -113,7 +137,7 @@ async function run(info: UpdateInfo): Promise<string> {
       totalBytes: 0,
       error: (err as Error).message,
     });
-    log("update download failed", (err as Error).message);
+    log("update failed", (err as Error).message);
     throw err;
   }
 }

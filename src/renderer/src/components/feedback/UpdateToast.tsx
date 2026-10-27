@@ -15,7 +15,7 @@ export function UpdateToast(): React.JSX.Element | null {
     const offState = window.pallet.app.onUpdateDownloadState((state) => {
       setDownload(state);
       // Failure surfaces as a regular toast; the notice returns to its idle state.
-      if (state.status === "error") pushToast(`Update download failed: ${state.error}`, "error");
+      if (state.status === "error") pushToast(`Update failed: ${state.error}`, "error");
     });
     return () => {
       offState();
