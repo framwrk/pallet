@@ -269,10 +269,12 @@ export class TransferQueue {
       }
     } finally {
       // Cleanup only this job's unique staging files, after all writers stopped.
+      // Remove them together: a remote destination would otherwise spend one
+      // round trip per stopped file, delaying a canceled job from settling.
       if (job.to) {
-        for (const file of job.planFiles) {
-          if (file.target) await job.to.removeFile(file.target.partPath).catch(() => {});
-        }
+        await Promise.allSettled(
+          job.planFiles.filter((file) => file.target).map((file) => job.to.removeFile(file.target!.partPath)),
+        );
       }
       job.from?.dispose();
       job.to?.dispose();
@@ -344,6 +346,7 @@ export class TransferQueue {
       }
     };
     for (const name of new Set(names)) {
+      if (job.canceled) return;
       if (!name || name === "." || name === ".." || name.includes("/") || name.includes("\0"))
         throw new Error("Invalid source name");
       await walk(name);
@@ -359,6 +362,9 @@ export class TransferQueue {
     listings.set(job.request.destDir, await list(job.request.destDir));
     // Parents precede children. Absent directories need no remote listing.
     for (const rel of job.planDirs) {
+      // A remote destination can make this loop thousands of listings deep;
+      // cancellation must stop it instead of finishing a scan nobody wants.
+      if (job.canceled) return;
       const dir = joinPath(job.request.destDir, rel);
       const slash = rel.lastIndexOf("/");
       const parent = slash < 0 ? job.request.destDir : joinPath(job.request.destDir, rel.slice(0, slash));
@@ -368,6 +374,7 @@ export class TransferQueue {
     }
     job.destNames = new Map([...listings].map(([dir, entries]) => [dir, new Set(entries.keys())]));
     for (const file of job.planFiles) {
+      if (job.canceled) return;
       const slash = file.relPath.lastIndexOf("/");
       const dir = slash === -1 ? job.request.destDir : joinPath(job.request.destDir, file.relPath.slice(0, slash));
       const name = file.relPath.slice(slash + 1);
@@ -383,6 +390,7 @@ export class TransferQueue {
     }
     // Include planned names as well as existing names when allocating keep-both.
     for (const file of job.planFiles) {
+      if (job.canceled) return;
       const slash = file.relPath.lastIndexOf("/");
       const dir = slash < 0 ? job.request.destDir : joinPath(job.request.destDir, file.relPath.slice(0, slash));
       const names = job.destNames.get(dir) ?? new Set<string>();
@@ -436,6 +444,7 @@ export class TransferQueue {
       if (job.canceled) return;
       await this.operation(job, () => job.to.mkdirp(joinPath(job.request.destDir, dir)));
     }
+    if (job.canceled) return;
 
     job.queue = [...job.planFiles];
     const refs = [job.request.from, job.request.to].filter((ref) => ref.kind === "sftp");
@@ -510,6 +519,9 @@ export class TransferQueue {
   }
 
   private async transferFile(job: Job, file: PlanFile): Promise<void> {
+    // A cancel can land between a worker's loop check and this call. Refuse
+    // before allocating a target so no new file starts after cancellation.
+    if (job.canceled) return;
     const target = this.destPathsFor(job, file);
     if (target === "skip") {
       job.skippedFiles++;

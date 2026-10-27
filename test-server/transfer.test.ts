@@ -115,6 +115,46 @@ function harness(
   };
 }
 
+/**
+ * Remote-to-remote harness: two distinct sessions and endpoints, so the queue
+ * exercises the same path as copying between two servers.
+ */
+function remoteHarness(
+  source: TransferEndpoint,
+  dest: TransferEndpoint,
+  action = "replace",
+  onUpdate?: (s: TransferJobSnapshot, q: TransferQueue) => void,
+  concurrency = 3,
+): {
+  queue: TransferQueue;
+  run: (sourceBase: string, destDir: string, names: string[]) => Promise<TransferJobSnapshot>;
+} {
+  const waiters = new Map<string, (s: TransferJobSnapshot) => void>();
+  const queue = new TransferQueue(
+    sessions,
+    {
+      onUpdate: (s) => onUpdate?.(s, queue),
+      onConflict: (p) => queue.resolveConflict(p.jobId, action as "replace" | "keepBoth", true),
+      record: (s) => waiters.get(s.id)?.(s),
+    },
+    concurrency,
+    (_sessions, ref) => (ref.kind === "sftp" && ref.sessionId === "dest" ? dest : source),
+  );
+  return {
+    queue,
+    run(sourceBase: string, destDir: string, names: string[]) {
+      const id = queue.enqueue({
+        from: { kind: "sftp", sessionId: "source" },
+        to: { kind: "sftp", sessionId: "dest" },
+        sourceBase,
+        destDir,
+        names,
+      });
+      return new Promise<TransferJobSnapshot>((resolve) => waiters.set(id, resolve));
+    },
+  };
+}
+
 // Filesystem tests intentionally use the actual endpoints, streams and staging/rename path.
 test("2,100 mixed files, empty folders, duplicate selection and symlinks", { timeout: 30000 }, async () => {
   const f = await fixture();
@@ -598,6 +638,152 @@ test("same-session copies do not deadlock the shared channel pool", { timeout: 5
     const result = await new Promise<TransferJobSnapshot>((resolve) => waiters.set(id, resolve));
     assert.equal(result.state, "completed", JSON.stringify(result.errors));
     assert.deepEqual((await fs.readdir(f.dest)).sort(), ["a", "b"]);
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test("remote-to-remote transfers report live progress and complete", { timeout: 15000 }, async () => {
+  const f = await fixture();
+  try {
+    const payload = Buffer.alloc(CHUNK / 2, 41);
+    await fs.writeFile(`${f.source}/a`, payload);
+    const source = wrap(f.local, {
+      createReadStream: async (p, options) => {
+        const read = await f.local.createReadStream(p, options);
+        // Pace the reads so several 100 ms progress ticks land mid-file.
+        return Readable.from(
+          (async function* () {
+            for await (const chunk of read) {
+              yield chunk;
+              await new Promise((r) => setTimeout(r, 20));
+            }
+          })(),
+        );
+      },
+    });
+    const updates: TransferJobSnapshot[] = [];
+    const h = remoteHarness(source, f.local, "replace", (s) => {
+      if (s.state === "running") updates.push(s);
+    });
+    const result = await h.run(f.source, f.dest, ["a"]);
+    assert.equal(result.state, "completed", JSON.stringify(result.errors));
+    assert.equal(result.doneBytes, payload.length);
+    assert(
+      updates.some((s) => s.doneBytes > 0 && s.doneBytes < s.totalBytes),
+      "expected progress before the remote-to-remote file finished",
+    );
+    assert.deepEqual(await fs.readFile(`${f.dest}/a`), payload);
+    assert(!(await fs.readdir(f.dest)).some((name) => name.endsWith(".pallet-part")));
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test("remote-to-remote cancel mid-file cleans destination staging and keeps the original", { timeout: 15000 }, async () => {
+  const f = await fixture();
+  try {
+    await fs.writeFile(`${f.source}/a`, Buffer.alloc(CHUNK * 2, 27));
+    await fs.writeFile(`${f.dest}/a`, "original");
+    let canceled = false;
+    const source = wrap(f.local, {
+      createReadStream: async (p, options) => {
+        const read = await f.local.createReadStream(p, options);
+        if (canceled) return read;
+        canceled = true;
+        return Readable.from(
+          (async function* () {
+            let emitted = 0;
+            for await (const chunk of read) {
+              emitted += chunk.length;
+              yield chunk;
+              if (emitted >= CHUNK / 2) {
+                h.queue.cancel(h.queue.snapshots()[0].id);
+                break;
+              }
+            }
+          })(),
+        );
+      },
+    });
+    const h = remoteHarness(source, f.local);
+    const result = await h.run(f.source, f.dest, ["a"]);
+    assert.equal(result.state, "canceled");
+    assert.equal(result.doneBytes, 0);
+    assert.deepEqual(await fs.readdir(f.dest), ["a"]);
+    assert.equal(await fs.readFile(`${f.dest}/a`, "utf8"), "original");
+    assert(!(await fs.readdir(f.dest)).some((name) => name.endsWith(".pallet-part")));
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test("remote-to-remote conflicts keep both files", { timeout: 15000 }, async () => {
+  const f = await fixture();
+  try {
+    await fs.writeFile(`${f.source}/a`, "new");
+    await fs.writeFile(`${f.dest}/a`, "original");
+    const result = await remoteHarness(f.local, f.local, "keepBoth").run(f.source, f.dest, ["a"]);
+    assert.equal(result.state, "completed", JSON.stringify(result.errors));
+    assert.deepEqual((await fs.readdir(f.dest)).sort(), ["a", "a (2)"]);
+    assert.equal(await fs.readFile(`${f.dest}/a`, "utf8"), "original");
+    assert.equal(await fs.readFile(`${f.dest}/a (2)`, "utf8"), "new");
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test("remote-to-remote cancel stops conflict detection instead of scanning every folder", { timeout: 15000 }, async () => {
+  const f = await fixture();
+  try {
+    for (const name of ["a", "b", "c"]) {
+      await fs.mkdir(`${f.source}/tree/${name}`, { recursive: true });
+      await fs.writeFile(`${f.source}/tree/${name}/file`, name);
+      // Existing destination folders get listed during conflict detection.
+      await fs.mkdir(`${f.dest}/tree/${name}`, { recursive: true });
+    }
+    let destLists = 0;
+    const dest = wrap(f.local, {
+      listEntries: async (p) => {
+        destLists++;
+        // dest root, then "tree", then "tree/a": cancel partway through.
+        if (destLists === 3) h.queue.cancel(h.queue.snapshots()[0].id);
+        return f.local.listEntries(p);
+      },
+    });
+    const h = remoteHarness(f.local, dest);
+    const result = await h.run(f.source, f.dest, ["tree"]);
+    assert.equal(result.state, "canceled");
+    assert.equal(destLists, 3, "conflict detection must stop at the cancellation point");
+    assert.deepEqual(await fs.readdir(`${f.dest}/tree/a`), [], "no file may be copied after cancellation");
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test("remote-to-remote partial failure keeps completed files and removes staging", { timeout: 15000 }, async () => {
+  const f = await fixture();
+  try {
+    await fs.writeFile(`${f.source}/bad`, Buffer.alloc(4096, 8));
+    await fs.writeFile(`${f.source}/good`, Buffer.alloc(8192, 7));
+    const source = wrap(f.local, {
+      createReadStream: async (p, options) =>
+        p.endsWith("/bad")
+          ? Readable.from(
+              (async function* () {
+                yield Buffer.alloc(2048);
+                await new Promise((r) => setTimeout(r, 20));
+                throw new Error("Remote read failed");
+              })(),
+            )
+          : f.local.createReadStream(p, options),
+    });
+    const result = await remoteHarness(source, f.local).run(f.source, f.dest, ["good", "bad"]);
+    assert.equal(result.state, "failed");
+    assert.equal(result.doneFiles, 1);
+    assert.equal(result.doneBytes, 8192, "the failed file's rolled-back bytes must not count");
+    assert.deepEqual((await fs.readdir(f.dest)).sort(), ["good"]);
+    assert(!(await fs.readdir(f.dest)).some((name) => name.endsWith(".pallet-part")));
   } finally {
     await f.cleanup();
   }

@@ -304,7 +304,8 @@ The queue drawer shows progress, transfer rate, and bytes moved for each job:
 | **Remove from list** | Clears a finished job            |
 
 **Clear** removes all finished jobs at once. The drawer header shows aggregate progress across all
-running jobs.
+running jobs. These controls and the live progress reporting apply to every transfer direction,
+including copies between two remote servers.
 
 A job that a dropped connection paused shows **"Paused — connection lost"** and resumes
 automatically. You cannot resume it manually; it waits for the network.
