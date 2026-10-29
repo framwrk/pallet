@@ -299,7 +299,7 @@ The queue drawer shows progress, transfer rate, and bytes moved for each job:
 | -------------------- | -------------------------------- |
 | **Pause**            | Interrupts active streams        |
 | **Resume**           | Continues the transfer           |
-| **Retry**            | Re-runs a failed job             |
+| **Retry**            | Re-runs a failed or canceled job |
 | **Cancel**           | Stops and cleans up staged files |
 | **Remove from list** | Clears a finished job            |
 
@@ -318,8 +318,9 @@ automatically. You cannot resume it manually; it waits for the network.
 **If a transfer is interrupted,** local and SFTP transfers of at least 16 MiB resume from the last
 destination-confirmed byte during the same job. Only bytes beyond that checkpoint are repeated.
 Small files and transfers involving FTP/FTPS restart the affected file. Completed files stay complete
-through pauses and automatic recovery. The **Retry** button starts a new attempt and checks conflicts
-again.
+through pauses and automatic recovery. The **Retry** button re-scans and copies again: files the
+canceled or failed attempt already completed stay in place when the source is unchanged, and only
+the remaining files are copied. Conflicts are checked again for the rest.
 
 **If a transfer stalls** (no bytes for 60 seconds), Pallet abandons that channel and retries with a
 fresh one. Pallet retries transient stream and metadata failures up to five times with backoff;

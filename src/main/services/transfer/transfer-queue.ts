@@ -58,10 +58,14 @@ interface PlanFile {
   relPath: string;
   size: number;
   mtimeMs: number;
+  /** Enumeration timestamp; unlike mtimeMs it is never replaced by a precise re-stat. */
+  scanMtimeMs: number;
   mode: number;
   checkpoint: number;
   versionCaptured?: boolean;
   target?: { finalPath: string; partPath: string };
+  /** Committed to the destination; a retry may keep it instead of copying again. */
+  completed?: boolean;
 }
 
 interface Conflict {
@@ -99,6 +103,10 @@ class Job {
   planFiles: PlanFile[] = [];
   skippedSymlinks = 0;
   conflicts = new Map<string, Conflict>();
+  /** Files committed by the job this retry replaces, keyed by relative path. */
+  previousCompleted = new Map<string, { size: number; scanMtimeMs: number }>();
+  /** Files the retry kept from the previous attempt instead of copying again. */
+  alreadyDone = new Set<string>();
   queue: PlanFile[] = [];
   inFlight = new Map<string, InFlight>();
   doneFiles = 0;
@@ -338,6 +346,7 @@ export class TransferQueue {
           relPath,
           size: stat.size,
           mtimeMs: stat.mtimeMs,
+          scanMtimeMs: stat.mtimeMs,
           mode: stat.mode,
           checkpoint: 0,
         });
@@ -379,6 +388,26 @@ export class TransferQueue {
       const dir = slash === -1 ? job.request.destDir : joinPath(job.request.destDir, file.relPath.slice(0, slash));
       const name = file.relPath.slice(slash + 1);
       const st = listings.get(dir)?.get(name);
+      // A retry re-scans the source, then keeps files the previous attempt
+      // already committed. Only skip when the source is unchanged (same size
+      // and mtime) and the destination still holds that exact file; anything
+      // else is copied again and goes through conflict detection as usual.
+      const previous = job.previousCompleted.get(file.relPath);
+      if (
+        previous &&
+        previous.size === file.size &&
+        previous.scanMtimeMs === file.scanMtimeMs &&
+        st &&
+        !st.isDir &&
+        !st.isSymlink &&
+        st.size === file.size
+      ) {
+        job.alreadyDone.add(file.relPath);
+        file.completed = true;
+        job.doneFiles++;
+        job.doneBytes += file.size;
+        continue;
+      }
       if (!st) continue;
       if (st.isDir) job.errors.push({ relPath: file.relPath, message: "A folder with this name exists" });
       job.conflicts.set(file.relPath, {
@@ -446,7 +475,7 @@ export class TransferQueue {
     }
     if (job.canceled) return;
 
-    job.queue = [...job.planFiles];
+    job.queue = job.planFiles.filter((file) => !job.alreadyDone.has(file.relPath));
     const refs = [job.request.from, job.request.to].filter((ref) => ref.kind === "sftp");
     // A same-session copy needs one read and one write channel per file. A
     // worker that pipelines two files could hold a read channel while waiting
@@ -698,6 +727,7 @@ export class TransferQueue {
       committing = true;
       await job.to.renameReplacing(partPath, finalPath);
       job.doneFiles++;
+      file.completed = true;
       file.target = undefined;
       file.checkpoint = 0;
       job.retries.delete(file.relPath);
@@ -833,13 +863,22 @@ export class TransferQueue {
     this.emit(job, true);
   }
 
-  /** Re-run a failed/canceled job from scratch (restart-only resume, §3.4). */
+  /**
+   * Re-run a failed/canceled job (restart-only resume, §3.4): the scan repeats
+   * so a changed source is picked up, but files the old attempt committed are
+   * kept when the source still matches, so a retry never copies them twice.
+   */
   retry(jobId: string): void {
     const old = this.jobs.get(jobId);
     if (!old || !["failed", "canceled"].includes(old.state)) return;
     const job = new Job(jobId, old.request);
     this.jobs.set(jobId, job);
-    job.settled = old.settled.then(() => this.run(job));
+    job.settled = old.settled.then(() => {
+      for (const file of old.planFiles) {
+        if (file.completed) job.previousCompleted.set(file.relPath, { size: file.size, scanMtimeMs: file.scanMtimeMs });
+      }
+      return this.run(job);
+    });
   }
 
   remove(jobId: string): void {
