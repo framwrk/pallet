@@ -842,6 +842,131 @@ test("remote-to-remote cancel after a completed file reports partial byte progre
   }
 });
 
+test(
+  "retrying a canceled remote-to-remote transfer keeps completed files and finishes the rest",
+  { timeout: 30000 },
+  async () => {
+    const f = await fixture();
+    try {
+      const first = Buffer.alloc(4096, 5);
+      await fs.writeFile(`${f.source}/a`, first);
+      await fs.writeFile(`${f.source}/b`, Buffer.alloc(CHUNK * 2, 6));
+      let canceled = false;
+      let firstReads = 0;
+      const source = wrap(f.local, {
+        createReadStream: async (p, options) => {
+          if (p.endsWith("/a")) firstReads++;
+          const read = await f.local.createReadStream(p, options);
+          if (!p.endsWith("/b") || canceled) return read;
+          canceled = true;
+          // Wait for "a" to commit so the canceled job has finished work to keep.
+          for (let i = 0; i < 500 && h.queue.snapshots()[0].doneFiles === 0; i++)
+            await new Promise((resolve) => setTimeout(resolve, 10));
+          return Readable.from(
+            (async function* () {
+              let emitted = 0;
+              for await (const chunk of read) {
+                emitted += chunk.length;
+                yield chunk;
+                if (emitted >= CHUNK / 2) {
+                  h.queue.cancel(h.queue.snapshots()[0].id);
+                  break;
+                }
+              }
+            })(),
+          );
+        },
+      });
+      // keepBoth would duplicate "a" if the retry copied it again and treated it
+      // as an ordinary conflict.
+      const h = remoteHarness(source, f.local, "keepBoth");
+      const canceledSnapshot = await h.run(f.source, f.dest, ["a", "b"]);
+      assert.equal(canceledSnapshot.state, "canceled");
+      assert.equal(canceledSnapshot.doneFiles, 1);
+      assert.equal(firstReads, 1);
+
+      const id = h.queue.snapshots()[0].id;
+      h.queue.retry(id);
+      let retried: TransferJobSnapshot | undefined;
+      for (let i = 0; i < 1500; i++) {
+        const snapshot = h.queue.snapshots()[0];
+        if (snapshot.state === "completed" || snapshot.state === "failed") {
+          retried = snapshot;
+          break;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      assert(retried, "retry did not settle");
+      assert.equal(retried.state, "completed", JSON.stringify(retried.errors));
+      assert.equal(retried.doneFiles, 2);
+      assert.equal(retried.doneBytes, first.length + CHUNK * 2);
+      assert.equal(firstReads, 1, "the retry must not read a file it already completed");
+      assert.deepEqual(await fs.readdir(f.dest), ["a", "b"], "retry must not duplicate completed files");
+      assert(!(await fs.readdir(f.dest)).some((name) => name.endsWith(".pallet-part")));
+    } finally {
+      await f.cleanup();
+    }
+  },
+);
+
+test("retry copies a completed file again when the source changed after cancel", { timeout: 30000 }, async () => {
+  const f = await fixture();
+  try {
+    await fs.writeFile(`${f.source}/a`, Buffer.alloc(4096, 5));
+    await fs.writeFile(`${f.source}/b`, Buffer.alloc(CHUNK * 2, 6));
+    let canceled = false;
+    let firstReads = 0;
+    const source = wrap(f.local, {
+      createReadStream: async (p, options) => {
+        if (p.endsWith("/a")) firstReads++;
+        const read = await f.local.createReadStream(p, options);
+        if (!p.endsWith("/b") || canceled) return read;
+        canceled = true;
+        for (let i = 0; i < 500 && h.queue.snapshots()[0].doneFiles === 0; i++)
+          await new Promise((resolve) => setTimeout(resolve, 10));
+        return Readable.from(
+          (async function* () {
+            let emitted = 0;
+            for await (const chunk of read) {
+              emitted += chunk.length;
+              yield chunk;
+              if (emitted >= CHUNK / 2) {
+                h.queue.cancel(h.queue.snapshots()[0].id);
+                break;
+              }
+            }
+          })(),
+        );
+      },
+    });
+    const h = remoteHarness(source, f.local);
+    const canceledSnapshot = await h.run(f.source, f.dest, ["a", "b"]);
+    assert.equal(canceledSnapshot.state, "canceled");
+    assert.equal(canceledSnapshot.doneFiles, 1);
+
+    const updated = Buffer.alloc(8192, 7);
+    await fs.writeFile(`${f.source}/a`, updated);
+
+    h.queue.retry(h.queue.snapshots()[0].id);
+    let retried: TransferJobSnapshot | undefined;
+    for (let i = 0; i < 1500; i++) {
+      const snapshot = h.queue.snapshots()[0];
+      if (snapshot.state === "completed" || snapshot.state === "failed") {
+        retried = snapshot;
+        break;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    assert(retried, "retry did not settle");
+    assert.equal(retried.state, "completed", JSON.stringify(retried.errors));
+    assert.equal(firstReads, 2, "a changed source must be copied again");
+    assert.deepEqual(await fs.readFile(`${f.dest}/a`), updated);
+    assert.deepEqual((await fs.readdir(f.dest)).sort(), ["a", "b"]);
+  } finally {
+    await f.cleanup();
+  }
+});
+
 test("remote-to-remote partial failure keeps completed files and removes staging", { timeout: 15000 }, async () => {
   const f = await fixture();
   try {
