@@ -18,7 +18,6 @@ import { Readable, Transform } from "node:stream";
 import type { UpdateDownloadState, UpdateInfo } from "@shared/update/update.types";
 import { type UpdateRelease, resolveUpdateRelease } from "./update-release";
 import { access, rename, rm } from "node:fs/promises";
-import { app, shell } from "electron";
 import { createReadStream, createWriteStream } from "node:fs";
 import { AppChannels } from "@shared/ipc/ipc.constants";
 import type { ReadableStream as NodeWebReadableStream } from "node:stream/web";
@@ -28,6 +27,8 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { log } from "./logger";
 import { pipeline } from "node:stream/promises";
+import { quitAfterTransfers } from "./quit";
+import { shell } from "electron";
 
 const BROADCAST_INTERVAL_MS = 100;
 
@@ -85,7 +86,8 @@ async function openDiskImage(dest: string): Promise<void> {
   if ("error" in result) throw new Error(`Could not open the disk image: ${result.error}`);
   if (result.failure) throw new Error(`Could not open the disk image: ${result.failure}`);
 
-  setTimeout(() => app.quit(), QUIT_DELAY_MS);
+  // The guarded quit cancels active transfers and waits for their staging cleanup.
+  setTimeout(() => void quitAfterTransfers(), QUIT_DELAY_MS);
 }
 
 async function exists(path: string): Promise<boolean> {

@@ -3,12 +3,14 @@ import { BrowserWindow, Menu, app, ipcMain, session, shell } from "electron";
 import { installCrashHandlers, log, logFilePath } from "./services/logger";
 import { is, optimizer } from "@electron-toolkit/utils";
 import { isAllowedExternalUrl, isAllowedNavigation } from "./utils/navigation-policy";
+import { quitAfterTransfers, setQuitCleanup } from "./services/quit";
 import type { IpcResult } from "@shared/ipc/ipc.types";
 import { join } from "path";
 import { pathToFileURL } from "url";
 import { registerIpcHandlers } from "./ipc/register";
 import { sessionManager } from "./ipc/sftp";
 import { startUpdateChecks } from "./services/update-checker";
+import { transferQueue } from "./ipc/transfer";
 
 /** Lock a window to its own document and keep external links to http(s). */
 function guardWindowNavigation(win: BrowserWindow, entryFile: string): void {
@@ -236,7 +238,25 @@ app.whenReady().then(() => {
 // quits the app by default.
 app.on("window-all-closed", () => {});
 
-app.on("before-quit", () => {
-  // Close SSH sessions cleanly; avoids half-open channels server-side.
+/** Held so the quit we start after cleanup is not intercepted again. */
+let cleaningUp = false;
+
+app.on("before-quit", (event) => {
+  if (cleaningUp) return;
+  if (!transferQueue.hasActiveTransfers()) {
+    // Close SSH sessions cleanly; avoids half-open channels server-side.
+    sessionManager.disconnectAll();
+    return;
+  }
+  // Streams die with the process, leaving `.pallet-part` files behind. Hold
+  // the quit until the queue cancels them and its staging cleanup finishes.
+  event.preventDefault();
+  cleaningUp = true;
+  void quitAfterTransfers();
+});
+
+setQuitCleanup(async () => {
+  const result = await transferQueue.shutdown();
   sessionManager.disconnectAll();
+  return result;
 });
