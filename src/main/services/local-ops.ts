@@ -1,6 +1,9 @@
 import { basename, dirname, extname, join } from "path";
 import { promises as fs } from "fs";
+import { rename } from "./local-rename";
 import { shell } from "electron";
+
+export { rename };
 
 async function exists(p: string): Promise<boolean> {
   try {
@@ -31,18 +34,6 @@ export async function mkdirUnique(parentDir: string): Promise<string> {
 
 export async function mkdir(p: string): Promise<void> {
   await fs.mkdir(p);
-}
-
-/**
- * Rename within a directory. Never overwrites: macOS `rename(2)` replaces an
- * existing destination silently, so existence is checked first. The check is
- * skipped when only letter case changes (same file on APFS's
- * case-insensitive default).
- */
-export async function rename(from: string, to: string): Promise<void> {
-  const caseOnly = from.toLowerCase() === to.toLowerCase() && from !== to;
-  if (!caseOnly && (await exists(to))) throw eexist(to);
-  await fs.rename(from, to);
 }
 
 export async function trash(paths: string[]): Promise<void> {
