@@ -4,33 +4,13 @@ import type { IpcResult } from "@shared/ipc/ipc.types";
 import { TransferChannels } from "@shared/ipc/ipc.constants";
 import { TransferQueue } from "../services/transfer/transfer-queue";
 import { broadcast } from "../utils/broadcast";
-import { getDb } from "../services/database";
 import { ipcMain } from "electron";
+import { recordTransferHistory } from "../services/transfer/transfer-history";
 
 export const transferQueue = new TransferQueue(sessionManager, {
   onUpdate: (snapshot) => broadcast(TransferChannels.update, snapshot),
   onConflict: (prompt) => broadcast(TransferChannels.conflict, prompt),
-  record: (job) => {
-    try {
-      getDb()
-        .prepare(
-          `INSERT INTO transfer_history (direction, source, dest, bytes, status, error, started_at, finished_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-        )
-        .run(
-          "transfer",
-          job.label,
-          job.destDir,
-          job.doneBytes,
-          job.state,
-          job.errors[0]?.message ?? null,
-          Date.now(),
-          Date.now(),
-        );
-    } catch {
-      // History is best-effort; never fail a transfer over it.
-    }
-  },
+  record: (job, request) => recordTransferHistory(job, request),
 });
 
 function handle<Args extends unknown[], T>(channel: string, fn: (...args: Args) => T | Promise<T>): void {
