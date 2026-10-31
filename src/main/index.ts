@@ -1,17 +1,35 @@
 import { AppChannels, SettingsChannels, WindowChannels } from "@shared/ipc/ipc.constants";
-import { BrowserWindow, Menu, app, ipcMain, shell } from "electron";
+import { BrowserWindow, Menu, app, ipcMain, session, shell } from "electron";
 import { installCrashHandlers, log, logFilePath } from "./services/logger";
 import { is, optimizer } from "@electron-toolkit/utils";
+import { isAllowedExternalUrl, isAllowedNavigation } from "./utils/navigation-policy";
 import type { IpcResult } from "@shared/ipc/ipc.types";
 import { join } from "path";
+import { pathToFileURL } from "url";
 import { registerIpcHandlers } from "./ipc/register";
 import { sessionManager } from "./ipc/sftp";
 import { startUpdateChecks } from "./services/update-checker";
+
+/** Lock a window to its own document and keep external links to http(s). */
+function guardWindowNavigation(win: BrowserWindow, entryFile: string): void {
+  const devOrigin = is.dev ? process.env["ELECTRON_RENDERER_URL"] : undefined;
+  const policy = { devOrigin, entryFileUrl: pathToFileURL(entryFile).href };
+
+  win.webContents.on("will-navigate", (event) => {
+    if (!isAllowedNavigation(event.url, policy)) event.preventDefault();
+  });
+
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    if (isAllowedExternalUrl(url)) void shell.openExternal(url);
+    return { action: "deny" };
+  });
+}
 
 /** The file-manager window; the Close accelerator asks its renderer first. */
 let mainWindow: BrowserWindow | null = null;
 
 function createWindow(): void {
+  const entryFile = join(__dirname, "../renderer/index.html");
   const win = new BrowserWindow({
     width: 1200,
     height: 760,
@@ -22,7 +40,10 @@ function createWindow(): void {
     trafficLightPosition: { x: 18, y: 18 },
     webPreferences: {
       preload: join(__dirname, "../preload/index.js"),
-      sandbox: false,
+      sandbox: true,
+      contextIsolation: true,
+      nodeIntegration: false,
+      webSecurity: true,
     },
   });
 
@@ -36,15 +57,12 @@ function createWindow(): void {
     mainWindow = null;
   });
 
-  win.webContents.setWindowOpenHandler((details) => {
-    shell.openExternal(details.url);
-    return { action: "deny" };
-  });
+  guardWindowNavigation(win, entryFile);
 
   if (is.dev && process.env["ELECTRON_RENDERER_URL"]) {
     win.loadURL(process.env["ELECTRON_RENDERER_URL"]);
   } else {
-    win.loadFile(join(__dirname, "../renderer/index.html"));
+    win.loadFile(entryFile);
   }
 }
 
@@ -59,6 +77,7 @@ function openSettingsWindow(): void {
     return;
   }
 
+  const entryFile = join(__dirname, "../renderer/settings.html");
   const win = new BrowserWindow({
     width: 520,
     // The General tab's natural height, so the window opens at its final size;
@@ -74,7 +93,10 @@ function openSettingsWindow(): void {
     trafficLightPosition: { x: 14, y: 14 },
     webPreferences: {
       preload: join(__dirname, "../preload/index.js"),
-      sandbox: false,
+      sandbox: true,
+      contextIsolation: true,
+      nodeIntegration: false,
+      webSecurity: true,
     },
   });
   settingsWindow = win;
@@ -84,10 +106,12 @@ function openSettingsWindow(): void {
     settingsWindow = null;
   });
 
+  guardWindowNavigation(win, entryFile);
+
   if (is.dev && process.env["ELECTRON_RENDERER_URL"]) {
     win.loadURL(new URL("settings.html", process.env["ELECTRON_RENDERER_URL"]).toString());
   } else {
-    win.loadFile(join(__dirname, "../renderer/settings.html"));
+    win.loadFile(entryFile);
   }
 }
 
@@ -181,6 +205,11 @@ function buildMenu(): void {
 app.whenReady().then(() => {
   installCrashHandlers();
   log("app start", app.getVersion());
+
+  // The renderer only writes text to the clipboard (copy database path).
+  session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
+    callback(permission === "clipboard-sanitized-write");
+  });
 
   app.on("browser-window-created", (_, window) => {
     optimizer.watchWindowShortcuts(window);
