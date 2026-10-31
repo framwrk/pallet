@@ -7,6 +7,7 @@ import type { UpdateInfo } from "@shared/update/update.types";
 import { checkForUpdate } from "../services/update-checker";
 import { databasePath } from "../services/database";
 import { downloadUpdate } from "../services/update-downloader";
+import { isAllowedExternalUrl } from "../utils/navigation-policy";
 import { logFilePath } from "../services/logger";
 import { popupContextMenu } from "../services/context-menu";
 import { registerFavoriteHandlers } from "./favorite";
@@ -67,7 +68,7 @@ export function registerIpcHandlers(): void {
   handle(AppChannels.checkForUpdate, () => checkForUpdate());
   handle(AppChannels.downloadUpdate, (info: UpdateInfo) => downloadUpdate(info));
   handle(AppChannels.openExternal, (url: string) => {
-    if (!/^https?:\/\//.test(url)) throw new Error("Only http(s) URLs can be opened");
+    if (!isAllowedExternalUrl(url)) throw new Error("Only http(s) URLs can be opened");
     return shell.openExternal(url);
   });
   handle(AppChannels.revealLog, () => shell.showItemInFolder(logFilePath()));
