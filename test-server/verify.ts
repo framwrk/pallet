@@ -135,6 +135,25 @@ async function verifySftp(): Promise<void> {
   }
 }
 
+function verifyLoopbackBindings(): void {
+  for (const [service, port] of [
+    ["sftp", "22"],
+    ["ftp", "21"],
+    ["ftps", "21"],
+  ] as const) {
+    const result = spawnSync("docker", ["compose", "port", service, port], { encoding: "utf8" });
+    const published = result.stdout?.trim();
+    if (result.status !== 0 || !published) {
+      throw new Error(result.stderr?.trim() || `docker compose port ${service} ${port} failed`);
+    }
+    if (published.split(":").at(0) !== "127.0.0.1") {
+      throw new Error(`${service} is published on ${published}, not 127.0.0.1`);
+    }
+  }
+  console.log("✓ Test servers are published on loopback only");
+}
+
+verifyLoopbackBindings();
 await verifySftp();
 verifyFtp("FTP", ftpPort, false);
 verifyFtp("FTPS", ftpsPort, true);

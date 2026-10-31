@@ -22,7 +22,7 @@ services:
       <<: *network-environment
       PALLET_TEST_PASSWORD: "${PALLET_TEST_PASSWORD:-pallet}"
     ports:
-      - "${PALLET_TEST_SERVER_PORT:-2222}:22"
+      - "127.0.0.1:${PALLET_TEST_SERVER_PORT:-2222}:22"
     volumes:
       - test-server-host-keys:/etc/ssh/host-keys
     healthcheck:
@@ -41,8 +41,8 @@ services:
       PALLET_TEST_PASSWORD: "${PALLET_TEST_PASSWORD:-pallet}"
       PALLET_TEST_PROTOCOL: ftp
     ports:
-      - "${PALLET_TEST_FTP_PORT:-2121}:21"
-      - "30000-30009:30000-30009"
+      - "127.0.0.1:${PALLET_TEST_FTP_PORT:-2121}:21"
+      - "127.0.0.1:30000-30009:30000-30009"
     healthcheck:
       test: ["CMD", "pidof", "pure-ftpd"]
       interval: 2s
@@ -59,8 +59,8 @@ services:
       PALLET_TEST_PASSWORD: "${PALLET_TEST_PASSWORD:-pallet}"
       PALLET_TEST_PROTOCOL: ftps
     ports:
-      - "${PALLET_TEST_FTPS_PORT:-2122}:21"
-      - "30100-30109:30100-30109"
+      - "127.0.0.1:${PALLET_TEST_FTPS_PORT:-2122}:21"
+      - "127.0.0.1:30100-30109:30100-30109"
     volumes:
       - test-server-ftps-certificate:/etc/pure-ftpd/certs
     healthcheck:
