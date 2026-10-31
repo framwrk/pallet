@@ -1,5 +1,6 @@
 import { AppChannels, SettingsChannels, WindowChannels } from "@shared/ipc/ipc.constants";
 import { BrowserWindow, Menu, app, ipcMain, session, shell } from "electron";
+import { editSessions, sessionManager } from "./ipc/sftp";
 import { installCrashHandlers, log, logFilePath } from "./services/logger";
 import { is, optimizer } from "@electron-toolkit/utils";
 import { isAllowedExternalUrl, isAllowedNavigation } from "./utils/navigation-policy";
@@ -7,7 +8,6 @@ import type { IpcResult } from "@shared/ipc/ipc.types";
 import { join } from "path";
 import { pathToFileURL } from "url";
 import { registerIpcHandlers } from "./ipc/register";
-import { sessionManager } from "./ipc/sftp";
 import { startUpdateChecks } from "./services/update-checker";
 
 /** Lock a window to its own document and keep external links to http(s). */
@@ -239,4 +239,6 @@ app.on("window-all-closed", () => {});
 app.on("before-quit", () => {
   // Close SSH sessions cleanly; avoids half-open channels server-side.
   sessionManager.disconnectAll();
+  // Remove edit temp copies and stop pending re-uploads.
+  void editSessions.closeAll();
 });

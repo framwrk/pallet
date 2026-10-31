@@ -71,6 +71,12 @@ onSessionStatus((event) => {
 
 export const editSessions = new EditSessions(sessionManager, (event) => broadcast(EditChannels.event, event));
 
+// A disconnected session can no longer upload; drop its temp copies now rather
+// than leaving them under pallet-edits until the app quits.
+onSessionStatus((event) => {
+  if (event.status === "disconnected") void editSessions.closeSession(event.sessionId);
+});
+
 function handle<Args extends unknown[], T>(channel: string, fn: (...args: Args) => T | Promise<T>): void {
   ipcMain.handle(channel, async (_event, ...args): Promise<IpcResult<T>> => {
     try {
