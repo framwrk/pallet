@@ -53,6 +53,11 @@ const MAX_CHANNEL_RETRIES = 5;
 const PROGRESS_TICK_MS = 100;
 /** Files at least this large are streamed with resume checkpoints. */
 const CHUNK_THRESHOLD = 16 * 1024 * 1024;
+/**
+ * Upper bound on quit-time cleanup. A remote destination can stop answering a
+ * remove request, and quitting must still finish instead of hanging on it.
+ */
+const SHUTDOWN_TIMEOUT_MS = 5_000;
 
 interface PlanFile {
   relPath: string;
@@ -145,6 +150,8 @@ export class TransferQueue {
   private seq = 0;
   private activeSessions = new Set<string>();
   private slotWaiters: (() => void)[] = [];
+  /** Run promises still settling, including their staging cleanup. */
+  private unsettled = new Set<Promise<void>>();
   /** Re-broadcasts running jobs at PROGRESS_TICK_MS; lives while any job is running. */
   private ticker: NodeJS.Timeout | null = null;
 
@@ -231,7 +238,15 @@ export class TransferQueue {
     this.jobs.set(job.id, job);
     this.order.push(job.id);
     job.settled = this.run(job);
+    this.track(job.settled);
     return job.id;
+  }
+
+  /** Track a job through its cleanup so shutdown can wait for it. */
+  private track(settled: Promise<void>): void {
+    this.unsettled.add(settled);
+    const done = (): void => void this.unsettled.delete(settled);
+    void settled.then(done, done);
   }
 
   /** Reserve all sessions together so opposite-direction jobs cannot deadlock. */
@@ -863,6 +878,34 @@ export class TransferQueue {
     this.emit(job, true);
   }
 
+  /** True while a job is still running or cleaning up its staging files. */
+  hasActiveTransfers(): boolean {
+    return this.unsettled.size > 0;
+  }
+
+  /**
+   * Cancel every unfinished job, abort its streams, and wait for the run
+   * cleanup that removes `.pallet-part` files. Bounded: a dead destination can
+   * stall a remove, so callers log the timeout and continue quitting rather
+   * than block the process forever.
+   */
+  async shutdown(timeoutMs = SHUTDOWN_TIMEOUT_MS): Promise<{ timedOut: boolean; remaining: number }> {
+    for (const job of this.jobs.values()) {
+      if (!TERMINAL_TRANSFER_STATES.includes(job.state)) this.cancel(job.id);
+    }
+    const pending = [...this.unsettled];
+    if (pending.length === 0) return { timedOut: false, remaining: 0 };
+    let timer: NodeJS.Timeout | undefined;
+    const timedOut = await Promise.race([
+      Promise.allSettled(pending).then(() => false),
+      new Promise<boolean>((resolve) => {
+        timer = setTimeout(() => resolve(true), timeoutMs);
+      }),
+    ]);
+    clearTimeout(timer);
+    return { timedOut, remaining: this.unsettled.size };
+  }
+
   /**
    * Re-run a failed/canceled job (restart-only resume, §3.4): the scan repeats
    * so a changed source is picked up, but files the old attempt committed are
@@ -879,6 +922,7 @@ export class TransferQueue {
       }
       return this.run(job);
     });
+    this.track(job.settled);
   }
 
   remove(jobId: string): void {
