@@ -25,6 +25,8 @@ export interface TransferJobSnapshot {
   /** True when paused by a connection drop rather than the user. */
   autoPaused: boolean;
   label: string;
+  /** When the job was enqueued, in epoch milliseconds. */
+  startedAt: number;
   destDir: string;
   totalFiles: number;
   doneFiles: number;

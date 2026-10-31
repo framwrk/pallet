@@ -93,13 +93,15 @@ interface InFlight {
 export interface QueueHooks {
   onUpdate(snapshot: TransferJobSnapshot): void;
   onConflict(prompt: ConflictPrompt): void;
-  record?(job: TransferJobSnapshot): void;
+  record?(job: TransferJobSnapshot, request: TransferRequest): void;
 }
 
 /** Seam for tests: swap in in-memory endpoints instead of disk/SFTP. */
 export type EndpointFactory = (sessions: SessionManager, ref: TransferRequest["from"]) => TransferEndpoint;
 
 class Job {
+  /** Enqueue time, so history rows have a real transfer start. */
+  startedAt = Date.now();
   state: TransferState = "enumerating";
   autoPaused = false;
   userPaused = false;
@@ -180,6 +182,7 @@ export class TransferQueue {
       state: job.state,
       autoPaused: job.autoPaused,
       label: job.label,
+      startedAt: job.startedAt,
       destDir: job.request.destDir,
       totalFiles: job.planFiles.length,
       doneFiles: job.doneFiles,
@@ -303,7 +306,7 @@ export class TransferQueue {
       job.to?.dispose();
       release();
       this.emit(job, true);
-      if (TERMINAL_TRANSFER_STATES.includes(job.state)) this.hooks.record?.(this.snapshot(job));
+      if (TERMINAL_TRANSFER_STATES.includes(job.state)) this.hooks.record?.(this.snapshot(job), job.request);
     }
   }
 

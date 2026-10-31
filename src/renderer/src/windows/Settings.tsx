@@ -368,7 +368,7 @@ export function Settings(): React.JSX.Element {
             </Row>
           </Group>
         ) : tab === "advanced" ? (
-          <Group footnote="Favorites, known host keys, and transfer history live in this SQLite file — any SQLite client can open it. Quit Pallet before writing to it.">
+          <Group footnote="Favorites, known host keys, and a diagnostic transfer history log live in this SQLite file — any SQLite client can open it. Pallet does not surface transfer history in the app. Quit Pallet before writing to it.">
             <Row label="Database Path">
               <div className="flex min-w-0 gap-2">
                 {/* CSS truncation keeps the full text in the accessibility tree;
