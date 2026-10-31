@@ -4,16 +4,26 @@
  * install over itself — that needs code signing — so the finish line is the
  * drag-to-Applications window LaunchServices opens, not a relaunch. Pallet
  * quits once that window is open, so it never holds the old copy in place.
+ *
+ * The renderer is not trusted: it supplies a version only, and main derives the
+ * release, the destination, and the expected SHA-256 itself.
  */
+import {
+  MAX_UPDATE_BYTES,
+  UPDATE_DOWNLOAD_TIMEOUT_MS,
+  canonicalUpdateVersion,
+  updateDownloadPath,
+} from "./update-download.utils";
+import { Readable, Transform } from "node:stream";
 import type { UpdateDownloadState, UpdateInfo } from "@shared/update/update.types";
+import { type UpdateRelease, resolveUpdateRelease } from "./update-release";
 import { access, rename, rm } from "node:fs/promises";
 import { app, shell } from "electron";
+import { createReadStream, createWriteStream } from "node:fs";
 import { AppChannels } from "@shared/ipc/ipc.constants";
 import type { ReadableStream as NodeWebReadableStream } from "node:stream/web";
-import { Readable } from "node:stream";
-import { Transform } from "node:stream";
 import { broadcast } from "../utils/broadcast";
-import { createWriteStream } from "node:fs";
+import { createHash } from "node:crypto";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { log } from "./logger";
@@ -34,11 +44,10 @@ function emit(state: UpdateDownloadState): void {
 }
 
 /**
- * Download the DMG for `info` and mount it; resolves with the final path.
- * Concurrent calls coalesce onto the single in-flight download.
+ * Download the DMG for `info.version` and mount it; resolves with the final
+ * path. Concurrent calls coalesce onto the single in-flight download.
  */
 export function downloadUpdate(info: UpdateInfo): Promise<string> {
-  if (!info.dmgUrl) throw new Error("This release has no disk image to download");
   if (active) return active;
   active = run(info).finally(() => {
     active = null;
@@ -86,25 +95,47 @@ async function exists(path: string): Promise<boolean> {
   );
 }
 
-async function run(info: UpdateInfo): Promise<string> {
-  const version = info.version;
-  const dest = join(homedir(), "Downloads", `pallet-${version}.dmg`);
-  const part = `${dest}.part`;
+async function sha256File(path: string): Promise<string> {
+  const hash = createHash("sha256");
+  await pipeline(createReadStream(path), hash);
+  return hash.digest("hex");
+}
+
+/**
+ * Stream the release DMG into `part`, refusing oversized or stalled responses,
+ * and verify its SHA-256 before the caller renames it into place. A mismatch
+ * leaves the part file for the caller to delete and never touches an existing
+ * DMG.
+ */
+async function downloadVerified(
+  release: UpdateRelease,
+  part: string,
+  version: string,
+): Promise<{ received: number; total: number }> {
+  const controller = new AbortController();
+  let timedOut = false;
+  let timer: NodeJS.Timeout | undefined;
+
+  const armTimeout = (): void => {
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, UPDATE_DOWNLOAD_TIMEOUT_MS);
+  };
 
   try {
-    if (await exists(dest)) {
-      // Already on disk (previous attempt or re-download): skip straight to mounting.
-      emit({ status: "done", version, receivedBytes: 0, totalBytes: 0, path: dest });
-      await openDiskImage(dest);
-      return dest;
-    }
-
-    emit({ status: "downloading", version, receivedBytes: 0, totalBytes: 0 });
-    const res = await fetch(info.dmgUrl as string, {
+    armTimeout();
+    const res = await fetch(release.dmgUrl, {
       headers: { "User-Agent": "pallet-update-download" },
+      signal: controller.signal,
     });
     if (!res.ok || !res.body) throw new Error(`Download failed: HTTP ${res.status}`);
-    const total = Number(res.headers.get("content-length") ?? 0);
+
+    const declared = Number(res.headers.get("content-length") ?? 0);
+    const total = Number.isFinite(declared) && declared > 0 ? declared : 0;
+    if (total > MAX_UPDATE_BYTES) throw new Error("The update download is larger than expected");
+
     let received = 0;
     let lastEmit = 0;
 
@@ -113,6 +144,11 @@ async function run(info: UpdateInfo): Promise<string> {
     const counter = new Transform({
       transform(chunk: Buffer, _enc, cb) {
         received += chunk.length;
+        if (received > MAX_UPDATE_BYTES) {
+          cb(new Error("The update download is larger than expected"));
+          return;
+        }
+        armTimeout();
         const now = Date.now();
         if (now - lastEmit >= BROADCAST_INTERVAL_MS) {
           lastEmit = now;
@@ -123,13 +159,49 @@ async function run(info: UpdateInfo): Promise<string> {
     });
 
     const source = Readable.fromWeb(res.body as NodeWebReadableStream);
-    await pipeline(source, counter, createWriteStream(part));
+    await pipeline(source, counter, createWriteStream(part), { signal: controller.signal });
+    if (total > 0 && received !== total) throw new Error("The update download was incomplete");
+    if ((await sha256File(part)) !== release.checksum) {
+      throw new Error("The downloaded update failed its checksum and was discarded");
+    }
+    return { received, total };
+  } catch (err) {
+    if (timedOut) throw new Error("The update download timed out");
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function run(info: UpdateInfo): Promise<string> {
+  let version = "";
+  let part: string | null = null;
+
+  try {
+    version = canonicalUpdateVersion(info?.version);
+    const dest = updateDownloadPath(join(homedir(), "Downloads"), version);
+    part = `${dest}.part`;
+
+    const release = await resolveUpdateRelease(version);
+
+    if (await exists(dest)) {
+      if ((await sha256File(dest)) === release.checksum) {
+        // Already on disk and verified: skip straight to mounting.
+        emit({ status: "done", version, receivedBytes: 0, totalBytes: 0, path: dest });
+        await openDiskImage(dest);
+        return dest;
+      }
+      log("update download", "existing disk image failed verification; downloading again");
+    }
+
+    emit({ status: "downloading", version, receivedBytes: 0, totalBytes: 0 });
+    const { received, total } = await downloadVerified(release, part, version);
     await rename(part, dest);
     emit({ status: "done", version, receivedBytes: received, totalBytes: total, path: dest });
     await openDiskImage(dest);
     return dest;
   } catch (err) {
-    await rm(part, { force: true }).catch(() => {});
+    if (part) await rm(part, { force: true }).catch(() => {});
     emit({
       status: "error",
       version,
