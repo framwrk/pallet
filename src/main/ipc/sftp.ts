@@ -19,9 +19,9 @@ const pendingPrompts = new Map<string, (trust: boolean) => void>();
  * the renderer and block the handshake on the user's decision.
  */
 async function verifyHostKey(input: HostKeyDecisionInput): Promise<boolean> {
-  const known = hostKeys.getKnownKey(input.host, input.port);
+  const known = hostKeys.getKnownKey(input.host, input.port, input.keyType);
   if (known && known.fingerprint === input.fingerprint) {
-    hostKeys.touchKey(input.host, input.port);
+    hostKeys.touchKey(input.host, input.port, input.keyType);
     return true;
   }
   const prompt: HostKeyPrompt = {
