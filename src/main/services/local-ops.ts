@@ -1,6 +1,9 @@
 import { basename, dirname, extname, join } from "path";
 import { promises as fs } from "fs";
+import { rename } from "./local-rename";
 import { shell } from "electron";
+
+export { rename };
 
 async function exists(p: string): Promise<boolean> {
   try {
@@ -33,18 +36,6 @@ export async function mkdir(p: string): Promise<void> {
   await fs.mkdir(p);
 }
 
-/**
- * Rename within a directory. Never overwrites: macOS `rename(2)` replaces an
- * existing destination silently, so existence is checked first. The check is
- * skipped when only letter case changes (same file on APFS's
- * case-insensitive default).
- */
-export async function rename(from: string, to: string): Promise<void> {
-  const caseOnly = from.toLowerCase() === to.toLowerCase() && from !== to;
-  if (!caseOnly && (await exists(to))) throw eexist(to);
-  await fs.rename(from, to);
-}
-
 export async function trash(paths: string[]): Promise<void> {
   for (const p of paths) {
     await shell.trashItem(p);
@@ -61,14 +52,24 @@ async function copyOne(src: string, destDir: string): Promise<string> {
       const name = i === 1 ? `${stem} copy${ext}` : `${stem} copy ${i}${ext}`;
       const candidate = join(destDir, name);
       if (!(await exists(candidate))) {
-        await fs.cp(src, candidate, { recursive: true, errorOnExist: true, force: false });
+        await fs.cp(src, candidate, {
+          recursive: true,
+          errorOnExist: true,
+          force: false,
+          preserveTimestamps: true,
+        });
         return candidate;
       }
     }
     throw new Error("Could not find a free name for the copy");
   }
   if (await exists(dest)) throw eexist(dest);
-  await fs.cp(src, dest, { recursive: true, errorOnExist: true, force: false });
+  await fs.cp(src, dest, {
+    recursive: true,
+    errorOnExist: true,
+    force: false,
+    preserveTimestamps: true,
+  });
   return dest;
 }
 
@@ -94,7 +95,12 @@ export async function moveMany(sources: string[], destDir: string): Promise<stri
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code !== "EXDEV") throw err;
       // Cross-volume move: copy then delete.
-      await fs.cp(src, dest, { recursive: true, errorOnExist: true, force: false });
+      await fs.cp(src, dest, {
+        recursive: true,
+        errorOnExist: true,
+        force: false,
+        preserveTimestamps: true,
+      });
       await fs.rm(src, { recursive: true });
     }
     out.push(dest);

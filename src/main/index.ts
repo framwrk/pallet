@@ -1,5 +1,6 @@
 import { AppChannels, SettingsChannels, WindowChannels } from "@shared/ipc/ipc.constants";
 import { BrowserWindow, Menu, app, ipcMain, session, shell } from "electron";
+import { editSessions, sessionManager } from "./ipc/sftp";
 import { installCrashHandlers, log, logFilePath } from "./services/logger";
 import { is, optimizer } from "@electron-toolkit/utils";
 import { isAllowedExternalUrl, isAllowedNavigation } from "./utils/navigation-policy";
@@ -8,7 +9,6 @@ import type { IpcResult } from "@shared/ipc/ipc.types";
 import { join } from "path";
 import { pathToFileURL } from "url";
 import { registerIpcHandlers } from "./ipc/register";
-import { sessionManager } from "./ipc/sftp";
 import { startUpdateChecks } from "./services/update-checker";
 import { transferQueue } from "./ipc/transfer";
 
@@ -246,6 +246,8 @@ app.on("before-quit", (event) => {
   if (!transferQueue.hasActiveTransfers()) {
     // Close SSH sessions cleanly; avoids half-open channels server-side.
     sessionManager.disconnectAll();
+    // Remove edit temp copies and stop pending re-uploads.
+    void editSessions.closeAll();
     return;
   }
   // Streams die with the process, leaving `.pallet-part` files behind. Hold
@@ -258,5 +260,7 @@ app.on("before-quit", (event) => {
 setQuitCleanup(async () => {
   const result = await transferQueue.shutdown();
   sessionManager.disconnectAll();
+  // Remove edit temp copies and stop pending re-uploads.
+  await editSessions.closeAll();
   return result;
 });
