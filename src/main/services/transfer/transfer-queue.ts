@@ -16,6 +16,7 @@ import type {
   TransferError,
   TransferJobSnapshot,
   TransferRequest,
+  TransferSpeedStats,
   TransferState,
 } from "@shared/transfer/transfer.types";
 import {
@@ -27,6 +28,7 @@ import {
 } from "./transfer-endpoint";
 import { PART_SUFFIX, TERMINAL_TRANSFER_STATES } from "@shared/transfer/transfer.constants";
 import { type Readable, Transform } from "stream";
+import { type SpeedSample, ZERO_SPEED_STATS, speedStatsFromSamples } from "./transfer-speed";
 import type { SessionManager } from "../sftp/session-manager";
 import type { SessionStatusEvent } from "@shared/sftp/sftp.types";
 import { keepBothName } from "@shared/transfer/transfer.utils";
@@ -51,6 +53,10 @@ const MAX_CHANNEL_RETRIES = 5;
  * counters — the bar tracks bytes actually transferred, not chunk bursts.
  */
 const PROGRESS_TICK_MS = 100;
+/** Cadence of the trailing average/median speed statistics. */
+const SPEED_SAMPLE_MS = 1_000;
+/** Ignore a tail interval shorter than this; it only adds noise. */
+const SPEED_MIN_SAMPLE_MS = 100;
 /** Files at least this large are streamed with resume checkpoints. */
 const CHUNK_THRESHOLD = 16 * 1024 * 1024;
 /**
@@ -126,6 +132,10 @@ class Job {
   /** Per-file count of retries after a dead channel, capped so it can't spin. */
   retries = new Map<string, number>();
   samples: { t: number; bytes: number }[] = [];
+  /** One-second confirmed-progress samples for the expanded row's stats. */
+  speedSamples: SpeedSample[] = [];
+  speedStats: TransferSpeedStats = ZERO_SPEED_STATS;
+  lastSpeedSampleAt = 0;
   lastEmit = 0;
   resumeWaiters: (() => void)[] = [];
   conflictWaiter: (() => void) | null = null;
@@ -190,6 +200,7 @@ export class TransferQueue {
       totalBytes: job.totalBytes,
       doneBytes: job.doneBytes,
       bytesPerSec: this.bytesPerSecOf(job),
+      speedStats: job.speedStats,
       currentFiles: [...job.inFlight.keys()],
       errors: job.errors.slice(0, 20),
     };
@@ -222,7 +233,11 @@ export class TransferQueue {
     if (this.ticker) return;
     const tick = (): void => {
       const running = [...this.jobs.values()].filter((j) => j.state === "running");
-      for (const job of running) this.hooks.onUpdate(this.snapshot(job));
+      const now = Date.now();
+      for (const job of running) {
+        this.sampleSpeed(job, now);
+        this.hooks.onUpdate(this.snapshot(job));
+      }
       if (running.length === 0) this.maybeStopProgressTicker();
     };
     this.ticker = setInterval(tick, PROGRESS_TICK_MS);
@@ -234,6 +249,38 @@ export class TransferQueue {
     if (!this.ticker || [...this.jobs.values()].some((j) => j.state === "running")) return;
     clearInterval(this.ticker);
     this.ticker = null;
+  }
+
+  /**
+   * One confirmed-progress sample per second while running. A zero-duration
+   * sample marks a discontinuity (first sample, pause, or a long ticker gap)
+   * so later intervals measure only progress since that boundary.
+   */
+  private sampleSpeed(job: Job, now: number): void {
+    if (job.lastSpeedSampleAt === 0) {
+      job.lastSpeedSampleAt = now;
+      job.speedSamples.push({ bytes: job.doneBytes, activeMs: 0 });
+      return;
+    }
+    const activeMs = now - job.lastSpeedSampleAt;
+    if (activeMs < SPEED_SAMPLE_MS) return;
+    job.lastSpeedSampleAt = now;
+    if (activeMs > SPEED_SAMPLE_MS * 2) {
+      job.speedSamples.push({ bytes: job.doneBytes, activeMs: 0 });
+      return;
+    }
+    job.speedSamples.push({ bytes: job.doneBytes, activeMs });
+    job.speedStats = speedStatsFromSamples(job.speedSamples);
+  }
+
+  /** Capture the final partial interval so short transfers still report stats. */
+  private flushSpeedSample(job: Job, now = Date.now()): void {
+    if (job.lastSpeedSampleAt === 0) return;
+    const activeMs = now - job.lastSpeedSampleAt;
+    job.lastSpeedSampleAt = now;
+    if (activeMs < SPEED_MIN_SAMPLE_MS || activeMs > SPEED_SAMPLE_MS * 2) return;
+    job.speedSamples.push({ bytes: job.doneBytes, activeMs });
+    job.speedStats = speedStatsFromSamples(job.speedSamples);
   }
 
   enqueue(request: TransferRequest): string {
@@ -305,6 +352,7 @@ export class TransferQueue {
       job.from?.dispose();
       job.to?.dispose();
       release();
+      this.flushSpeedSample(job);
       this.emit(job, true);
       if (TERMINAL_TRANSFER_STATES.includes(job.state)) this.hooks.record?.(this.snapshot(job), job.request);
     }
@@ -825,6 +873,8 @@ export class TransferQueue {
       job.state = value || job.userPaused ? "paused" : "running";
     }
     if (value) {
+      this.flushSpeedSample(job);
+      job.lastSpeedSampleAt = 0;
       // Streams on the dead connection may never reject on their own —
       // destroy them so workers fall into the requeue path deterministically.
       this.abortInFlight(job);
@@ -851,6 +901,8 @@ export class TransferQueue {
     if (!job || job.state !== "running") return;
     job.userPaused = true;
     job.state = "paused";
+    this.flushSpeedSample(job);
+    job.lastSpeedSampleAt = 0;
     this.abortInFlight(job);
     this.emit(job, true);
   }

@@ -6,3 +6,6 @@ export const TERMINAL_TRANSFER_STATES: readonly TransferState[] = ["completed", 
 
 /** Staging suffix for a partial write, renamed into place on success (§3.4). */
 export const PART_SUFFIX = ".pallet-part";
+
+/** Trailing window for the drawer's recent average and median speed. */
+export const SPEED_STATS_WINDOW_MS = 30_000;

@@ -656,7 +656,7 @@ test("remote-to-remote transfers report live progress and complete", { timeout: 
           (async function* () {
             for await (const chunk of read) {
               yield chunk;
-              await new Promise((r) => setTimeout(r, 20));
+              await new Promise((r) => setTimeout(r, 50));
             }
           })(),
         );
@@ -673,6 +673,9 @@ test("remote-to-remote transfers report live progress and complete", { timeout: 
       updates.some((s) => s.doneBytes > 0 && s.doneBytes < s.totalBytes),
       "expected progress before the remote-to-remote file finished",
     );
+    assert(result.speedStats.averageBytesPerSec > 0, "expected an average speed after a paced transfer");
+    assert(result.speedStats.medianBytesPerSec > 0, "expected a median speed after a paced transfer");
+    assert(result.speedStats.recentAverageBytesPerSec > 0, "expected a recent average speed after a paced transfer");
     assert.deepEqual(await fs.readFile(`${f.dest}/a`), payload);
     assert(!(await fs.readdir(f.dest)).some((name) => name.endsWith(".pallet-part")));
   } finally {
