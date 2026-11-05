@@ -19,6 +19,7 @@ import type { DirListing, Entry, KnownFolders, PreviewData, SizeTarget, VolumeIn
 import type { Favorite, FavoriteInput } from "@shared/favorite/favorite.types";
 import type { UpdateDownloadState, UpdateInfo } from "@shared/update/update.types";
 import { contextBridge, ipcRenderer } from "electron";
+import type { AppInfo } from "@shared/app/app.types";
 import type { EditEventPayload } from "@shared/edit/edit.types";
 import type { PalletApi } from "@shared/ipc/ipc-api.types";
 import type { Preferences } from "@shared/prefs/prefs.types";
@@ -110,6 +111,7 @@ const pallet: PalletApi = {
   },
   app: {
     version: (): Promise<string> => invoke(AppChannels.version),
+    info: (): Promise<AppInfo> => invoke(AppChannels.info),
     checkForUpdate: (): Promise<UpdateInfo | null> => invoke(AppChannels.checkForUpdate),
     downloadUpdate: (info: UpdateInfo): Promise<string> => invoke(AppChannels.downloadUpdate, info),
     openExternal: (url: string): Promise<void> => invoke(AppChannels.openExternal, url),

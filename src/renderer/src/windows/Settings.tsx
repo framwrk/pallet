@@ -1,5 +1,16 @@
 import type { Appearance, Preferences, RowDensity } from "@shared/prefs/prefs.types";
-import { ArrowUpDown, ChevronDown, ChevronUp, ChevronsUpDown, Cog, Contrast, RefreshCw, Settings2 } from "lucide-react";
+import {
+  ArrowUpDown,
+  ArrowUpRight,
+  ChevronDown,
+  ChevronUp,
+  ChevronsUpDown,
+  Cog,
+  Contrast,
+  Info,
+  RefreshCw,
+  Settings2,
+} from "lucide-react";
 import {
   MAX_CONCURRENCY,
   MAX_EDITOR_POLL_INTERVAL_MS,
@@ -21,13 +32,16 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@renderer/components/ui/select";
 import type { SortDir, SortKey } from "@shared/fs/fs.types";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import type { AppInfo } from "@shared/app/app.types";
 import { Button } from "@renderer/components/ui/button";
 import { Input } from "@renderer/components/ui/input";
 import type { LucideIcon } from "lucide-react";
 import { Switch } from "@renderer/components/ui/switch";
+import type { UpdateInfo } from "@shared/update/update.types";
+import appIcon from "@renderer/assets/pallet-icon.png";
 import { cn } from "@renderer/lib/utils";
 
-type TabId = "general" | "appearance" | "transfers" | "updates" | "advanced";
+type TabId = "general" | "appearance" | "transfers" | "updates" | "advanced" | "about";
 
 /** Kept in sync with the toolbar's own height; the window sizes off it. */
 const TOOLBAR_HEIGHT = 62;
@@ -38,7 +52,21 @@ const TABS: { id: TabId; label: string; icon: LucideIcon }[] = [
   { id: "transfers", label: "Transfers", icon: ArrowUpDown },
   { id: "updates", label: "Updates", icon: RefreshCw },
   { id: "advanced", label: "Advanced", icon: Cog },
+  { id: "about", label: "About", icon: Info },
 ];
+
+const REPO_URL = "https://github.com/framwrk/pallet";
+const RELEASES_URL = `${REPO_URL}/releases`;
+const ISSUES_URL = `${REPO_URL}/issues`;
+const LICENSE_URL = `${REPO_URL}/blob/main/LICENSE`;
+const AUTHOR_URL = "https://github.com/framwrk";
+
+type UpdateCheck =
+  | { status: "idle" }
+  | { status: "checking" }
+  | { status: "current" }
+  | { status: "available"; info: UpdateInfo }
+  | { status: "failed" };
 
 const APPEARANCES: Record<Appearance, string> = {
   system: "System",
@@ -135,6 +163,26 @@ function Row({
       )}
       {children}
     </div>
+  );
+}
+
+/** A whole-row external link; the row itself is the affordance. */
+function LinkRow({ label, href, separated }: { label: string; href: string; separated?: boolean }): React.JSX.Element {
+  return (
+    <button
+      type="button"
+      className={cn(
+        "hover:bg-foreground/4 focus-visible:outline-ring flex min-h-10 w-full items-center justify-between gap-6 px-3 py-1.5 text-left focus-visible:outline-2 focus-visible:-outline-offset-2",
+        separated && "border-t",
+      )}
+      onClick={() => void window.pallet.app.openExternal(href)}
+    >
+      <span className="text-[13px]">{label}</span>
+      <ArrowUpRight
+        className="text-muted-foreground size-3.5"
+        strokeWidth={2}
+      />
+    </button>
   );
 }
 
@@ -261,6 +309,9 @@ export function Settings(): React.JSX.Element {
   const [dbPath, setDbPath] = useState<string | null>(null);
   const [dbPathFailed, setDbPathFailed] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [appInfo, setAppInfo] = useState<AppInfo | null>(null);
+  const [updateCheck, setUpdateCheck] = useState<UpdateCheck>({ status: "idle" });
+  const [copiedInfo, setCopiedInfo] = useState(false);
   const bodyRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
@@ -274,6 +325,10 @@ export function Settings(): React.JSX.Element {
       .databasePath()
       .then(setDbPath)
       .catch(() => setDbPathFailed(true));
+    void window.pallet.app
+      .info()
+      .then(setAppInfo)
+      .catch(() => setAppInfo(null));
     return window.pallet.prefs.onChange(adopt);
   }, []);
 
@@ -317,12 +372,53 @@ export function Settings(): React.JSX.Element {
     });
   }
 
+  async function checkNow(): Promise<void> {
+    setUpdateCheck({ status: "checking" });
+    try {
+      const info = await window.pallet.app.checkForUpdate();
+      setUpdateCheck(info ? { status: "available", info } : { status: "current" });
+    } catch {
+      setUpdateCheck({ status: "failed" });
+    }
+  }
+
+  function copyVersionInfo(): void {
+    if (appInfo === null) return;
+    const text = `Pallet ${appInfo.version} · Electron ${appInfo.electron} · macOS ${appInfo.systemVersion} · ${appInfo.arch}`;
+    void navigator.clipboard.writeText(text).then(() => {
+      setCopiedInfo(true);
+      setTimeout(() => setCopiedInfo(false), 1500);
+    });
+  }
+
   function stepConcurrency(delta: number): void {
     if (prefs === null) return;
     const next = Math.min(MAX_CONCURRENCY, Math.max(MIN_CONCURRENCY, prefs.defaultConcurrency + delta));
     setConcurrencyText(String(next));
     save({ defaultConcurrency: next });
   }
+
+  const updateNote =
+    updateCheck.status === "checking"
+      ? "Checking GitHub Releases…"
+      : updateCheck.status === "current"
+        ? "You’re running the latest version."
+        : updateCheck.status === "available"
+          ? `Pallet ${updateCheck.info.version} is available.`
+          : updateCheck.status === "failed"
+            ? "Couldn’t reach GitHub Releases. Try again."
+            : "Checks GitHub Releases now instead of waiting for the scheduled check.";
+
+  const updateAction =
+    updateCheck.status === "checking"
+      ? "Checking…"
+      : updateCheck.status === "available"
+        ? "View Release"
+        : updateCheck.status === "failed"
+          ? "Try Again"
+          : updateCheck.status === "current"
+            ? "Check Again"
+            : "Check Now";
 
   return (
     <div className="bg-muted dark:bg-background flex min-h-full flex-col select-none">
@@ -876,6 +972,131 @@ export function Settings(): React.JSX.Element {
                   </Button>
                 </div>
               </Row>
+            </Group>
+          </div>
+        ) : tab === "about" ? (
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col items-center gap-1.5 pb-1 text-center">
+              <img
+                src={appIcon}
+                alt=""
+                className="size-16 rounded-[18px] shadow-sm"
+              />
+              <div className="mt-1 flex items-baseline gap-2">
+                <span className="text-[17px] font-semibold">Pallet</span>
+                {appInfo && <span className="text-muted-foreground text-[11px] tabular-nums">{appInfo.version}</span>}
+              </div>
+              <p className="text-muted-foreground max-w-xs text-[11px] leading-snug">
+                A free and open-source macOS SFTP, FTP, and FTPS file manager.
+              </p>
+            </div>
+
+            <Group>
+              <LinkRow
+                label="GitHub Repository"
+                href={REPO_URL}
+              />
+              <LinkRow
+                label="Release Notes"
+                href={RELEASES_URL}
+                separated
+              />
+              <LinkRow
+                label="Report an Issue…"
+                href={ISSUES_URL}
+                separated
+              />
+            </Group>
+
+            <Group
+              footnote={updateNote}
+              footnoteId="note-update-check"
+            >
+              <Row label="Check for updates">
+                <Button
+                  size="xs"
+                  variant="outline"
+                  aria-describedby="note-update-check"
+                  disabled={updateCheck.status === "checking"}
+                  onClick={() => {
+                    if (updateCheck.status === "available") {
+                      void window.pallet.app.openExternal(updateCheck.info.url);
+                    } else {
+                      void checkNow();
+                    }
+                  }}
+                >
+                  {updateAction}
+                </Button>
+              </Row>
+            </Group>
+
+            <Group
+              footnote="Pallet has no accounts and collects no telemetry. The only outbound request is the GitHub Releases update check."
+              footnoteId="note-privacy"
+            >
+              <Row label="Data collection">
+                <span className="text-muted-foreground text-[12px]">None</span>
+              </Row>
+            </Group>
+
+            <Group
+              footnote="The version text copies Pallet, Electron, macOS, and architecture for a bug report. Logs are scrubbed of credentials."
+              footnoteId="note-diagnostics"
+            >
+              <Row label="Log file">
+                <Button
+                  size="xs"
+                  variant="outline"
+                  aria-describedby="note-diagnostics"
+                  onClick={() => void window.pallet.app.revealLog()}
+                >
+                  Reveal in Finder
+                </Button>
+              </Row>
+              <Row
+                label="Version info"
+                separated
+              >
+                <Button
+                  size="xs"
+                  variant="outline"
+                  aria-describedby="note-diagnostics"
+                  disabled={appInfo === null}
+                  onClick={copyVersionInfo}
+                >
+                  {copiedInfo ? "Copied" : "Copy"}
+                </Button>
+              </Row>
+            </Group>
+
+            <Group footnote="Pallet is free and open source under the Apache License 2.0.">
+              <Row label="License">
+                <Button
+                  size="xs"
+                  variant="outline"
+                  onClick={() => void window.pallet.app.openExternal(LICENSE_URL)}
+                >
+                  Apache 2.0
+                </Button>
+              </Row>
+              <Row
+                label="Copyright"
+                separated
+              >
+                <span className="text-muted-foreground text-[11px]">© 2026 Framwrk</span>
+              </Row>
+              <Row
+                label="Built with"
+                separated
+              >
+                <span className="text-muted-foreground text-[11px]">Electron · React · Base UI · ssh2 · basic-ftp</span>
+              </Row>
+              <LinkRow
+                label="Framwrk on GitHub"
+                href={AUTHOR_URL}
+                separated
+              />
             </Group>
           </div>
         ) : null}

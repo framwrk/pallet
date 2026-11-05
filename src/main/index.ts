@@ -208,6 +208,14 @@ app.whenReady().then(() => {
   installCrashHandlers();
   log("app start", app.getVersion());
 
+  // The native About panel stays minimal; Settings → About carries links,
+  // license, diagnostics, and credits.
+  app.setAboutPanelOptions({
+    applicationName: "Pallet",
+    applicationVersion: app.getVersion(),
+    copyright: "Copyright © 2026 Framwrk",
+  });
+
   // The renderer only writes text to the clipboard (copy database path).
   session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
     callback(permission === "clipboard-sanitized-write");

@@ -3,6 +3,7 @@ import type { ConnectProfile, ConnectResult, HostKeyPrompt, SessionStatusEvent }
 import type { DirListing, Entry, KnownFolders, PreviewData, VolumeInfo } from "../fs/fs.types";
 import type { Favorite, FavoriteInput } from "../favorite/favorite.types";
 import type { UpdateDownloadState, UpdateInfo } from "../update/update.types";
+import type { AppInfo } from "../app/app.types";
 import type { ContextMenuItem } from "./ipc.types";
 import type { EditEventPayload } from "../edit/edit.types";
 import type { Preferences } from "../prefs/prefs.types";
@@ -85,6 +86,8 @@ export interface PalletApi {
   };
   app: {
     version(): Promise<string>;
+    /** Runtime versions and platform details for Settings → About. */
+    info(): Promise<AppInfo>;
     /** Manual check; resolves with info when an update exists, else null. */
     checkForUpdate(): Promise<UpdateInfo | null>;
     /** Download the release DMG into ~/Downloads and mount it; resolves with its path. */
