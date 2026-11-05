@@ -1,16 +1,26 @@
-import { AlertCircle, ChevronDown, ChevronUp, Pause, Play, RotateCcw, Trash2, X } from "lucide-react";
+import { AlertCircle, ChevronDown, ChevronRight, ChevronUp, Pause, Play, RotateCcw, Trash2, X } from "lucide-react";
+import { SPEED_STATS_WINDOW_MS, TERMINAL_TRANSFER_STATES } from "@shared/transfer/transfer.constants";
 import { clearFinishedJobs, jobAction, removeJob, setDrawerOpen, useTransfers } from "@/store/transfer.store";
-import { TERMINAL_TRANSFER_STATES } from "@shared/transfer/transfer.constants";
 import type { TransferJobSnapshot } from "@shared/transfer/transfer.types";
 import { cn } from "@/lib/utils";
 import { formatBytes } from "@/lib/format.utils";
+import { useState } from "react";
+
+const RECENT_SPEED_LABEL = `Last ${SPEED_STATS_WINDOW_MS / 1000}s`;
+
+function formatSpeed(bytesPerSec: number): string {
+  return bytesPerSec > 0 ? `${formatBytes(bytesPerSec)}/s` : "0 B/s";
+}
 
 function JobRow({ job }: { job: TransferJobSnapshot }): React.JSX.Element {
+  const [expanded, setExpanded] = useState(false);
+  const canExpand = job.state === "running" || job.state === "paused";
+  const detailsId = `transfer-speed-${job.id}`;
   const pct = job.totalBytes > 0 ? Math.min(100, (job.doneBytes / job.totalBytes) * 100) : 0;
   const terminal = TERMINAL_TRANSFER_STATES.includes(job.state);
   const stateLabel =
     job.state === "running"
-      ? `${formatBytes(job.doneBytes)} of ${formatBytes(job.totalBytes)} · ${formatBytes(job.bytesPerSec)}/s`
+      ? `${formatBytes(job.doneBytes)} of ${formatBytes(job.totalBytes)} · ${formatSpeed(job.bytesPerSec)}`
       : job.state === "paused"
         ? job.autoPaused
           ? "Paused — connection lost"
@@ -32,9 +42,24 @@ function JobRow({ job }: { job: TransferJobSnapshot }): React.JSX.Element {
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline justify-between gap-2">
           <span className="truncate text-[13px]">{job.label}</span>
-          <span className={cn("text-muted-foreground shrink-0 text-[11px]", job.state === "failed" && "text-destructive")}>
-            {stateLabel}
-          </span>
+          <div className="flex shrink-0 items-center gap-1">
+            <span className={cn("text-muted-foreground text-[11px]", job.state === "failed" && "text-destructive")}>
+              {stateLabel}
+            </span>
+            {canExpand && (
+              <button
+                type="button"
+                className="hover:bg-accent -mr-1 rounded p-0.5"
+                title={expanded ? "Hide transfer details" : "Show transfer details"}
+                aria-label={expanded ? "Hide transfer details" : "Show transfer details"}
+                aria-expanded={expanded}
+                aria-controls={detailsId}
+                onClick={() => setExpanded(!expanded)}
+              >
+                {expanded ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}
+              </button>
+            )}
+          </div>
         </div>
         <div className="mt-1 flex items-center gap-2">
           <div className="bg-muted h-1.5 flex-1 overflow-hidden rounded-full">
@@ -60,6 +85,29 @@ function JobRow({ job }: { job: TransferJobSnapshot }): React.JSX.Element {
         </div>
         {job.currentFiles.length > 0 && (
           <div className="text-muted-foreground mt-0.5 truncate text-[11px]">{job.currentFiles.join(", ")}</div>
+        )}
+        {canExpand && expanded && (
+          <dl
+            id={detailsId}
+            className="text-muted-foreground mt-1.5 grid grid-cols-2 gap-x-4 gap-y-0.5 text-[11px] tabular-nums"
+          >
+            <div className="flex items-baseline justify-between gap-2">
+              <dt>Average</dt>
+              <dd className="text-foreground">{formatSpeed(job.speedStats.averageBytesPerSec)}</dd>
+            </div>
+            <div className="flex items-baseline justify-between gap-2">
+              <dt>Median</dt>
+              <dd className="text-foreground">{formatSpeed(job.speedStats.medianBytesPerSec)}</dd>
+            </div>
+            <div className="flex items-baseline justify-between gap-2">
+              <dt>{RECENT_SPEED_LABEL} average</dt>
+              <dd className="text-foreground">{formatSpeed(job.speedStats.recentAverageBytesPerSec)}</dd>
+            </div>
+            <div className="flex items-baseline justify-between gap-2">
+              <dt>{RECENT_SPEED_LABEL} median</dt>
+              <dd className="text-foreground">{formatSpeed(job.speedStats.recentMedianBytesPerSec)}</dd>
+            </div>
+          </dl>
         )}
       </div>
       <div className="flex shrink-0 items-center gap-1">

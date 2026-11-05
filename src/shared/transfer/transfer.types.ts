@@ -19,6 +19,18 @@ export interface TransferError {
   message: string;
 }
 
+/** Throughput stats in bytes per second, shown when a transfer row is expanded. */
+export interface TransferSpeedStats {
+  /** Mean throughput while running. */
+  averageBytesPerSec: number;
+  /** Median of the one-second throughput samples. */
+  medianBytesPerSec: number;
+  /** Mean throughput over the trailing speed window. */
+  recentAverageBytesPerSec: number;
+  /** Median throughput over the trailing speed window. */
+  recentMedianBytesPerSec: number;
+}
+
 export interface TransferJobSnapshot {
   id: string;
   state: TransferState;
@@ -34,6 +46,7 @@ export interface TransferJobSnapshot {
   totalBytes: number;
   doneBytes: number;
   bytesPerSec: number;
+  speedStats: TransferSpeedStats;
   /** Relative paths currently in flight. */
   currentFiles: string[];
   errors: TransferError[];
