@@ -14,6 +14,7 @@ import {
   setConfirmDelete,
   setRenaming,
 } from "./pane.store";
+import type { ContextMenuItem } from "@shared/ipc/ipc.types";
 import type { EndpointRef } from "@shared/transfer/transfer.types";
 import type { Entry } from "@shared/fs/fs.types";
 import { enqueuePaneCopy } from "./transfer.store";
@@ -303,19 +304,16 @@ export async function showRowContextMenu(id: PaneId, entry: Entry): Promise<void
   const pane = getState().panes[id];
   if (!pane.selected.has(entry.name)) selectNames(id, [entry.name]);
   if (pane.backend.kind === "sftp") {
-    const singleRemote = getState().panes[id].selected.size === 1;
+    const selected = getState().panes[id].selected;
+    const singleRemote = selected.size === 1;
     const usable = isUsable(pane);
     const sessionId = pane.backend.sessionId;
     const other = getState().panes[otherPane(id)].backend;
-    const remoteChoice = await window.pallet.ui.contextMenu([
+    const items: ContextMenuItem[] = [
       { id: "open", label: "Open", enabled: usable && isDirLike(entry) },
-      {
-        id: "edit",
-        label: "Edit in External Editor",
-        enabled: usable && singleRemote && entry.kind === "file",
-      },
+      ...(singleRemote && entry.kind === "file" ? [{ id: "edit", label: "Edit in External Editor", enabled: usable }] : []),
       { type: "separator" },
-      { id: "rename", label: "Rename", enabled: usable && singleRemote },
+      ...(singleRemote ? [{ id: "rename", label: "Rename", enabled: usable }] : []),
       { id: "copy", label: "Copy", enabled: usable },
       {
         id: "transferToOther",
@@ -326,7 +324,8 @@ export async function showRowContextMenu(id: PaneId, entry: Entry): Promise<void
       { id: "delete", label: "Delete", enabled: usable },
       { type: "separator" },
       { id: "refresh", label: "Refresh" },
-    ]);
+    ];
+    const remoteChoice = await window.pallet.ui.contextMenu(items);
     switch (remoteChoice) {
       case "open":
         openSelection(id);
@@ -355,11 +354,11 @@ export async function showRowContextMenu(id: PaneId, entry: Entry): Promise<void
   const single = getState().panes[id].selected.size === 1;
   const usable = isUsable(getState().panes[id]);
   const other = getState().panes[otherPane(id)].backend;
-  const choice = await window.pallet.ui.contextMenu([
+  const items: ContextMenuItem[] = [
     { id: "open", label: "Open", enabled: usable },
     { id: "reveal", label: "Reveal in Finder", enabled: usable },
     { type: "separator" },
-    { id: "rename", label: "Rename", enabled: usable && single },
+    ...(single ? [{ id: "rename", label: "Rename", enabled: usable }] : []),
     { id: "copy", label: "Copy", enabled: usable },
     {
       id: "transferToOther",
@@ -368,7 +367,8 @@ export async function showRowContextMenu(id: PaneId, entry: Entry): Promise<void
     },
     { type: "separator" },
     { id: "trash", label: "Move to Trash", enabled: usable },
-  ]);
+  ];
+  const choice = await window.pallet.ui.contextMenu(items);
   switch (choice) {
     case "open":
       openSelection(id);
