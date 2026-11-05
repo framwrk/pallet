@@ -83,8 +83,12 @@ interface FileListProps {
 export function FileList({ paneId, pane, visible, isActive }: FileListProps): React.JSX.Element {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [dropTarget, setDropTarget] = useState<"pane" | string | null>(null);
+  // A plain click on an already-selected row collapses the selection, but only
+  // once it is clear the user is not starting a drag of the whole selection.
+  const pendingCollapse = useRef<string | null>(null);
 
   function onRowDragStart(e: React.DragEvent, entry: Entry): void {
+    pendingCollapse.current = null;
     const names = pane.selected.has(entry.name) ? [...pane.selected] : [entry.name];
     if (!pane.selected.has(entry.name)) selectOnly(paneId, entry.name);
     activeDrag = { pane: paneId, names };
@@ -159,16 +163,30 @@ export function FileList({ paneId, pane, visible, isActive }: FileListProps): Re
 
   function onRowMouseDown(e: React.MouseEvent, entry: Entry): void {
     setActive(paneId);
+    // Right-click opens the context menu against the existing selection, so it
+    // must not replace that selection with the clicked row. Ctrl-click is the
+    // same gesture on macOS and arrives as a left-button press.
+    if (e.button !== 0 || e.ctrlKey) return;
     if (e.metaKey) {
+      pendingCollapse.current = null;
       toggleSelect(paneId, entry.name);
     } else if (e.shiftKey) {
+      pendingCollapse.current = null;
       extendTo(paneId, entry.name, visible);
     } else if (!pane.selected.has(entry.name)) {
+      pendingCollapse.current = null;
       selectOnly(paneId, entry.name);
     } else {
-      // Already-selected row: keep multi-selection (drag semantics later).
-      selectOnly(paneId, entry.name);
+      // Already-selected row: keep the multi-selection so a drag can move all
+      // of it; collapse on click when no drag follows.
+      pendingCollapse.current = entry.name;
     }
+  }
+
+  function onRowClick(e: React.MouseEvent, entry: Entry): void {
+    if (e.button !== 0 || e.ctrlKey || pendingCollapse.current !== entry.name) return;
+    pendingCollapse.current = null;
+    selectOnly(paneId, entry.name);
   }
 
   function onRowDoubleClick(entry: Entry): void {
@@ -276,6 +294,7 @@ export function FileList({ paneId, pane, visible, isActive }: FileListProps): Re
                 if (isDroppableDir(entry)) onDrop(e, entry.path);
               }}
               onMouseDown={(e) => onRowMouseDown(e, entry)}
+              onClick={(e) => onRowClick(e, entry)}
               onDoubleClick={() => onRowDoubleClick(entry)}
               onContextMenu={(e) => {
                 e.preventDefault();
