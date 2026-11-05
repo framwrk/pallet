@@ -385,7 +385,7 @@ Keep the file open and keep saving; each save is another upload. Close the edito
 
 ## Settings
 
-Press **⌘,** or choose **Pallet → Settings**. A separate window opens with five tabs, and it
+Press **⌘,** or choose **Pallet → Settings**. A separate window opens with six tabs, and it
 resizes to fit the selected tab.
 
 ### General
@@ -431,6 +431,21 @@ make while Pallet is running.
 | **Upload delay**    | 800 ms    | Wait for an external editor to settle before uploading a saved file.  |
 | **Change polling**  | 1000 ms   | How often Pallet checks the editor's local copy for changes.          |
 | **Upload timeout**  | 60000 ms  | Abort a stalled re-upload from the external editor.                   |
+
+### About
+
+The About tab shows the Pallet version and description, then links to the GitHub repository,
+release notes, and issue tracker. It also provides:
+
+- **Check for updates**: runs the same GitHub Releases check as the scheduled one, immediately.
+- **Data collection**: states that Pallet has no accounts and no telemetry.
+- **Log file**: reveals the scrubbed log in Finder for a bug report.
+- **Version info**: copies Pallet, Electron, macOS, and architecture details to the clipboard.
+- **License and credits**: the Apache License 2.0, copyright, the main libraries Pallet is built
+  with, and a link to Framwrk on GitHub.
+
+The native **Pallet → About Pallet** panel stays deliberately minimal, showing just the app name,
+version, and copyright. Use the settings tab for links and diagnostics.
 
 Changes save as you make them (there is no OK button) and apply to open windows immediately.
 Preferences live in the same local SQLite database as your favorites.

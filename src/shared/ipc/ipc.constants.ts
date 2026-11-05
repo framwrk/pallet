@@ -50,6 +50,7 @@ export const AppChannels = {
   downloadUpdate: "app:downloadUpdate",
   openExternal: "app:openExternal",
   version: "app:version",
+  info: "app:info",
   revealLog: "app:revealLog",
   databasePath: "app:databasePath",
   /** main → renderer: a newer release exists. */

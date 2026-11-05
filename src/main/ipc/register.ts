@@ -65,6 +65,12 @@ export function registerIpcHandlers(): void {
   registerPrefHandlers();
 
   handle(AppChannels.version, () => app.getVersion());
+  handle(AppChannels.info, () => ({
+    version: app.getVersion(),
+    electron: process.versions.electron ?? "",
+    systemVersion: process.getSystemVersion(),
+    arch: process.arch,
+  }));
   handle(AppChannels.checkForUpdate, () => checkForUpdate());
   handle(AppChannels.downloadUpdate, (info: UpdateInfo) => downloadUpdate(info));
   handle(AppChannels.openExternal, (url: string) => {
