@@ -1,10 +1,20 @@
 import { CornerUpRight, File as FileIcon, Folder } from "lucide-react";
-import { type PaneId, type PaneState, clearSelection, extendTo, selectOnly, setActive, toggleSelect } from "@/store/pane.store";
+import {
+  type PaneId,
+  type PaneState,
+  clearSelection,
+  extendTo,
+  selectOnly,
+  setActive,
+  toggleSelect,
+  useAppState,
+} from "@/store/pane.store";
 import { cancelRename, commitRename, openEntry, showBackgroundContextMenu, showRowContextMenu } from "@/store/ops.store";
 import { formatBytes, formatModified } from "@/lib/format.utils";
 import { isSizeable, useFolderSizes } from "@renderer/hooks/folder-size.hook";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Entry } from "@shared/fs/fs.types";
+import { ROW_HEIGHTS } from "@shared/prefs/prefs.constants";
 import { cn } from "@/lib/utils";
 import { enqueuePaneCopy } from "@/store/transfer.store";
 import { isDirLike } from "@/lib/entry.utils";
@@ -71,8 +81,6 @@ function RenameInput({ paneId, entry }: { paneId: PaneId; entry: Entry }): React
   );
 }
 
-const ROW_HEIGHT = 26;
-
 interface FileListProps {
   paneId: PaneId;
   pane: PaneState;
@@ -81,6 +89,8 @@ interface FileListProps {
 }
 
 export function FileList({ paneId, pane, visible, isActive }: FileListProps): React.JSX.Element {
+  const { rowDensity } = useAppState();
+  const rowHeight = ROW_HEIGHTS[rowDensity];
   const scrollRef = useRef<HTMLDivElement>(null);
   const [dropTarget, setDropTarget] = useState<"pane" | string | null>(null);
   // A plain click on an already-selected row collapses the selection, but only
@@ -129,9 +139,15 @@ export function FileList({ paneId, pane, visible, isActive }: FileListProps): Re
   const virtualizer = useVirtualizer({
     count: visible.length,
     getScrollElement: () => scrollRef.current,
-    estimateSize: () => ROW_HEIGHT,
+    estimateSize: () => rowHeight,
     overscan: 12,
   });
+
+  // estimateSize reads the latest density, but mounted rows keep their old
+  // measurement until the virtualizer remeasures.
+  useEffect(() => {
+    virtualizer.measure();
+  }, [rowHeight, virtualizer]);
 
   // Only the rows the virtualizer has mounted, so sizing follows the viewport
   // rather than the whole directory.
@@ -275,7 +291,7 @@ export function FileList({ paneId, pane, visible, isActive }: FileListProps): Re
                 selected && (isActive ? "bg-primary text-primary-foreground" : "bg-muted text-foreground"),
               )}
               style={{
-                height: ROW_HEIGHT,
+                height: rowHeight,
                 transform: `translateY(${row.start}px)`,
                 ...(dropTarget === entry.name ? { boxShadow: "inset 0 0 0 2px var(--primary)" } : {}),
               }}

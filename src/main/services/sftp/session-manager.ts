@@ -32,6 +32,11 @@ export interface SessionManagerHooks {
   onStatus(event: SessionStatusEvent): void;
 }
 
+export interface SessionManagerOptions {
+  /** Reconnect dropped sessions with backoff instead of disconnecting. */
+  autoReconnect?: boolean;
+}
+
 interface ChannelPool {
   free: SFTPWrapper[];
   /** Channels currently open (free + leased). */
@@ -164,7 +169,10 @@ export class SessionManager {
   private sessions = new Map<string, Session>();
   private seq = 0;
 
-  constructor(private hooks: SessionManagerHooks) {}
+  constructor(
+    private hooks: SessionManagerHooks,
+    private getOptions: () => SessionManagerOptions = () => ({}),
+  ) {}
 
   private setStatus(session: Session, status: SessionStatus, detail?: string): void {
     session.status = status;
@@ -385,6 +393,10 @@ export class SessionManager {
   }
 
   private scheduleReconnect(session: Session): void {
+    if (this.getOptions().autoReconnect === false) {
+      this.setStatus(session, "disconnected", "Automatic reconnect is off");
+      return;
+    }
     const attempt = session.reconnectAttempt;
     if (attempt >= RECONNECT_DELAYS_MS.length) {
       this.setStatus(session, "disconnected", "Reconnect attempts exhausted");

@@ -81,6 +81,7 @@ export function ConnectDialog(): React.JSX.Element {
           editing={null}
           prefill={prefill}
           defaultConcurrency={app.defaultConcurrency}
+          defaultKeepaliveSeconds={app.defaultKeepaliveSeconds}
           autoFocus
           onClose={closeQuickConnect}
           targetPane={app.quickConnectPane}

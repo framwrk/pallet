@@ -82,9 +82,9 @@ function openSettingsWindow(): void {
   const entryFile = join(__dirname, "../renderer/settings.html");
   const win = new BrowserWindow({
     width: 520,
-    // The General tab's natural height, so the window opens at its final size;
-    // the renderer reports the exact figure for each tab as you switch.
-    height: 165,
+    // Roughly the General tab's height, so the window opens close to its final
+    // size; the renderer reports the exact figure for each tab as you switch.
+    height: 520,
     resizable: false,
     minimizable: false,
     maximizable: false,

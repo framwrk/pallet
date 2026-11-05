@@ -149,8 +149,8 @@ export function Pane({ paneId }: { paneId: PaneId }): React.JSX.Element {
   const isActive = app.active === paneId;
 
   const visible = useMemo(
-    () => visibleEntries(pane.entries, pane.sortKey, pane.sortDir, app.showHidden),
-    [pane.entries, pane.sortKey, pane.sortDir, app.showHidden],
+    () => visibleEntries(pane.entries, pane.sortKey, pane.sortDir, app.showHidden, app.foldersFirst),
+    [pane.entries, pane.sortKey, pane.sortDir, app.showHidden, app.foldersFirst],
   );
 
   const statusLine = useMemo(() => {

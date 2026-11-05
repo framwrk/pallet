@@ -24,6 +24,7 @@ export function FavoriteDialog(): React.JSX.Element {
             editing={editing}
             prefill={null}
             defaultConcurrency={app.defaultConcurrency}
+            defaultKeepaliveSeconds={app.defaultKeepaliveSeconds}
             autoFocus
             onClose={() => setEditingFavorite(null)}
           />

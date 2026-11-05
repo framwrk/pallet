@@ -113,6 +113,7 @@ export function ConnectForm({
   editing,
   prefill,
   defaultConcurrency,
+  defaultKeepaliveSeconds,
   autoFocus,
   onClose,
   targetPane = "right",
@@ -120,6 +121,7 @@ export function ConnectForm({
   editing: Favorite | null;
   prefill: Favorite | null;
   defaultConcurrency: number;
+  defaultKeepaliveSeconds: number;
   /** Whether the form takes focus on mount. */
   autoFocus: boolean;
   /** Omitted where there is nothing to dismiss the form back to. */
@@ -147,7 +149,7 @@ export function ConnectForm({
   const [colorLabel, setColorLabel] = useState<ColorLabel>(seed?.colorLabel ?? "none");
   const [showOptions, setShowOptions] = useState(false);
   const [showFavoriteDetails, setShowFavoriteDetails] = useState(false);
-  const [keepalive, setKeepalive] = useState("15");
+  const [keepalive, setKeepalive] = useState(String(defaultKeepaliveSeconds));
   const [compression, setCompression] = useState(false);
   const [tlsRejectUnauthorized, setTlsRejectUnauthorized] = useState(seed?.tlsRejectUnauthorized ?? true);
   const [concurrency, setConcurrency] = useState(String(defaultConcurrency));
@@ -206,6 +208,7 @@ export function ConnectForm({
       setError(invalid);
       return;
     }
+    const keepaliveSeconds = Number.parseInt(keepalive, 10);
     const profile: ConnectProfile = {
       protocol,
       host: server.trim(),
@@ -218,7 +221,7 @@ export function ConnectForm({
             ? { method: "key", keyPath: keyPath.trim(), ...(passphrase ? { passphrase } : {}) }
             : { method: "agent" },
       ...(remotePathField.trim() ? { remotePath: remotePathField.trim() } : {}),
-      keepaliveIntervalMs: Math.max(0, Number.parseInt(keepalive, 10) || 15) * 1000,
+      keepaliveIntervalMs: Math.max(0, Number.isFinite(keepaliveSeconds) ? keepaliveSeconds : defaultKeepaliveSeconds) * 1000,
       compression,
       ...(protocol === "ftps" ? { tlsRejectUnauthorized } : {}),
       concurrency: Number.parseInt(concurrency, 10) || defaultConcurrency,

@@ -27,7 +27,7 @@ function median(values: readonly number[]): number {
   return sorted.length % 2 === 1 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
 }
 
-export function speedStatsFromSamples(samples: readonly SpeedSample[]): TransferSpeedStats {
+export function speedStatsFromSamples(samples: readonly SpeedSample[], windowMs = SPEED_STATS_WINDOW_MS): TransferSpeedStats {
   if (samples.length < 2) return ZERO_SPEED_STATS;
 
   const rates: number[] = [];
@@ -55,7 +55,7 @@ export function speedStatsFromSamples(samples: readonly SpeedSample[]): Transfer
     if (activeMs <= 0) break;
     // Always keep at least one interval, even when a caller shrinks the
     // window below the sampling cadence.
-    if (recentMs > 0 && recentMs + activeMs > SPEED_STATS_WINDOW_MS) break;
+    if (recentMs > 0 && recentMs + activeMs > windowMs) break;
     const bytes = Math.max(0, samples[i].bytes - samples[i - 1].bytes);
     recentBytes += bytes;
     recentMs += activeMs;

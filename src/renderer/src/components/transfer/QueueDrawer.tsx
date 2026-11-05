@@ -13,14 +13,14 @@ import {
   X,
   XCircle,
 } from "lucide-react";
-import { SPEED_STATS_WINDOW_MS, TERMINAL_TRANSFER_STATES } from "@shared/transfer/transfer.constants";
 import type { TransferJobSnapshot, TransferState } from "@shared/transfer/transfer.types";
 import { clearFinishedJobs, jobAction, removeJob, setDrawerOpen, useTransfers } from "@/store/transfer.store";
 import { useEffect, useState } from "react";
+import { TERMINAL_TRANSFER_STATES } from "@shared/transfer/transfer.constants";
 import { cn } from "@/lib/utils";
 import { formatBytes } from "@/lib/format.utils";
+import { useAppState } from "@/store/pane.store";
 
-const RECENT_SPEED_LABEL = `Last ${SPEED_STATS_WINDOW_MS / 1000}s`;
 const LIST_ID = "transfer-drawer-jobs";
 
 function formatSpeed(bytesPerSec: number): string {
@@ -162,6 +162,8 @@ function StatRow({ label, value }: { label: string; value: string }): React.JSX.
 }
 
 function AdvancedStats({ job, id }: { job: TransferJobSnapshot; id: string }): React.JSX.Element {
+  const { speedStatsWindowSeconds } = useAppState();
+  const recentSpeedLabel = `Last ${speedStatsWindowSeconds}s`;
   const now = useNow();
   const elapsedMs = Math.max(0, (job.finishedAt ?? now) - job.startedAt);
   const remainingBytes = Math.max(0, job.totalBytes - job.doneBytes);
@@ -205,11 +207,11 @@ function AdvancedStats({ job, id }: { job: TransferJobSnapshot; id: string }): R
               value={formatStatSpeed(job.speedStats.medianBytesPerSec)}
             />
             <StatRow
-              label={`${RECENT_SPEED_LABEL} average`}
+              label={`${recentSpeedLabel} average`}
               value={formatStatSpeed(job.speedStats.recentAverageBytesPerSec)}
             />
             <StatRow
-              label={`${RECENT_SPEED_LABEL} median`}
+              label={`${recentSpeedLabel} median`}
               value={formatStatSpeed(job.speedStats.recentMedianBytesPerSec)}
             />
           </dl>

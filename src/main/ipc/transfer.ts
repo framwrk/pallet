@@ -4,14 +4,28 @@ import type { IpcResult } from "@shared/ipc/ipc.types";
 import { TransferChannels } from "@shared/ipc/ipc.constants";
 import { TransferQueue } from "../services/transfer/transfer-queue";
 import { broadcast } from "../utils/broadcast";
+import { getPreferences } from "../services/prefs-store";
 import { ipcMain } from "electron";
 import { recordTransferHistory } from "../services/transfer/transfer-history";
 
-export const transferQueue = new TransferQueue(sessionManager, {
-  onUpdate: (snapshot) => broadcast(TransferChannels.update, snapshot),
-  onConflict: (prompt) => broadcast(TransferChannels.conflict, prompt),
-  record: (job, request) => recordTransferHistory(job, request),
-});
+export const transferQueue = new TransferQueue(
+  sessionManager,
+  {
+    onUpdate: (snapshot) => broadcast(TransferChannels.update, snapshot),
+    onConflict: (prompt) => broadcast(TransferChannels.conflict, prompt),
+    record: (job, request) => recordTransferHistory(job, request),
+  },
+  7,
+  undefined,
+  () => {
+    const prefs = getPreferences();
+    return {
+      stallTimeoutMs: prefs.transferTimeoutSeconds * 1000,
+      maxChannelRetries: prefs.transferMaxRetries,
+      speedStatsWindowMs: prefs.speedStatsWindowSeconds * 1000,
+    };
+  },
+);
 
 function handle<Args extends unknown[], T>(channel: string, fn: (...args: Args) => T | Promise<T>): void {
   ipcMain.handle(channel, async (_event, ...args): Promise<IpcResult<T>> => {

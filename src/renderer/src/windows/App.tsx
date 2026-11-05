@@ -89,7 +89,7 @@ function handleKeyDown(e: KeyboardEvent): void {
   const state = getState();
   const id = state.active;
   const pane = state.panes[id];
-  const visible = visibleEntries(pane.entries, pane.sortKey, pane.sortDir, state.showHidden);
+  const visible = visibleEntries(pane.entries, pane.sortKey, pane.sortDir, state.showHidden, state.foldersFirst);
   const meta = e.metaKey;
   const shift = e.shiftKey;
 
