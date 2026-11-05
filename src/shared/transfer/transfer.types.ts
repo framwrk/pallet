@@ -39,6 +39,8 @@ export interface TransferJobSnapshot {
   label: string;
   /** When the job was enqueued, in epoch milliseconds. */
   startedAt: number;
+  /** When the job reached a terminal state, so elapsed time stays fixed. */
+  finishedAt?: number;
   destDir: string;
   totalFiles: number;
   doneFiles: number;

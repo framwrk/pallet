@@ -293,7 +293,8 @@ responsive.
 
 ### Queue controls
 
-The queue drawer shows progress, transfer rate, and bytes moved for each job:
+The queue drawer shows progress, transfer rate, and bytes moved for each job. Each row also names the
+files currently in flight.
 
 | Button               | What it does                     |
 | -------------------- | -------------------------------- |
@@ -302,6 +303,10 @@ The queue drawer shows progress, transfer rate, and bytes moved for each job:
 | **Retry**            | Re-runs a failed or canceled job |
 | **Cancel**           | Stops and cleans up staged files |
 | **Remove from list** | Clears a finished job            |
+
+**Advanced stats** in each row reports measured average and median throughput (all-time and the last
+30 seconds), elapsed time, estimated time left, bytes moved, and file counts. The drawer header
+summarizes active jobs, with an aggregate progress bar and combined transfer rate.
 
 **Clear** removes all finished jobs at once. The drawer header shows aggregate progress across all
 running jobs. These controls and the live progress reporting apply to every transfer direction,

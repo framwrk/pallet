@@ -108,6 +108,8 @@ export type EndpointFactory = (sessions: SessionManager, ref: TransferRequest["f
 class Job {
   /** Enqueue time, so history rows have a real transfer start. */
   startedAt = Date.now();
+  /** Set once the job settles, so the drawer can report a fixed elapsed time. */
+  finishedAt?: number;
   state: TransferState = "enumerating";
   autoPaused = false;
   userPaused = false;
@@ -193,6 +195,7 @@ export class TransferQueue {
       autoPaused: job.autoPaused,
       label: job.label,
       startedAt: job.startedAt,
+      finishedAt: job.finishedAt,
       destDir: job.request.destDir,
       totalFiles: job.planFiles.length,
       doneFiles: job.doneFiles,
@@ -352,6 +355,7 @@ export class TransferQueue {
       job.from?.dispose();
       job.to?.dispose();
       release();
+      if (TERMINAL_TRANSFER_STATES.includes(job.state) && !job.finishedAt) job.finishedAt = Date.now();
       this.flushSpeedSample(job);
       this.emit(job, true);
       if (TERMINAL_TRANSFER_STATES.includes(job.state)) this.hooks.record?.(this.snapshot(job), job.request);
@@ -924,6 +928,7 @@ export class TransferQueue {
     if (!job || TERMINAL_TRANSFER_STATES.includes(job.state)) return;
     job.canceled = true;
     job.state = "canceled";
+    job.finishedAt ??= Date.now();
     this.abortInFlight(job);
     // Unstick any waiters so workers can observe cancellation.
     job.conflictWaiter?.();
