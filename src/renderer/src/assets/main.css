@@ -12,6 +12,19 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* Dim/blur scrim behind the in-app Settings modal: the app behind stays
+   faintly visible. Light mixes the background at 60%, dark at 64% to read
+   over a darker app. */
+@utility dialog-backdrop {
+  background: color-mix(in srgb, var(--background) 60%, transparent);
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
+
+  @variant dark {
+    background: color-mix(in srgb, var(--background) 64%, transparent);
+  }
+}
+
 @theme inline {
   --font-heading: var(--font-sans);
   --font-sans: "Inter Variable", sans-serif;

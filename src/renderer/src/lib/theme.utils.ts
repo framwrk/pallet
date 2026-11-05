@@ -10,7 +10,7 @@ function apply(): void {
 
 /**
  * Applies the stored appearance and keeps this window following it — both the
- * system setting and changes made in the settings window.
+ * system setting and changes made in Settings.
  */
 export function initTheme(): void {
   apply();

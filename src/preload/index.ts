@@ -133,9 +133,7 @@ const pallet: PalletApi = {
   },
   window: {
     onCloseRequest: (cb: () => void): (() => void) => subscribe(WindowChannels.closeRequest, cb),
-  },
-  settings: {
-    resize: (contentHeight: number, title: string): Promise<void> => invoke(SettingsChannels.resize, contentHeight, title),
+    onSettingsOpen: (cb: () => void): (() => void) => subscribe(SettingsChannels.openRequest, cb),
   },
   ui: {
     contextMenu: (items: ContextMenuItem[]): Promise<string | null> => invoke(UiChannels.contextMenu, items),
