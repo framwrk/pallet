@@ -9,7 +9,6 @@ import { cn } from "@/lib/utils";
 import { isDirLike } from "@/lib/entry.utils";
 import { localPath } from "@shared/path/path.utils";
 
-const PREVIEW_MAX = 1024 * 1024; // §2.1: inline preview < 1 MB
 const TEXT_EXTS = new Set([
   ".txt",
   ".md",
@@ -122,22 +121,30 @@ function PermissionsMatrix({
   );
 }
 
-function Preview({ entry, backend }: { entry: Entry; backend: PaneBackend }): React.JSX.Element | null {
+function Preview({
+  entry,
+  backend,
+  maxBytes,
+}: {
+  entry: Entry;
+  backend: PaneBackend;
+  maxBytes: number;
+}): React.JSX.Element | null {
   // Mounted with key={entry.path} so each file starts from clean state.
   const [data, setData] = useState<PreviewData | null>(null);
   const [failed, setFailed] = useState(false);
   const ext = localPath.extname(entry.name).toLowerCase();
   const isImage = ext in IMAGE_MIME;
   const isText = TEXT_EXTS.has(ext);
-  const eligible = entry.kind === "file" && (isImage || isText) && entry.size <= PREVIEW_MAX;
+  const eligible = entry.kind === "file" && (isImage || isText) && entry.size <= maxBytes;
 
   useEffect(() => {
     if (!eligible) return;
     let stale = false;
     const load =
       backend.kind === "sftp"
-        ? window.pallet.sftp.readPreview(backend.sessionId, entry.path, PREVIEW_MAX)
-        : window.pallet.fs.readPreview(entry.path, PREVIEW_MAX);
+        ? window.pallet.sftp.readPreview(backend.sessionId, entry.path, maxBytes)
+        : window.pallet.fs.readPreview(entry.path, maxBytes);
     load.then(
       (d) => {
         if (!stale) setData(d);
@@ -262,9 +269,10 @@ export function Inspector(): React.JSX.Element | null {
           </div>
 
           <Preview
-            key={entry.path + entry.mtimeMs}
+            key={entry.path + entry.mtimeMs + app.previewMaxBytes}
             entry={entry}
             backend={pane.backend}
+            maxBytes={app.previewMaxBytes}
           />
 
           <dl className="flex flex-col gap-1 text-xs">

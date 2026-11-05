@@ -385,26 +385,52 @@ Keep the file open and keep saving; each save is another upload. Close the edito
 
 ## Settings
 
-Press **⌘,** or choose **Pallet → Settings**. A separate window opens with three tabs, and it
+Press **⌘,** or choose **Pallet → Settings**. A separate window opens with five tabs, and it
 resizes to fit the selected tab.
 
 ### General
 
-| Setting                    | Default | What it does                                                                             |
-| -------------------------- | ------- | ---------------------------------------------------------------------------------------- |
-| **Show hidden files**      | Off     | The same switch as **⌘⇧.** in the file browser.                                          |
-| **Calculate folder sizes** | Off     | Total each folder's contents instead of showing `--`. See [Folder sizes](#folder-sizes). |
-| **Include remote folders** | Off     | Extends the above to connected servers. Only appears while folder sizes are on.          |
+| Setting                    | Default    | What it does                                                                             |
+| -------------------------- | ---------- | ---------------------------------------------------------------------------------------- |
+| **Show hidden files**      | Off        | The same switch as **⌘⇧.** in the file browser.                                          |
+| **Sort files by**          | Name, A–Z  | Sort applied to both panes and to new listings.                                          |
+| **Folders first**          | On         | Keep folders above files regardless of the sort key.                                     |
+| **Calculate folder sizes** | Off        | Total each folder's contents instead of showing `--`. See [Folder sizes](#folder-sizes). |
+| **Include remote folders** | Off        | Extends the above to connected servers. Only appears while folder sizes are on.          |
+| **Preview files up to**    | 1 MB       | Largest file the inspector previews inline; larger files still show their metadata.      |
 
 ### Appearance
 
 **Appearance**: System, Light, or Dark. System follows the macOS setting, including changes you
 make while Pallet is running.
 
+**Row density**: Compact or Comfortable. Compact matches Finder's default row height.
+
 ### Transfers
 
-**Default concurrency**: 1-7, default 4. Seeds the concurrency field in Quick Connect; changing it
-does not affect existing connections.
+| Setting                      | Default | What it does                                                                        |
+| ---------------------------- | ------- | ----------------------------------------------------------------------------------- |
+| **Default concurrency**      | 4       | 1-7. Seeds the concurrency field in Quick Connect; existing connections are unchanged. |
+| **Default keepalive**        | 15 s    | 0-300. Seeds the keepalive field; 0 disables keepalive.                             |
+| **Reconnect automatically**  | On      | Reconnect dropped sessions with backoff instead of disconnecting.                  |
+| **Stall timeout**            | 60 s    | Abandon a file after this long without progress.                                    |
+| **Retries per file**         | 5       | Per-file retries after a dead channel before reporting failure.                     |
+| **Speed window**             | 30 s    | Trailing window for the transfer drawer's average and median speeds.                |
+
+### Updates
+
+| Setting                            | Default | What it does                                                     |
+| ---------------------------------- | ------- | ---------------------------------------------------------------- |
+| **Check for updates automatically** | On      | Check GitHub Releases on launch and once a day.                  |
+| **Include prerelease versions**     | On      | Include releases GitHub flags as prereleases.                    |
+
+### Advanced
+
+| Setting             | Default   | What it does                                                          |
+| ------------------- | --------- | --------------------------------------------------------------------- |
+| **Upload delay**    | 800 ms    | Wait for an external editor to settle before uploading a saved file.  |
+| **Change polling**  | 1000 ms   | How often Pallet checks the editor's local copy for changes.          |
+| **Upload timeout**  | 60000 ms  | Abort a stalled re-upload from the external editor.                   |
 
 Changes save as you make them (there is no OK button) and apply to open windows immediately.
 Preferences live in the same local SQLite database as your favorites.
@@ -413,11 +439,12 @@ Preferences live in the same local SQLite database as your favorites.
 
 ## Updates
 
-Pallet checks GitHub Releases on launch and once a day. When a newer version is available, Pallet
-shows a dismissible toast rather than a modal.
+Pallet checks GitHub Releases on launch and once a day unless automatic checks are off in
+[Settings](#settings). When a newer version is available, Pallet shows a dismissible toast rather
+than a modal.
 
-GitHub prereleases are included by default. Version numbers are plain `MAJOR.MINOR.PATCH`; Pallet
-does not ship versions like `0.1.0-beta.1`.
+GitHub prereleases are included by default; turn them off in [Settings](#settings). Version numbers
+are plain `MAJOR.MINOR.PATCH`; Pallet does not ship versions like `0.1.0-beta.1`.
 
 Updates are not installed automatically; that requires code signing, which is not in place.
 Instead, the toast downloads the release disk image into `~/Downloads` (with a progress bar) and

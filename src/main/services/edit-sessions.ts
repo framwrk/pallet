@@ -52,18 +52,26 @@ interface EditSession {
 
 export class EditSessions {
   private edits = new Map<string, EditSession>();
-  private readonly saveDebounceMs: number;
-  private readonly pollIntervalMs: number;
-  private readonly uploadTimeoutMs: number;
+  private readonly options: () => EditSessionsOptions;
 
   constructor(
     private sessions: SessionManager,
     private notify: (event: EditEvent) => void,
-    options: EditSessionsOptions = {},
+    options: EditSessionsOptions | (() => EditSessionsOptions) = {},
   ) {
-    this.saveDebounceMs = options.saveDebounceMs ?? DEFAULT_SAVE_DEBOUNCE_MS;
-    this.pollIntervalMs = options.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
-    this.uploadTimeoutMs = options.uploadTimeoutMs ?? DEFAULT_UPLOAD_TIMEOUT_MS;
+    this.options = typeof options === "function" ? options : () => options;
+  }
+
+  private get saveDebounceMs(): number {
+    return this.options().saveDebounceMs ?? DEFAULT_SAVE_DEBOUNCE_MS;
+  }
+
+  private get pollIntervalMs(): number {
+    return this.options().pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
+  }
+
+  private get uploadTimeoutMs(): number {
+    return this.options().uploadTimeoutMs ?? DEFAULT_UPLOAD_TIMEOUT_MS;
   }
 
   /** Download and open; returns the local temp path. */

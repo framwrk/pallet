@@ -26,7 +26,7 @@ import {
   joinPath,
   makeEndpoint,
 } from "./transfer-endpoint";
-import { PART_SUFFIX, TERMINAL_TRANSFER_STATES } from "@shared/transfer/transfer.constants";
+import { PART_SUFFIX, SPEED_STATS_WINDOW_MS, TERMINAL_TRANSFER_STATES } from "@shared/transfer/transfer.constants";
 import { type Readable, Transform } from "stream";
 import { type SpeedSample, ZERO_SPEED_STATS, speedStatsFromSamples } from "./transfer-speed";
 import type { SessionManager } from "../sftp/session-manager";
@@ -102,6 +102,15 @@ export interface QueueHooks {
   record?(job: TransferJobSnapshot, request: TransferRequest): void;
 }
 
+export interface TransferQueueOptions {
+  /** Abort a file transfer after this long without progress. */
+  stallTimeoutMs?: number;
+  /** Per-file retries after a dead channel. */
+  maxChannelRetries?: number;
+  /** Trailing window for the expanded row's recent speed stats. */
+  speedStatsWindowMs?: number;
+}
+
 /** Seam for tests: swap in in-memory endpoints instead of disk/SFTP. */
 export type EndpointFactory = (sessions: SessionManager, ref: TransferRequest["from"]) => TransferEndpoint;
 
@@ -175,7 +184,20 @@ export class TransferQueue {
     /** Streams per job; capped so sftp meta ops always have a channel. */
     private concurrency = 7,
     private endpointFactory: EndpointFactory = makeEndpoint,
+    private getOptions: () => TransferQueueOptions = () => ({}),
   ) {}
+
+  private get stallTimeoutMs(): number {
+    return this.getOptions().stallTimeoutMs ?? STALL_TIMEOUT_MS;
+  }
+
+  private get maxChannelRetries(): number {
+    return this.getOptions().maxChannelRetries ?? MAX_CHANNEL_RETRIES;
+  }
+
+  private get speedStatsWindowMs(): number {
+    return this.getOptions().speedStatsWindowMs ?? SPEED_STATS_WINDOW_MS;
+  }
 
   /** Bytes/second over the trailing 3 s sample window. */
   private bytesPerSecOf(job: Job): number {
@@ -273,7 +295,7 @@ export class TransferQueue {
       return;
     }
     job.speedSamples.push({ bytes: job.doneBytes, activeMs });
-    job.speedStats = speedStatsFromSamples(job.speedSamples);
+    job.speedStats = speedStatsFromSamples(job.speedSamples, this.speedStatsWindowMs);
   }
 
   /** Capture the final partial interval so short transfers still report stats. */
@@ -283,7 +305,7 @@ export class TransferQueue {
     job.lastSpeedSampleAt = now;
     if (activeMs < SPEED_MIN_SAMPLE_MS || activeMs > SPEED_SAMPLE_MS * 2) return;
     job.speedSamples.push({ bytes: job.doneBytes, activeMs });
-    job.speedStats = speedStatsFromSamples(job.speedSamples);
+    job.speedStats = speedStatsFromSamples(job.speedSamples, this.speedStatsWindowMs);
   }
 
   enqueue(request: TransferRequest): string {
@@ -383,7 +405,7 @@ export class TransferQueue {
           this.setAutoPaused(job, true);
           continue;
         }
-        if (!this.isChannelError(err) || attempt >= MAX_CHANNEL_RETRIES) throw err;
+        if (!this.isChannelError(err) || attempt >= this.maxChannelRetries) throw err;
         await new Promise((resolve) => setTimeout(resolve, Math.min(250 * 2 ** attempt, 4000)));
       }
     }
@@ -639,11 +661,13 @@ export class TransferQueue {
     let timer: NodeJS.Timeout | undefined;
     const armStall = (): void => {
       clearTimeout(timer);
+      const stallTimeoutMs = this.stallTimeoutMs;
       timer = setTimeout(() => {
-        const error = Object.assign(new Error("Transfer stalled: no progress for 60s"), { code: "ETIMEDOUT" });
+        const seconds = Math.round(stallTimeoutMs / 1000);
+        const error = Object.assign(new Error(`Transfer stalled: no progress for ${seconds}s`), { code: "ETIMEDOUT" });
         flight.abort?.(error);
         controller.abort();
-      }, STALL_TIMEOUT_MS);
+      }, stallTimeoutMs);
     };
     const checkpointed = !!(job.from.supportsRanges && job.to.supportsRanges && file.size >= CHUNK_THRESHOLD);
     const sourcePath = joinPath(job.request.sourceBase, file.relPath);
@@ -821,7 +845,7 @@ export class TransferQueue {
         else if (this.isChannelError(err)) {
           const attempts = (job.retries.get(file.relPath) ?? 0) + 1;
           job.retries.set(file.relPath, attempts);
-          if (attempts <= MAX_CHANNEL_RETRIES) {
+          if (attempts <= this.maxChannelRetries) {
             await new Promise((resolve) => setTimeout(resolve, Math.min(250 * 2 ** (attempts - 1), 4000)));
             retry = true;
           }

@@ -3,6 +3,7 @@ import type { Entry, KnownFolders, SizeTarget, SortDir, SortKey, VolumeInfo } fr
 import { localPath, remotePath } from "@shared/path/path.utils";
 import { DEFAULT_PREFERENCES } from "@shared/prefs/prefs.constants";
 import type { Favorite } from "@shared/favorite/favorite.types";
+import type { RowDensity } from "@shared/prefs/prefs.types";
 import { useSyncExternalStore } from "react";
 
 /** The left pane starts on the local disk but can host a second server; the right pane is the server (§3.1). */
@@ -73,6 +74,19 @@ export interface AppState {
   calculateFolderSizes: boolean;
   /** Preference: extend the above to remote panes. */
   calculateRemoteFolderSizes: boolean;
+  /** Preference: sort applied to new listings and when the default changes. */
+  defaultSortKey: SortKey;
+  defaultSortDir: SortDir;
+  /** Preference: keep folders above files regardless of the sort key. */
+  foldersFirst: boolean;
+  /** Preference: file-list row spacing. */
+  rowDensity: RowDensity;
+  /** Preference: largest file the inspector previews inline. */
+  previewMaxBytes: number;
+  /** Preference: trailing window for the drawer's recent speed stats. */
+  speedStatsWindowSeconds: number;
+  /** Preference: keepalive field seeded in the connect dialog. */
+  defaultKeepaliveSeconds: number;
   volumes: VolumeInfo[];
   knownFolders: KnownFolders | null;
   goToOpen: boolean;
@@ -105,8 +119,8 @@ function initialPane(backend: PaneBackend): PaneState {
     availBytes: null,
     loading: false,
     error: null,
-    sortKey: "name",
-    sortDir: "asc",
+    sortKey: DEFAULT_PREFERENCES.defaultSortKey,
+    sortDir: DEFAULT_PREFERENCES.defaultSortDir,
     selected: new Set(),
     focused: null,
     anchor: null,
@@ -123,6 +137,13 @@ let state: AppState = {
   defaultConcurrency: DEFAULT_PREFERENCES.defaultConcurrency,
   calculateFolderSizes: DEFAULT_PREFERENCES.calculateFolderSizes,
   calculateRemoteFolderSizes: DEFAULT_PREFERENCES.calculateRemoteFolderSizes,
+  defaultSortKey: DEFAULT_PREFERENCES.defaultSortKey,
+  defaultSortDir: DEFAULT_PREFERENCES.defaultSortDir,
+  foldersFirst: DEFAULT_PREFERENCES.foldersFirst,
+  rowDensity: DEFAULT_PREFERENCES.rowDensity,
+  previewMaxBytes: DEFAULT_PREFERENCES.previewMaxBytes,
+  speedStatsWindowSeconds: DEFAULT_PREFERENCES.speedStatsWindowSeconds,
+  defaultKeepaliveSeconds: DEFAULT_PREFERENCES.defaultKeepaliveSeconds,
   volumes: [],
   knownFolders: null,
   goToOpen: false,
@@ -502,23 +523,33 @@ export async function initApp(): Promise<void> {
     window.pallet.fs.volumes(),
     window.pallet.prefs.get(),
   ]);
-  setApp({
-    knownFolders: folders,
-    volumes: vols,
-    showHidden: prefs.showHidden,
-    defaultConcurrency: prefs.defaultConcurrency,
-    calculateFolderSizes: prefs.calculateFolderSizes,
-    calculateRemoteFolderSizes: prefs.calculateRemoteFolderSizes,
-  });
-  // Keep in step with edits made in the settings window.
-  window.pallet.prefs.onChange((next) =>
+  function adoptPreferences(next: typeof prefs): void {
+    const sortChanged = next.defaultSortKey !== state.defaultSortKey || next.defaultSortDir !== state.defaultSortDir;
     setApp({
       showHidden: next.showHidden,
       defaultConcurrency: next.defaultConcurrency,
       calculateFolderSizes: next.calculateFolderSizes,
       calculateRemoteFolderSizes: next.calculateRemoteFolderSizes,
-    }),
-  );
+      defaultSortKey: next.defaultSortKey,
+      defaultSortDir: next.defaultSortDir,
+      foldersFirst: next.foldersFirst,
+      rowDensity: next.rowDensity,
+      previewMaxBytes: next.previewMaxBytes,
+      speedStatsWindowSeconds: next.speedStatsWindowSeconds,
+      defaultKeepaliveSeconds: next.defaultKeepaliveSeconds,
+    });
+    // A changed default should be visible at once, but other preference edits
+    // must not clobber a sort the user picked in the pane.
+    if (sortChanged) {
+      setPane("left", { sortKey: next.defaultSortKey, sortDir: next.defaultSortDir });
+      setPane("right", { sortKey: next.defaultSortKey, sortDir: next.defaultSortDir });
+    }
+  }
+
+  setApp({ knownFolders: folders, volumes: vols });
+  adoptPreferences(prefs);
+  // Keep in step with edits made in the settings window.
+  window.pallet.prefs.onChange(adoptPreferences);
   await navigate("left", home, "replace");
 }
 

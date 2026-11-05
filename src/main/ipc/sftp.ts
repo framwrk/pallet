@@ -10,6 +10,7 @@ import type { IpcResult } from "@shared/ipc/ipc.types";
 import type { SessionStatusEvent } from "@shared/sftp/sftp.types";
 import { SftpService } from "../services/sftp/sftp.service";
 import { broadcast } from "../utils/broadcast";
+import { getPreferences } from "../services/prefs-store";
 import { randomUUID } from "crypto";
 
 const pendingPrompts = new Map<string, (trust: boolean) => void>();
@@ -51,13 +52,16 @@ export function onSessionStatus(listener: (event: SessionStatusEvent) => void): 
   statusListeners.push(listener);
 }
 
-export const sessionManager = new SessionManager({
-  verifyHostKey,
-  onStatus: (event) => {
-    broadcast(SftpChannels.status, event);
-    for (const listener of statusListeners) listener(event);
+export const sessionManager = new SessionManager(
+  {
+    verifyHostKey,
+    onStatus: (event) => {
+      broadcast(SftpChannels.status, event);
+      for (const listener of statusListeners) listener(event);
+    },
   },
-});
+  () => ({ autoReconnect: getPreferences().autoReconnect }),
+);
 
 export const sftpService = new SftpService(sessionManager);
 
@@ -69,7 +73,18 @@ onSessionStatus((event) => {
   if (event.status === "disconnected") folderSizes.forgetSession(event.sessionId);
 });
 
-export const editSessions = new EditSessions(sessionManager, (event) => broadcast(EditChannels.event, event));
+export const editSessions = new EditSessions(
+  sessionManager,
+  (event) => broadcast(EditChannels.event, event),
+  () => {
+    const prefs = getPreferences();
+    return {
+      saveDebounceMs: prefs.editorSaveDebounceMs,
+      pollIntervalMs: prefs.editorPollIntervalMs,
+      uploadTimeoutMs: prefs.editorUploadTimeoutMs,
+    };
+  },
+);
 
 // A disconnected session can no longer upload; drop its temp copies now rather
 // than leaving them under pallet-edits until the app quits.

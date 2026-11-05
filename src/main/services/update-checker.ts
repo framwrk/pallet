@@ -1,7 +1,8 @@
 /**
- * Update check: GitHub Releases, on launch + daily, honoring the "receive
- * prerelease updates" preference. Non-blocking: failures are logged and
- * swallowed; the renderer only ever sees a toast.
+ * Update check: GitHub Releases, on launch + daily when automatic checks are
+ * enabled, honoring the "receive prerelease updates" preference. Manual checks
+ * run regardless. Non-blocking: failures are logged and swallowed; the renderer
+ * only ever sees a toast.
  *
  * Pallet versions are strictly MAJOR.MINOR.PATCH, so a release whose tag
  * isn't that shape is ignored outright rather than guessed at. "Prerelease"
@@ -9,7 +10,7 @@
  * string, which never carries a suffix.
  */
 import { compareVersions, parseVersion } from "@shared/version/version.utils";
-import { getPreferenceRow, setPreferenceRow } from "./prefs-store";
+import { getPreferences, setPreferenceRow } from "./prefs-store";
 import type { UpdateInfo } from "@shared/update/update.types";
 import { app } from "electron";
 import { log } from "./logger";
@@ -26,7 +27,7 @@ export interface GithubRelease {
 }
 
 export async function checkForUpdate(): Promise<UpdateInfo | null> {
-  const includePrerelease = getPreferenceRow("updates.prerelease", "true") === "true";
+  const includePrerelease = getPreferences().receivePrereleaseUpdates;
   const url = includePrerelease
     ? `https://api.github.com/repos/${REPO}/releases?per_page=10`
     : `https://api.github.com/repos/${REPO}/releases/latest`;
@@ -68,6 +69,7 @@ export async function checkForUpdate(): Promise<UpdateInfo | null> {
 export function startUpdateChecks(notify: (info: UpdateInfo) => void): void {
   const run = async (): Promise<void> => {
     try {
+      if (!getPreferences().automaticallyCheckForUpdates) return;
       const info = await checkForUpdate();
       if (info) notify(info);
     } catch (err) {
