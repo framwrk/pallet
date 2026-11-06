@@ -90,6 +90,8 @@ export interface AppState {
   volumes: VolumeInfo[];
   knownFolders: KnownFolders | null;
   goToOpen: boolean;
+  /** Whether the in-app Settings modal is open. */
+  settingsOpen: boolean;
   /** Whether the modal connection form is open. */
   quickConnectOpen: boolean;
   /** Pane the connection form will replace. */
@@ -147,6 +149,7 @@ let state: AppState = {
   volumes: [],
   knownFolders: null,
   goToOpen: false,
+  settingsOpen: false,
   quickConnectOpen: false,
   quickConnectPane: "right",
   quickConnectPrefill: null,
@@ -311,6 +314,7 @@ export function isModalOpen(): boolean {
   return (
     s.goToOpen ||
     s.quickConnectOpen ||
+    s.settingsOpen ||
     s.editingFavorite !== null ||
     s.hostKeyPrompts.length > 0 ||
     s.confirmDelete !== null ||
@@ -329,12 +333,16 @@ export function setSort(id: PaneId, key: SortKey): void {
 
 export function setShowHidden(show: boolean): void {
   setApp({ showHidden: show });
-  // Persisted so the settings window and the next launch agree.
+  // Persisted so the preference survives relaunch.
   void window.pallet.prefs.set({ showHidden: show });
 }
 
 export function setGoToOpen(open: boolean): void {
   setApp({ goToOpen: open });
+}
+
+export function setSettingsOpen(open: boolean): void {
+  setApp({ settingsOpen: open });
 }
 
 /** Pane showing the local disk, if any. */
@@ -548,7 +556,7 @@ export async function initApp(): Promise<void> {
 
   setApp({ knownFolders: folders, volumes: vols });
   adoptPreferences(prefs);
-  // Keep in step with edits made in the settings window.
+  // Keep in step with edits in Settings.
   window.pallet.prefs.onChange(adoptPreferences);
   await navigate("left", home, "replace");
 }

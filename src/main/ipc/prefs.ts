@@ -19,8 +19,8 @@ export function registerPrefHandlers(): void {
   handle(PrefChannels.get, () => getPreferences());
   handle(PrefChannels.set, (patch: Partial<Preferences>) => {
     const next = setPreferences(patch);
-    // Broadcast to every window (sender included) so the main window and the
-    // settings window stay in sync through one path.
+    // Broadcast to every window (sender included) so any window gets the new
+    // value through one path.
     for (const win of BrowserWindow.getAllWindows()) {
       win.webContents.send(PrefChannels.changed, next);
     }

@@ -119,12 +119,10 @@ export interface PalletApi {
     onChange(cb: (prefs: Preferences) => void): () => void;
   };
   window: {
-    /** Main window only: ⌘W pressed; disconnect the remote pane or close. */
+    /** Main window only: ⌘W pressed; disconnect the active remote pane or no-op. */
     onCloseRequest(cb: () => void): () => void;
-  };
-  settings: {
-    /** Settings window only: fit the window to the active tab and title it. */
-    resize(contentHeight: number, title: string): Promise<void>;
+    /** main → renderer: open the Settings modal. */
+    onSettingsOpen(cb: () => void): () => void;
   };
   ui: {
     /** Native context menu; resolves with the clicked item id, or null. */

@@ -12,7 +12,7 @@ describe("isAllowedNavigation", () => {
   test("allows the development renderer origin", () => {
     expect(isAllowedNavigation(`${DEV_ORIGIN}/`, { devOrigin: DEV_ORIGIN, entryFileUrl: ENTRY_FILE })).toBe(true);
     expect(
-      isAllowedNavigation(new URL("settings.html", DEV_ORIGIN).toString(), {
+      isAllowedNavigation(new URL("index.html", DEV_ORIGIN).toString(), {
         devOrigin: DEV_ORIGIN,
         entryFileUrl: ENTRY_FILE,
       }),

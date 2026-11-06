@@ -67,13 +67,13 @@ export const PrefChannels = {
 } as const;
 
 export const WindowChannels = {
-  /** main → renderer: ⌘W was pressed; the renderer disconnects or closes. */
+  /** main → renderer: ⌘W pressed; the renderer disconnects the active remote pane or no-ops (never closes the window). */
   closeRequest: "window:closeRequest",
 } as const;
 
 export const SettingsChannels = {
-  /** Settings window only: size the window to the active tab's content. */
-  resize: "settings:resize",
+  /** main → renderer: open the Settings modal. */
+  openRequest: "settings:openRequest",
 } as const;
 
 export const EditChannels = {

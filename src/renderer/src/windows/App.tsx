@@ -21,6 +21,7 @@ import {
   selectAll,
   setGoToOpen,
   setInspectorOpen,
+  setSettingsOpen,
   setShowHidden,
   switchPane,
   useAppState,
@@ -35,6 +36,7 @@ import { HostKeyDialog } from "@/components/connection/HostKeyDialog";
 import { Inspector } from "@/components/browser/Inspector";
 import { Pane } from "@/components/browser/Pane";
 import { QueueDrawer } from "@/components/transfer/QueueDrawer";
+import { SettingsDialog } from "@/components/settings/SettingsDialog";
 import { Sidebar } from "@/components/connection/Sidebar";
 import { Toasts } from "@/components/feedback/Toasts";
 import { Toolbar } from "@/components/browser/Toolbar";
@@ -221,18 +223,24 @@ function App(): React.JSX.Element {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
-  // ⌘W arrives from the app menu (accelerators outrun renderer keydowns):
-  // with a remote pane selected it disconnects it, otherwise it closes the
-  // window as the stock Close would.
+  // ⌘W arrives from the app menu (accelerators outrun renderer keydowns) and
+  // belongs to the file browser only: it closes the selected remote pane and
+  // never the window itself (a local pane leaves it a no-op). With the
+  // Settings modal open the pane behind still disconnects and the modal
+  // stays up.
   useEffect(() => {
     return window.pallet.window.onCloseRequest(() => {
       const state = getState();
       if (state.panes[state.active].backend.kind === "sftp") {
         void disconnectPane(state.active);
-      } else {
-        window.close();
       }
     });
+  }, []);
+
+  // ⌘, opens the Settings modal; a retrigger while it is open is a no-op
+  // (setting the same state changes nothing).
+  useEffect(() => {
+    return window.pallet.window.onSettingsOpen(() => setSettingsOpen(true));
   }, []);
 
   return (
@@ -257,6 +265,9 @@ function App(): React.JSX.Element {
         <HostKeyDialog />
         <ConflictDialog />
         <ConfirmDeleteDialog />
+        {/* Rendered last so it stacks on top of the other dialogs; Base UI's
+            topmost dialog owns the focus trap. */}
+        <SettingsDialog />
         <Toasts />
         <UpdateToast />
       </div>

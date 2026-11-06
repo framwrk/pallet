@@ -1,8 +1,8 @@
 /**
  * Push a main → renderer event to every open window.
  *
- * Events are broadcast rather than addressed because both the main window and
- * the settings window render from the same state, and either may be closed.
+ * Even with a single main window, the broadcast keeps the send path uniform
+ * with the other main → renderer events.
  */
 import { BrowserWindow } from "electron";
 
