@@ -81,6 +81,10 @@ export function jobAction(id: string, action: "pause" | "resume" | "cancel" | "r
   void window.pallet.transfer[action](id).catch((err) => pushToast((err as Error).message));
 }
 
+export function itemAction(id: string, name: string, action: "pause" | "resume" | "cancel"): void {
+  void window.pallet.transfer[`${action}Item`](id, name).catch((err) => pushToast((err as Error).message));
+}
+
 export function removeJob(id: string): void {
   void window.pallet.transfer.remove(id);
   set({ jobs: state.jobs.filter((j) => j.id !== id) });

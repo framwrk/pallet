@@ -305,6 +305,11 @@ Each item row also names the files currently in flight.
 | **Cancel**           | Stops and cleans up staged files |
 | **Remove from list** | Clears a finished job            |
 
+Each item row also has its own **pause**, **resume**, and **cancel** controls. Pausing one item
+holds only its files while the rest of the job keeps transferring. Canceling an item stops its
+files without canceling the other items in the job. The job-level controls still pause, resume, or
+cancel everything at once.
+
 **Advanced stats** in each item row shows a graph of transfer speed over the entire transfer, along
 with measured average and median throughput (all-time and the last 30 seconds), elapsed time,
 estimated time left, bytes moved, and file counts. Multi-item jobs also expose the same stats for the

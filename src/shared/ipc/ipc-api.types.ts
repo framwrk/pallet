@@ -63,6 +63,9 @@ export interface PalletApi {
     pause(id: string): Promise<void>;
     resume(id: string): Promise<void>;
     cancel(id: string): Promise<void>;
+    pauseItem(id: string, name: string): Promise<void>;
+    resumeItem(id: string, name: string): Promise<void>;
+    cancelItem(id: string, name: string): Promise<void>;
     retry(id: string): Promise<void>;
     remove(id: string): Promise<void>;
     resolveConflict(id: string, action: ConflictAction, applyToAll: boolean): Promise<void>;
