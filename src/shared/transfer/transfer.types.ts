@@ -31,6 +31,14 @@ export interface TransferSpeedStats {
   recentMedianBytesPerSec: number;
 }
 
+/** One confirmed-throughput interval behind the expanded row's speed graph. */
+export interface TransferSpeedPoint {
+  /** Wall-clock time since the first sample, in milliseconds. */
+  elapsedMs: number;
+  /** Destination-confirmed throughput over this interval, in bytes per second. */
+  bytesPerSec: number;
+}
+
 /** State of one selected item (file or folder) inside a transfer job. */
 export type TransferItemState = "pending" | "running" | "completed" | "skipped" | "failed" | "canceled";
 
@@ -46,6 +54,8 @@ export interface TransferItemSnapshot {
   doneBytes: number;
   bytesPerSec: number;
   speedStats: TransferSpeedStats;
+  /** Throughput over time, oldest first, for the expanded row's speed graph. */
+  speedHistory: TransferSpeedPoint[];
   startedAt?: number;
   finishedAt?: number;
   /** First error for this item, if it failed. */
@@ -70,6 +80,8 @@ export interface TransferJobSnapshot {
   doneBytes: number;
   bytesPerSec: number;
   speedStats: TransferSpeedStats;
+  /** Throughput over time, oldest first, for the expanded row's speed graph. */
+  speedHistory: TransferSpeedPoint[];
   /** Relative paths currently in flight. */
   currentFiles: string[];
   errors: TransferError[];

@@ -18,6 +18,7 @@ import type {
   TransferItemState,
   TransferJobSnapshot,
   TransferRequest,
+  TransferSpeedPoint,
   TransferSpeedStats,
   TransferState,
 } from "@shared/transfer/transfer.types";
@@ -28,9 +29,14 @@ import {
   joinPath,
   makeEndpoint,
 } from "./transfer-endpoint";
-import { PART_SUFFIX, SPEED_STATS_WINDOW_MS, TERMINAL_TRANSFER_STATES } from "@shared/transfer/transfer.constants";
+import {
+  PART_SUFFIX,
+  SPEED_GRAPH_MAX_POINTS,
+  SPEED_STATS_WINDOW_MS,
+  TERMINAL_TRANSFER_STATES,
+} from "@shared/transfer/transfer.constants";
 import { type Readable, Transform } from "stream";
-import { type SpeedSample, ZERO_SPEED_STATS, speedStatsFromSamples } from "./transfer-speed";
+import { type SpeedSample, ZERO_SPEED_STATS, downsampleSpeedHistory, speedStatsFromSamples } from "./transfer-speed";
 import type { SessionManager } from "../sftp/session-manager";
 import type { SessionStatusEvent } from "@shared/sftp/sftp.types";
 import { keepBothName } from "@shared/transfer/transfer.utils";
@@ -84,6 +90,9 @@ interface PlanItem {
   finishedAt?: number;
   samples: { t: number; bytes: number }[];
   speedSamples: SpeedSample[];
+  speedHistory: TransferSpeedPoint[];
+  /** When the first speed sample was taken, for graph elapsed times. */
+  speedStartedAt: number;
   speedStats: TransferSpeedStats;
   lastSpeedSampleAt: number;
 }
@@ -107,6 +116,8 @@ interface PlanFile {
 /** Shared shape for job- and item-level speed sampling. */
 interface SpeedTracked {
   speedSamples: SpeedSample[];
+  speedHistory: TransferSpeedPoint[];
+  speedStartedAt: number;
   speedStats: TransferSpeedStats;
   lastSpeedSampleAt: number;
 }
@@ -179,6 +190,8 @@ class Job {
   samples: { t: number; bytes: number }[] = [];
   /** One-second confirmed-progress samples for the expanded row's stats. */
   speedSamples: SpeedSample[] = [];
+  speedHistory: TransferSpeedPoint[] = [];
+  speedStartedAt = 0;
   speedStats: TransferSpeedStats = ZERO_SPEED_STATS;
   lastSpeedSampleAt = 0;
   lastEmit = 0;
@@ -247,6 +260,8 @@ export class TransferQueue {
       errors: [],
       samples: [],
       speedSamples: [],
+      speedHistory: [],
+      speedStartedAt: 0,
       speedStats: ZERO_SPEED_STATS,
       lastSpeedSampleAt: 0,
     };
@@ -282,6 +297,7 @@ export class TransferQueue {
       doneBytes: item.doneBytes,
       bytesPerSec: this.bytesPerSecOfSamples(item.samples),
       speedStats: item.speedStats,
+      speedHistory: item.speedHistory,
       startedAt: item.startedAt,
       finishedAt: item.finishedAt ?? (TERMINAL_TRANSFER_STATES.includes(job.state) ? job.finishedAt : undefined),
       error: item.errors[0],
@@ -315,6 +331,7 @@ export class TransferQueue {
       doneBytes: job.doneBytes,
       bytesPerSec: this.bytesPerSecOfSamples(job.samples),
       speedStats: job.speedStats,
+      speedHistory: job.speedHistory,
       currentFiles: [...job.inFlight.keys()],
       errors: job.errors.slice(0, 20),
       items: job.items.map((item) => this.itemSnapshot(job, item)),
@@ -377,6 +394,11 @@ export class TransferQueue {
   private sampleSpeed(target: SpeedTracked, doneBytes: number, now: number): void {
     if (target.lastSpeedSampleAt === 0) {
       target.lastSpeedSampleAt = now;
+      // A pause resumes sampling at a new boundary; keep the graph's origin.
+      if (target.speedStartedAt === 0) {
+        target.speedStartedAt = now;
+        target.speedHistory.push({ elapsedMs: 0, bytesPerSec: 0 });
+      }
       target.speedSamples.push({ bytes: doneBytes, activeMs: 0 });
       return;
     }
@@ -387,7 +409,9 @@ export class TransferQueue {
       target.speedSamples.push({ bytes: doneBytes, activeMs: 0 });
       return;
     }
+    const previous = target.speedSamples[target.speedSamples.length - 1];
     target.speedSamples.push({ bytes: doneBytes, activeMs });
+    this.recordSpeedPoint(target, doneBytes - (previous?.bytes ?? doneBytes), activeMs, now);
     target.speedStats = speedStatsFromSamples(target.speedSamples, this.speedStatsWindowMs);
   }
 
@@ -397,8 +421,24 @@ export class TransferQueue {
     const activeMs = now - target.lastSpeedSampleAt;
     target.lastSpeedSampleAt = now;
     if (activeMs < SPEED_MIN_SAMPLE_MS || activeMs > SPEED_SAMPLE_MS * 2) return;
+    const previous = target.speedSamples[target.speedSamples.length - 1];
     target.speedSamples.push({ bytes: doneBytes, activeMs });
+    this.recordSpeedPoint(target, doneBytes - (previous?.bytes ?? doneBytes), activeMs, now);
     target.speedStats = speedStatsFromSamples(target.speedSamples, this.speedStatsWindowMs);
+  }
+
+  /** Keep the whole transfer, downsampling only once it outgrows the graph. */
+  private recordSpeedPoint(target: SpeedTracked, bytes: number, activeMs: number, now: number): void {
+    if (activeMs <= 0) return;
+    target.speedHistory.push({
+      elapsedMs: Math.max(0, now - target.speedStartedAt),
+      // A retry can roll progress back between samples; graph the positive bytes
+      // so the line does not dive below zero.
+      bytesPerSec: (Math.max(0, bytes) / activeMs) * 1000,
+    });
+    if (target.speedHistory.length > SPEED_GRAPH_MAX_POINTS * 2) {
+      target.speedHistory = downsampleSpeedHistory(target.speedHistory, SPEED_GRAPH_MAX_POINTS);
+    }
   }
 
   /** Flush running item samples; pausing also resets their measurement boundary. */

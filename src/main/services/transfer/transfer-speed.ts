@@ -3,8 +3,8 @@
  * sample per second while a job runs; this module turns those samples into the
  * average/median figures shown when a row is expanded.
  */
-import { SPEED_STATS_WINDOW_MS } from "@shared/transfer/transfer.constants";
-import type { TransferSpeedStats } from "@shared/transfer/transfer.types";
+import { SPEED_GRAPH_MAX_POINTS, SPEED_STATS_WINDOW_MS } from "@shared/transfer/transfer.constants";
+import type { TransferSpeedPoint, TransferSpeedStats } from "@shared/transfer/transfer.types";
 
 export interface SpeedSample {
   /** Confirmed progress bytes at this sample. */
@@ -19,6 +19,33 @@ export const ZERO_SPEED_STATS: TransferSpeedStats = {
   recentAverageBytesPerSec: 0,
   recentMedianBytesPerSec: 0,
 };
+
+/**
+ * Keep a whole-transfer speed graph bounded without hiding bursts: each bucket
+ * contributes its peak, so the overall shape and duration stay intact.
+ */
+export function downsampleSpeedHistory(
+  points: readonly TransferSpeedPoint[],
+  maxPoints = SPEED_GRAPH_MAX_POINTS,
+): TransferSpeedPoint[] {
+  if (points.length <= maxPoints) return [...points];
+  if (maxPoints <= 2) return [points[0], points[points.length - 1]];
+
+  const buckets = maxPoints - 2;
+  const interior = points.slice(1, -1);
+  const result: TransferSpeedPoint[] = [points[0]];
+  for (let bucket = 0; bucket < buckets; bucket++) {
+    const start = Math.floor((bucket * interior.length) / buckets);
+    const end = Math.max(start + 1, Math.floor(((bucket + 1) * interior.length) / buckets));
+    let peak = interior[start];
+    for (let i = start + 1; i < end; i++) {
+      if (interior[i].bytesPerSec > peak.bytesPerSec) peak = interior[i];
+    }
+    result.push(peak);
+  }
+  result.push(points[points.length - 1]);
+  return result;
+}
 
 function median(values: readonly number[]): number {
   if (values.length === 0) return 0;
