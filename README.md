@@ -16,7 +16,7 @@ servers.
 
 </div>
 
----
+![Pallet Preview 1](assets/pallet-preview-1.png)
 
 ## Features
 
