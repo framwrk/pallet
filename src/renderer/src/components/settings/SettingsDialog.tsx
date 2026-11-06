@@ -33,6 +33,7 @@ import {
 } from "@shared/prefs/prefs.constants";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@renderer/components/ui/select";
 import type { SortDir, SortKey } from "@shared/fs/fs.types";
+import type { UpdateDownloadState, UpdateInfo } from "@shared/update/update.types";
 import { setSettingsOpen, useAppState } from "@/store/pane.store";
 import { useEffect, useRef, useState } from "react";
 import type { AppInfo } from "@shared/app/app.types";
@@ -41,9 +42,9 @@ import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
 import { Input } from "@renderer/components/ui/input";
 import type { LucideIcon } from "lucide-react";
 import { Switch } from "@renderer/components/ui/switch";
-import type { UpdateInfo } from "@shared/update/update.types";
 import appIcon from "@renderer/assets/pallet-icon.png";
 import { cn } from "@renderer/lib/utils";
+import { formatBytes } from "@renderer/lib/format.utils";
 
 type TabId = "general" | "appearance" | "transfers" | "updates" | "advanced" | "about";
 
@@ -934,6 +935,8 @@ function AboutPanel({
   updateAction,
   updateCheck,
   checkNow,
+  startUpdate,
+  updateBusy,
   copiedInfo,
   copyVersionInfo,
 }: {
@@ -942,6 +945,8 @@ function AboutPanel({
   updateAction: string;
   updateCheck: UpdateCheck;
   checkNow: () => Promise<void>;
+  startUpdate: (info: UpdateInfo) => void;
+  updateBusy: boolean;
   copiedInfo: boolean;
   copyVersionInfo: () => void;
 }): React.JSX.Element {
@@ -997,12 +1002,15 @@ function AboutPanel({
               size="xs"
               variant="outline"
               aria-describedby="note-update-check"
-              disabled={updateCheck.status === "checking"}
+              disabled={updateCheck.status === "checking" || updateBusy}
               onClick={() => {
-                if (updateCheck.status === "available") {
+                if (updateCheck.status !== "available") {
+                  void checkNow();
+                } else if (updateCheck.info.dmgUrl === null) {
+                  // No DMG on the release: keep the web fallback.
                   void window.pallet.app.openExternal(updateCheck.info.url);
                 } else {
-                  void checkNow();
+                  startUpdate(updateCheck.info);
                 }
               }}
             >
@@ -1336,6 +1344,7 @@ export function SettingsDialog(): React.JSX.Element {
   const [copied, setCopied] = useState(false);
   const [appInfo, setAppInfo] = useState<AppInfo | null>(null);
   const [updateCheck, setUpdateCheck] = useState<UpdateCheck>({ status: "idle" });
+  const [updateDownload, setUpdateDownload] = useState<UpdateDownloadState | null>(null);
   const [copiedInfo, setCopiedInfo] = useState(false);
   const popupRef = useRef<HTMLDivElement>(null);
   // Text selection that ends on the backdrop is not a dismissal.
@@ -1356,7 +1365,14 @@ export function SettingsDialog(): React.JSX.Element {
       .info()
       .then(setAppInfo)
       .catch(() => setAppInfo(null));
-    return window.pallet.prefs.onChange(adopt);
+    const offPrefs = window.pallet.prefs.onChange(adopt);
+    // Same progress the launch toast listens to, so the About row can show
+    // the in-place download advancing.
+    const offDownload = window.pallet.app.onUpdateDownloadState(setUpdateDownload);
+    return () => {
+      offPrefs();
+      offDownload();
+    };
   }, []);
 
   // Focus the surface, not its first control: no stray focus ring, no phone
@@ -1389,12 +1405,27 @@ export function SettingsDialog(): React.JSX.Element {
 
   async function checkNow(): Promise<void> {
     setUpdateCheck({ status: "checking" });
+    setUpdateDownload(null);
     try {
       const info = await window.pallet.app.checkForUpdate();
       setUpdateCheck(info ? { status: "available", info } : { status: "current" });
     } catch {
       setUpdateCheck({ status: "failed" });
     }
+  }
+
+  /** Same main-process path as the launch toast: download, verify, mount, quit. */
+  function startUpdate(info: UpdateInfo): void {
+    setUpdateDownload({ status: "downloading", version: info.version, receivedBytes: 0, totalBytes: 0 });
+    void window.pallet.app.downloadUpdate(info).catch((err: unknown) => {
+      setUpdateDownload({
+        status: "error",
+        version: info.version,
+        receivedBytes: 0,
+        totalBytes: 0,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    });
   }
 
   function copyVersionInfo(): void {
@@ -1413,13 +1444,30 @@ export function SettingsDialog(): React.JSX.Element {
     save({ defaultConcurrency: next });
   }
 
+  // Progress for the version this row is offering; states from another
+  // version (for example a toast download) stay out of this row.
+  const downloadState =
+    updateCheck.status === "available" && updateDownload?.version === updateCheck.info.version ? updateDownload : null;
+  const updateDownloading = downloadState?.status === "downloading";
+  const updateDownloaded = downloadState?.status === "done";
+  const updateDownloadFailed = downloadState?.status === "error";
+  const updateBusy = updateDownloading || updateDownloaded;
+
   const updateNote =
     updateCheck.status === "checking"
       ? "Checking GitHub Releases…"
       : updateCheck.status === "current"
         ? "You’re running the latest version."
         : updateCheck.status === "available"
-          ? `Pallet ${updateCheck.info.version} is available.`
+          ? updateDownloading && downloadState
+            ? downloadState.totalBytes > 0
+              ? `Downloading ${formatBytes(downloadState.receivedBytes)} of ${formatBytes(downloadState.totalBytes)}…`
+              : `Downloading ${formatBytes(downloadState.receivedBytes)}…`
+            : updateDownloaded
+              ? "Saved to Downloads and opened — Pallet is closing, drag it into Applications."
+              : updateDownloadFailed
+                ? "Couldn’t download the update. Try again."
+                : `Pallet ${updateCheck.info.version} is available.`
           : updateCheck.status === "failed"
             ? "Couldn’t reach GitHub Releases. Try again."
             : "Checks GitHub Releases now instead of waiting for the scheduled check.";
@@ -1428,7 +1476,11 @@ export function SettingsDialog(): React.JSX.Element {
     updateCheck.status === "checking"
       ? "Checking…"
       : updateCheck.status === "available"
-        ? "View Release"
+        ? updateBusy
+          ? "Updating…"
+          : updateCheck.info.dmgUrl
+            ? "Update"
+            : "View Release"
         : updateCheck.status === "failed"
           ? "Try Again"
           : updateCheck.status === "current"
@@ -1537,6 +1589,8 @@ export function SettingsDialog(): React.JSX.Element {
                       updateAction={updateAction}
                       updateCheck={updateCheck}
                       checkNow={checkNow}
+                      startUpdate={startUpdate}
+                      updateBusy={updateBusy}
                       copiedInfo={copiedInfo}
                       copyVersionInfo={copyVersionInfo}
                     />
