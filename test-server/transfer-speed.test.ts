@@ -1,4 +1,4 @@
-import { type SpeedSample, speedStatsFromSamples } from "../src/main/services/transfer/transfer-speed";
+import { type SpeedSample, downsampleSpeedHistory, speedStatsFromSamples } from "../src/main/services/transfer/transfer-speed";
 import { describe, expect, test } from "bun:test";
 import { SPEED_STATS_WINDOW_MS } from "../src/shared/transfer/transfer.constants";
 
@@ -73,5 +73,28 @@ describe("speedStatsFromSamples", () => {
       recentMedianBytesPerSec: 0,
     });
     expect(speedStatsFromSamples([{ bytes: 5_000, activeMs: 0 }]).averageBytesPerSec).toBe(0);
+  });
+});
+
+describe("downsampleSpeedHistory", () => {
+  test("keeps every one-second point until the graph threshold", () => {
+    const points = Array.from({ length: 10 }, (_, i) => ({ elapsedMs: i * 1_000, bytesPerSec: 1_000 }));
+    expect(downsampleSpeedHistory(points, 10)).toEqual(points);
+  });
+
+  test("covers the whole transfer and preserves peaks", () => {
+    const points = Array.from({ length: 1_000 }, (_, i) => ({
+      elapsedMs: i * 1_000,
+      bytesPerSec: i === 900 ? 9_000 : 1_000,
+    }));
+    const sampled = downsampleSpeedHistory(points, 10);
+
+    expect(sampled).toHaveLength(10);
+    expect(sampled[0]).toEqual(points[0]);
+    expect(sampled[sampled.length - 1]).toEqual(points[points.length - 1]);
+    expect(sampled.some((point) => point.bytesPerSec === 9_000)).toBe(true);
+    for (let i = 1; i < sampled.length; i++) {
+      expect(sampled[i].elapsedMs).toBeGreaterThan(sampled[i - 1].elapsedMs);
+    }
   });
 });

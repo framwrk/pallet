@@ -16,6 +16,7 @@ import {
 import type {
   TransferItemSnapshot,
   TransferJobSnapshot,
+  TransferSpeedPoint,
   TransferSpeedStats,
   TransferState,
 } from "@shared/transfer/transfer.types";
@@ -259,6 +260,78 @@ function itemDetail(
   }
 }
 
+/** A compact confirmed-throughput line for the expanded row. */
+function SpeedGraph({ points }: { points: TransferSpeedPoint[] }): React.JSX.Element {
+  const last = points[points.length - 1];
+  if (points.length < 2 || !last) {
+    return (
+      <div className="text-muted-foreground bg-foreground/[0.03] mt-1 flex h-14 items-center justify-center rounded-md text-[10px]">
+        Collecting speed samples…
+      </div>
+    );
+  }
+
+  // The first point is the zero-speed origin, not a measured interval.
+  const measured = points.filter((point) => point.elapsedMs > 0);
+  const samples = measured.length > 0 ? measured : points;
+  const peak = Math.max(...samples.map((point) => point.bytesPerSec), 0);
+  const min = Math.min(...samples.map((point) => point.bytesPerSec));
+  const top = Math.max(peak, 1);
+  const start = points[0].elapsedMs;
+  const span = Math.max(1, last.elapsedMs - start);
+  const coords = points.map((point) => {
+    const x = ((point.elapsedMs - start) / span) * 100;
+    const y = 100 - 6 - (point.bytesPerSec / top) * 88;
+    return `${x.toFixed(2)},${y.toFixed(2)}`;
+  });
+  const line = `M${coords.join(" L")}`;
+  const area = `${line} L100,100 L0,100 Z`;
+
+  return (
+    <figure className="mt-1">
+      <div className="text-muted-foreground mb-1 flex items-baseline justify-between gap-3 text-[10px]">
+        <span>Speed</span>
+        <span className="font-mono tabular-nums">
+          Min {formatSpeed(min)} · Peak {formatSpeed(peak)}
+        </span>
+      </div>
+      <div className="bg-foreground/[0.03] h-14 overflow-hidden rounded-md">
+        <svg
+          viewBox="0 0 100 100"
+          preserveAspectRatio="none"
+          role="img"
+          aria-label={`Transfer speed, minimum ${formatSpeed(min)}, peaking at ${formatSpeed(peak)}`}
+          className="text-primary h-full w-full"
+        >
+          <line
+            x1="0"
+            x2="100"
+            y1="50"
+            y2="50"
+            className="stroke-border"
+            strokeWidth="1"
+            vectorEffect="non-scaling-stroke"
+          />
+          <path
+            d={area}
+            fill="currentColor"
+            fillOpacity="0.12"
+          />
+          <path
+            d={line}
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            vectorEffect="non-scaling-stroke"
+          />
+        </svg>
+      </div>
+    </figure>
+  );
+}
+
 function StatRow({ label, value }: { label: string; value: string }): React.JSX.Element {
   return (
     <div className="flex items-baseline justify-between gap-3">
@@ -272,6 +345,7 @@ interface AdvancedStatsProps {
   id: string;
   state: RowState;
   speedStats: TransferSpeedStats;
+  speedHistory: TransferSpeedPoint[];
   startedAt: number;
   finishedAt?: number;
   totalBytes: number;
@@ -285,6 +359,7 @@ function AdvancedStats({
   id,
   state,
   speedStats,
+  speedHistory,
   startedAt,
   finishedAt,
   totalBytes,
@@ -324,7 +399,8 @@ function AdvancedStats({
       id={id}
       className="bg-background/60 mt-2.5 rounded-lg border px-3 py-2.5 text-[11px]"
     >
-      <div className="grid gap-x-8 gap-y-3 sm:grid-cols-2">
+      <SpeedGraph points={speedHistory} />
+      <div className="mt-3 grid gap-x-8 gap-y-3 sm:grid-cols-2">
         <div>
           <h4 className="text-muted-foreground mb-1.5 text-[11px] font-medium">Throughput</h4>
           <dl className="space-y-1">
@@ -515,6 +591,7 @@ function ItemRow({
             id={detailsId}
             state={state}
             speedStats={item.speedStats}
+            speedHistory={item.speedHistory}
             startedAt={item.startedAt ?? job.startedAt}
             finishedAt={item.finishedAt}
             totalBytes={item.totalBytes}
@@ -586,6 +663,7 @@ function JobRow({ job }: { job: TransferJobSnapshot }): React.JSX.Element {
               id={detailsId}
               state={job.state}
               speedStats={job.speedStats}
+              speedHistory={job.speedHistory}
               startedAt={job.startedAt}
               finishedAt={job.finishedAt}
               totalBytes={job.totalBytes}

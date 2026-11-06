@@ -305,10 +305,11 @@ Each item row also names the files currently in flight.
 | **Cancel**           | Stops and cleans up staged files |
 | **Remove from list** | Clears a finished job            |
 
-**Advanced stats** in each item row reports measured average and median throughput (all-time and the
-last 30 seconds), elapsed time, estimated time left, bytes moved, and file counts. Multi-item jobs
-also expose the same stats for the whole job. The drawer header summarizes active items, with an
-aggregate progress bar and combined transfer rate.
+**Advanced stats** in each item row shows a graph of transfer speed over the entire transfer, along
+with measured average and median throughput (all-time and the last 30 seconds), elapsed time,
+estimated time left, bytes moved, and file counts. Multi-item jobs also expose the same stats for the
+whole job. The drawer header summarizes active items, with an aggregate progress bar and combined
+transfer rate.
 
 **Clear** removes all finished jobs at once. The drawer header shows aggregate progress across all
 running jobs. These controls and the live progress reporting apply to every transfer direction,

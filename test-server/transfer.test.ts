@@ -676,6 +676,12 @@ test("remote-to-remote transfers report live progress and complete", { timeout: 
     assert(result.speedStats.averageBytesPerSec > 0, "expected an average speed after a paced transfer");
     assert(result.speedStats.medianBytesPerSec > 0, "expected a median speed after a paced transfer");
     assert(result.speedStats.recentAverageBytesPerSec > 0, "expected a recent average speed after a paced transfer");
+    assert(result.speedHistory.length >= 2, "expected speed history for the graph");
+    assert(
+      result.speedHistory.some((point) => point.bytesPerSec > 0),
+      "expected the speed graph to show measured throughput",
+    );
+    assert(result.items[0]?.speedHistory.length >= 2, "expected per-item speed history for the graph");
     assert(typeof result.finishedAt === "number", "expected a stable finish time for completed jobs");
     assert(result.finishedAt >= result.startedAt, "expected the finish time to follow the start time");
     assert.deepEqual(await fs.readFile(`${f.dest}/a`), payload);
