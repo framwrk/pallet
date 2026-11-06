@@ -48,6 +48,7 @@ export function Toolbar(): React.JSX.Element {
   const app = useAppState();
   const pane = app.panes[app.active];
   const leftIsLocal = app.panes.left.backend.kind === "local";
+  const connecting = app.connecting;
   const folderTitle =
     pane.cwd === "/"
       ? pane.backend.kind === "sftp"
@@ -75,11 +76,18 @@ export function Toolbar(): React.JSX.Element {
       <ToolButtonGroup>
         <ToolButton
           icon={leftIsLocal ? Server : HardDrive}
-          label={leftIsLocal ? "Replace Local Pane with Remote…" : "Restore Local Pane"}
+          label={
+            leftIsLocal
+              ? connecting
+                ? "A connection is already opening"
+                : "Replace Local Pane with Remote…"
+              : "Restore Local Pane"
+          }
           onClick={() => {
             if (leftIsLocal) openQuickConnect(null, "left");
             else void disconnectPane("left");
           }}
+          disabled={leftIsLocal && connecting !== null}
         />
         <ToolButton
           icon={RotateCw}

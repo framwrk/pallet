@@ -2,8 +2,11 @@
 import type { Favorite, FavoriteInput } from "@shared/favorite/favorite.types";
 import {
   type PaneId,
+  beginConnection,
   closeQuickConnect,
   connectionTargetPane,
+  dismissConnectionToast,
+  endConnection,
   getState,
   navigate,
   openQuickConnect,
@@ -54,8 +57,15 @@ export async function reorderFavorites(ids: string[]): Promise<void> {
 /** Connect a pane using the favorite's stored secret (main-side). */
 export async function connectFavorite(favoriteId: string, paneId: PaneId = "right"): Promise<void> {
   const favorite = getState().favorites.find((f) => f.id === favoriteId);
+  if (!favorite) return;
+  if (!beginConnection({ paneId, label: favorite.name, favoriteId })) {
+    const pending = getState().connecting;
+    pushToast(`Connecting to ${pending?.label ?? "another server"} — wait for it to finish`, "info");
+    return;
+  }
   const previousBackend = getState().panes[paneId].backend;
   if (paneId === "left" && previousBackend.kind === "local") rememberLeftLocalPane();
+  let needsSecret = false;
   try {
     const result = await window.pallet.favorites.connect(favoriteId);
     if (previousBackend.kind === "sftp" && previousBackend.sessionId !== result.sessionId) {
@@ -74,6 +84,8 @@ export async function connectFavorite(favoriteId: string, paneId: PaneId = "righ
       status: "connected",
     });
     setActive(paneId);
+    // The session is live, so the progress toast can go before the listing loads.
+    dismissConnectionToast();
     await navigate(paneId, result.initialPath, "replace");
     closeQuickConnect();
     if (paneId === "right" && result.favorite.localPath && getState().panes.left.backend.kind === "local") {
@@ -82,13 +94,18 @@ export async function connectFavorite(favoriteId: string, paneId: PaneId = "righ
     await loadFavorites(); // last-used ordering may have changed
   } catch (err) {
     const e = err as Error & { code?: string };
-    if (e.code === "ENOSECRET" && favorite) {
+    if (e.code === "ENOSECRET") {
       // No stored secret: show Quick Connect prefilled so the user can type it.
-      openQuickConnect(favorite, paneId);
-      pushToast("Enter the password to connect", "info");
+      needsSecret = true;
     } else {
       pushToast(e.message);
     }
+  } finally {
+    endConnection();
+  }
+  if (needsSecret) {
+    openQuickConnect(favorite, paneId);
+    pushToast("Enter the password to connect", "info");
   }
 }
 

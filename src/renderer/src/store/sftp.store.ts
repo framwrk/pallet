@@ -1,7 +1,10 @@
 /** Renderer-side SFTP session flow: connect/disconnect panes, events (M3). */
 import {
   type PaneId,
+  beginConnection,
   closeQuickConnect,
+  dismissConnectionToast,
+  endConnection,
   getState,
   navigate,
   pushHostKeyPrompt,
@@ -47,36 +50,47 @@ export function initSftpEvents(): void {
  * pane opts in for remote-to-remote work.
  */
 export async function connectRemote(profile: ConnectProfile, localPath?: string, paneId: PaneId = "right"): Promise<void> {
-  const previousBackend = getState().panes[paneId].backend;
-  if (paneId === "left" && previousBackend.kind === "local") {
-    rememberLeftLocalPane();
+  const attempt = { paneId, label: `${profile.username}@${profile.host}` };
+  if (!beginConnection(attempt)) {
+    const pending = getState().connecting;
+    throw new Error(pending ? `Still connecting to ${pending.label}` : "Another connection is already opening");
   }
-  const result = await window.pallet.sftp.connect(profile);
-
-  // Keep the current workspace intact while connecting. Once the replacement
-  // succeeds, retire the old session before mounting the new one.
-  if (previousBackend.kind === "sftp" && previousBackend.sessionId !== result.sessionId) {
-    try {
-      await window.pallet.sftp.disconnect(previousBackend.sessionId);
-    } catch {
-      // The new session is healthy; a stale old session must not block it.
+  try {
+    const previousBackend = getState().panes[paneId].backend;
+    if (paneId === "left" && previousBackend.kind === "local") {
+      rememberLeftLocalPane();
     }
-  }
+    const result = await window.pallet.sftp.connect(profile);
 
-  setBackend(paneId, {
-    kind: "sftp",
-    protocol: profile.protocol ?? "sftp",
-    sessionId: result.sessionId,
-    host: profile.host,
-    username: profile.username,
-    status: "connected",
-  });
-  setActive(paneId);
-  await navigate(paneId, result.initialPath, "replace");
-  closeQuickConnect();
-  // A favorite's local path only belongs to a local left pane.
-  if (paneId === "right" && localPath && getState().panes.left.backend.kind === "local") {
-    await navigate("left", localPath);
+    // Keep the current workspace intact while connecting. Once the replacement
+    // succeeds, retire the old session before mounting the new one.
+    if (previousBackend.kind === "sftp" && previousBackend.sessionId !== result.sessionId) {
+      try {
+        await window.pallet.sftp.disconnect(previousBackend.sessionId);
+      } catch {
+        // The new session is healthy; a stale old session must not block it.
+      }
+    }
+
+    setBackend(paneId, {
+      kind: "sftp",
+      protocol: profile.protocol ?? "sftp",
+      sessionId: result.sessionId,
+      host: profile.host,
+      username: profile.username,
+      status: "connected",
+    });
+    setActive(paneId);
+    // The session is live, so the progress toast can go before the listing loads.
+    dismissConnectionToast();
+    await navigate(paneId, result.initialPath, "replace");
+    closeQuickConnect();
+    // A favorite's local path only belongs to a local left pane.
+    if (paneId === "right" && localPath && getState().panes.left.backend.kind === "local") {
+      await navigate("left", localPath);
+    }
+  } finally {
+    endConnection();
   }
 }
 

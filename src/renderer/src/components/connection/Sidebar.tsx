@@ -1,4 +1,17 @@
-import { CircleArrowDown, Dock, File, Film, HardDrive, Home, Image, Music, Plug, Server, Usb } from "lucide-react";
+import {
+  CircleArrowDown,
+  Dock,
+  File,
+  Film,
+  HardDrive,
+  Home,
+  Image,
+  LoaderCircle,
+  Music,
+  Plug,
+  Server,
+  Usb,
+} from "lucide-react";
 import { favoriteContextMenu, reorderFavorites, requestFavoriteConnection } from "@/store/favorite.store";
 import { localPaneId, openLocal, openQuickConnect, setEditingFavorite, useAppState } from "@/store/pane.store";
 import { useRef, useState } from "react";
@@ -57,6 +70,8 @@ function FavoriteItem({
   onDrop,
   onDragEnd,
   dragTarget,
+  connecting,
+  disabled,
 }: {
   favorite: Favorite;
   onDragStart: () => void;
@@ -64,11 +79,17 @@ function FavoriteItem({
   onDrop: () => void;
   onDragEnd: () => void;
   dragTarget: boolean;
+  /** This favorite is the connection currently opening. */
+  connecting: boolean;
+  /** Another connection is opening, so this row cannot start one. */
+  disabled: boolean;
 }): React.JSX.Element {
   return (
     <button
       type="button"
       draggable
+      disabled={disabled}
+      aria-busy={connecting}
       onDragStart={onDragStart}
       onDragOver={onDragOver}
       onDrop={onDrop}
@@ -79,6 +100,9 @@ function FavoriteItem({
         "focus-visible:ring-primary/55 focus-visible:ring-2 focus-visible:ring-inset",
         "transition-[background-color,color,box-shadow] duration-150",
         dragTarget && "pallet-sidebar-drop-target",
+        connecting && "bg-sidebar-accent/60",
+        disabled && "cursor-not-allowed",
+        disabled && !connecting && "opacity-55",
       )}
       onClick={() => void requestFavoriteConnection(favorite.id)}
       onContextMenu={(e) => {
@@ -87,9 +111,22 @@ function FavoriteItem({
           if (action === "edit") setEditingFavorite(favorite);
         });
       }}
-      title={`${favorite.protocol.toUpperCase()} — ${favorite.username}@${favorite.host}:${favorite.port}${favorite.note ? ` — ${favorite.note}` : ""}`}
+      title={
+        connecting
+          ? `Connecting to ${favorite.name}…`
+          : disabled
+            ? "A connection is already opening"
+            : `${favorite.protocol.toUpperCase()} — ${favorite.username}@${favorite.host}:${favorite.port}${favorite.note ? ` — ${favorite.note}` : ""}`
+      }
     >
-      <Server className="text-muted-foreground group-hover:text-sidebar-foreground size-4 shrink-0 transition-colors duration-150" />
+      {connecting ? (
+        <LoaderCircle
+          aria-hidden="true"
+          className="text-primary size-4 shrink-0 animate-spin"
+        />
+      ) : (
+        <Server className="text-muted-foreground group-hover:text-sidebar-foreground size-4 shrink-0 transition-colors duration-150" />
+      )}
       <span className="truncate">{favorite.name}</span>
       {favorite.colorLabel !== "none" && (
         <span
@@ -106,6 +143,7 @@ function FavoriteItem({
 
 export function Sidebar(): React.JSX.Element {
   const app = useAppState();
+  const connecting = app.connecting;
   // Devices and folders drive the local pane: the left disk, or the right one
   // while the left pane is a server and the right is free.
   const localId = localPaneId();
@@ -155,13 +193,15 @@ export function Sidebar(): React.JSX.Element {
       >
         <button
           type="button"
+          disabled={connecting !== null}
           className={cn(
             "group text-sidebar-foreground flex h-8 w-full items-center gap-2 rounded-full px-2.5 text-left text-[13px] outline-none",
             "bg-background/30 hover:bg-background/45 focus-visible:ring-primary/55 focus-visible:ring-2 focus-visible:ring-inset",
             "transition-[background-color,box-shadow] duration-150",
+            "disabled:hover:bg-background/30 disabled:cursor-not-allowed disabled:opacity-50",
           )}
           onClick={() => openQuickConnect()}
-          title="Connect to Server (⌘K)"
+          title={connecting ? "A connection is already opening" : "Connect to Server (⌘K)"}
         >
           <Plug className="text-muted-foreground group-hover:text-sidebar-foreground size-4 shrink-0 transition-colors duration-150" />
           <span className="truncate font-medium">Connect to Server</span>
@@ -270,6 +310,8 @@ export function Sidebar(): React.JSX.Element {
                     setDropIndex(null);
                   }}
                   dragTarget={dropIndex === i}
+                  connecting={connecting?.favoriteId === favorite.id}
+                  disabled={connecting !== null}
                 />
               ))}
             </div>
