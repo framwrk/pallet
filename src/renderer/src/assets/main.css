@@ -39,6 +39,10 @@
   --color-sidebar-primary: var(--sidebar-primary);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar: var(--sidebar);
+  --color-sidebar-muted-foreground: var(--sidebar-muted-foreground);
+  --color-sidebar-row-hover: var(--sidebar-row-hover);
+  --color-sidebar-row-selected: var(--sidebar-row-selected);
+  --color-sidebar-icon: var(--sidebar-icon-color);
   --color-chart-5: var(--chart-5);
   --color-chart-4: var(--chart-4);
   --color-chart-3: var(--chart-3);
@@ -107,6 +111,11 @@
   --chart-5: oklch(0.9 0 0);
   --sidebar: oklch(0.93 0 0);
   --sidebar-foreground: var(--foreground);
+  --sidebar-muted-foreground: var(--muted-foreground);
+  /** T3-style row hierarchy: hover lifts slightly, selection is a card. */
+  --sidebar-row-hover: color-mix(in oklch, var(--foreground) 3%, var(--sidebar));
+  --sidebar-row-selected: var(--card);
+  --sidebar-icon-color: color-mix(in oklch, var(--sidebar-muted-foreground) 85%, var(--sidebar));
   --sidebar-primary: var(--primary);
   --sidebar-primary-foreground: var(--primary-foreground);
   --sidebar-accent: var(--background);
@@ -151,6 +160,10 @@
   --chart-5: oklch(0.1 0 0);
   --sidebar: oklch(0.25 0 0);
   --sidebar-foreground: var(--foreground);
+  --sidebar-muted-foreground: var(--muted-foreground);
+  --sidebar-row-hover: color-mix(in oklch, var(--foreground) 4%, transparent);
+  --sidebar-row-selected: color-mix(in oklch, var(--foreground) 7%, transparent);
+  --sidebar-icon-color: color-mix(in oklch, var(--sidebar-muted-foreground) 85%, var(--sidebar));
   --sidebar-primary: var(--primary);
   --sidebar-primary-foreground: var(--primary-foreground);
   --sidebar-accent: var(--background);
