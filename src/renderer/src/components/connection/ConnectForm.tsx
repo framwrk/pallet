@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 import type { ColorLabel, Favorite, FavoriteInput } from "@shared/favorite/favorite.types";
 import type { ConnectProfile, ConnectionProtocol } from "@shared/sftp/sftp.types";
-import { type PaneId, pushToast } from "@/store/pane.store";
+import { type PaneId, getState, pushToast, useAppState } from "@/store/pane.store";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -155,6 +155,9 @@ export function ConnectForm({
   const [concurrency, setConcurrency] = useState(String(defaultConcurrency));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const connecting = useAppState().connecting;
+  /** A different connection is opening, so this form's Connect action waits. */
+  const connectionBlocked = !editing && connecting !== null && !busy;
 
   const secretPlaceholder =
     seed?.secretStored && !editing ? "Stored password" : editing?.secretStored ? "Leave blank to keep saved" : "";
@@ -203,6 +206,11 @@ export function ConnectForm({
   }
 
   async function doConnect(): Promise<void> {
+    const pending = getState().connecting;
+    if (pending) {
+      setError(`Connecting to ${pending.label} — wait for it to finish`);
+      return;
+    }
     const invalid = validate();
     if (invalid) {
       setError(invalid);
@@ -745,15 +753,16 @@ export function ConnectForm({
           type="submit"
           size="sm"
           className={cn(isPane && "h-9 min-w-24")}
-          disabled={busy}
+          disabled={busy || connectionBlocked}
+          title={connectionBlocked ? "A connection is already opening" : undefined}
         >
-          {busy && (
+          {(busy || connectionBlocked) && (
             <LoaderCircle
               className="animate-spin"
               data-icon="inline-start"
             />
           )}
-          {editing ? "Save" : busy ? "Connecting…" : "Connect"}
+          {editing ? "Save" : busy || connectionBlocked ? "Connecting…" : "Connect"}
         </Button>
       </div>
     </form>

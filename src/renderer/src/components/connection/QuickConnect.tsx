@@ -3,8 +3,8 @@ import { EthernetPort, LoaderCircle, Server } from "lucide-react";
 import { closeQuickConnect, useAppState } from "@/store/pane.store";
 import { ConnectForm } from "./ConnectForm";
 import type { Favorite } from "@shared/favorite/favorite.types";
+import { cn } from "@/lib/utils";
 import { connectFavorite } from "@/store/favorite.store";
-import { useState } from "react";
 
 /**
  * Opens over the workspace from Connect to Server, Command-K, or a favorite
@@ -13,15 +13,10 @@ import { useState } from "react";
 export function ConnectDialog(): React.JSX.Element {
   const app = useAppState();
   const prefill = app.quickConnectPrefill;
-  const [busyFavorite, setBusyFavorite] = useState<string | null>(null);
+  const connecting = app.connecting;
 
-  async function chooseFavorite(favorite: Favorite): Promise<void> {
-    setBusyFavorite(favorite.id);
-    try {
-      await connectFavorite(favorite.id, app.quickConnectPane);
-    } finally {
-      setBusyFavorite(null);
-    }
+  function chooseFavorite(favorite: Favorite): void {
+    void connectFavorite(favorite.id, app.quickConnectPane);
   }
 
   return (
@@ -55,23 +50,31 @@ export function ConnectDialog(): React.JSX.Element {
               Favorites
             </div>
             <div className="border-border/70 flex max-h-44 flex-col gap-0.5 overflow-y-auto rounded-lg border p-1">
-              {app.favorites.map((favorite) => (
-                <button
-                  key={favorite.id}
-                  type="button"
-                  disabled={busyFavorite !== null}
-                  aria-label={`Connect to ${favorite.name}`}
-                  className="hover:bg-accent flex h-9 w-full shrink-0 items-center gap-2 rounded-md px-2 text-left text-[13px] disabled:opacity-60"
-                  onClick={() => void chooseFavorite(favorite)}
-                >
-                  <Server className="text-muted-foreground size-4 shrink-0" />
-                  <span className="min-w-0 flex-1 truncate">{favorite.name}</span>
-                  <span className="text-muted-foreground max-w-[55%] truncate font-mono text-[10px]">
-                    {favorite.username}@{favorite.host}
-                  </span>
-                  {busyFavorite === favorite.id && <LoaderCircle className="size-3.5 shrink-0 animate-spin" />}
-                </button>
-              ))}
+              {app.favorites.map((favorite) => {
+                const isConnecting = connecting?.favoriteId === favorite.id;
+                return (
+                  <button
+                    key={favorite.id}
+                    type="button"
+                    disabled={connecting !== null}
+                    aria-busy={isConnecting}
+                    aria-label={`Connect to ${favorite.name}`}
+                    className={cn(
+                      "hover:bg-accent flex h-9 w-full shrink-0 items-center gap-2 rounded-md px-2 text-left text-[13px]",
+                      "disabled:cursor-not-allowed",
+                      connecting !== null && !isConnecting && "opacity-55",
+                    )}
+                    onClick={() => chooseFavorite(favorite)}
+                  >
+                    <Server className="text-muted-foreground size-4 shrink-0" />
+                    <span className="min-w-0 flex-1 truncate">{favorite.name}</span>
+                    <span className="text-muted-foreground max-w-[55%] truncate font-mono text-[10px]">
+                      {favorite.username}@{favorite.host}
+                    </span>
+                    {isConnecting && <LoaderCircle className="size-3.5 shrink-0 animate-spin" />}
+                  </button>
+                );
+              })}
             </div>
           </section>
         )}

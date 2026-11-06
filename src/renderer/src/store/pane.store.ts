@@ -64,6 +64,15 @@ export interface Toast {
   kind: "error" | "info";
 }
 
+/** A remote connection that is opening but has no session yet. */
+export interface ConnectionAttempt {
+  paneId: PaneId;
+  /** Server identity shown while the connection opens. */
+  label: string;
+  /** Set when the attempt came from a favorite, so its row can show progress. */
+  favoriteId?: string;
+}
+
 export interface AppState {
   active: PaneId;
   panes: Record<PaneId, PaneState>;
@@ -98,6 +107,8 @@ export interface AppState {
   quickConnectPane: PaneId;
   /** Prefill for the connection dialog (retry a favorite without a stored secret). */
   quickConnectPrefill: Favorite | null;
+  /** Connection currently opening; a second connection waits for it to finish. */
+  connecting: ConnectionAttempt | null;
   /** Favorite being edited; the dialog switches to edit mode. */
   editingFavorite: Favorite | null;
   favorites: Favorite[];
@@ -153,6 +164,7 @@ let state: AppState = {
   quickConnectOpen: false,
   quickConnectPane: "right",
   quickConnectPrefill: null,
+  connecting: null,
   editingFavorite: null,
   favorites: [],
   hostKeyPrompts: [],
@@ -376,8 +388,41 @@ export function openLocal(path: string): void {
   void navigate(paneId, path);
 }
 
-/** Open the connection dialog without disturbing the active workspace pane. */
+/** Connection progress toast, dismissed once the attempt connects or fails. */
+let connectionToastId: number | null = null;
+
+/** Claim the single remote-connection slot; false while another one opens. */
+export function beginConnection(attempt: ConnectionAttempt): boolean {
+  if (state.connecting) return false;
+  setApp({ connecting: attempt });
+  connectionToastId = pushToast(`Connecting to ${attempt.label}…`, "info");
+  return true;
+}
+
+/** Drop the progress toast without releasing the connection slot. */
+export function dismissConnectionToast(): void {
+  if (connectionToastId !== null) {
+    dismissToast(connectionToastId);
+    connectionToastId = null;
+  }
+}
+
+export function endConnection(): void {
+  dismissConnectionToast();
+  if (state.connecting) setApp({ connecting: null });
+}
+
+/**
+ * Open the connection dialog without disturbing the active workspace pane.
+ * A second connection cannot start until the current one settles, so opening
+ * the dialog while connecting only explains why.
+ */
 export function openQuickConnect(prefill: Favorite | null = null, pane?: PaneId): void {
+  const pending = state.connecting;
+  if (pending) {
+    pushToast(`Connecting to ${pending.label} — wait for it to finish`, "info");
+    return;
+  }
   setApp({ quickConnectOpen: true, quickConnectPane: connectionTargetPane(pane), quickConnectPrefill: prefill });
 }
 
@@ -456,10 +501,11 @@ export function selectNames(id: PaneId, names: string[]): void {
 
 let toastSeq = 0;
 
-export function pushToast(message: string, kind: Toast["kind"] = "error"): void {
+export function pushToast(message: string, kind: Toast["kind"] = "error"): number {
   const toast = { id: ++toastSeq, message, kind };
   setApp({ toasts: [...state.toasts, toast] });
   setTimeout(() => dismissToast(toast.id), 6000);
+  return toast.id;
 }
 
 export function dismissToast(id: number): void {
