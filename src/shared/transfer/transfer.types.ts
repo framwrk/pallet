@@ -31,6 +31,27 @@ export interface TransferSpeedStats {
   recentMedianBytesPerSec: number;
 }
 
+/** State of one selected item (file or folder) inside a transfer job. */
+export type TransferItemState = "pending" | "running" | "completed" | "skipped" | "failed" | "canceled";
+
+/** Per-item progress so the drawer can show a row, bar, and stats per selection. */
+export interface TransferItemSnapshot {
+  /** Top-level selected name, relative to the job's source base. */
+  name: string;
+  state: TransferItemState;
+  totalFiles: number;
+  doneFiles: number;
+  skippedFiles: number;
+  totalBytes: number;
+  doneBytes: number;
+  bytesPerSec: number;
+  speedStats: TransferSpeedStats;
+  startedAt?: number;
+  finishedAt?: number;
+  /** First error for this item, if it failed. */
+  error?: string;
+}
+
 export interface TransferJobSnapshot {
   id: string;
   state: TransferState;
@@ -52,6 +73,8 @@ export interface TransferJobSnapshot {
   /** Relative paths currently in flight. */
   currentFiles: string[];
   errors: TransferError[];
+  /** One entry per selected item, in selection order. */
+  items: TransferItemSnapshot[];
 }
 
 export type ConflictAction = "replace" | "skip" | "keepBoth";
