@@ -20,7 +20,7 @@ import type {
   TransferSpeedStats,
   TransferState,
 } from "@shared/transfer/transfer.types";
-import { clearFinishedJobs, jobAction, removeJob, setDrawerOpen, useTransfers } from "@/store/transfer.store";
+import { clearFinishedJobs, itemAction, jobAction, removeJob, setDrawerOpen, useTransfers } from "@/store/transfer.store";
 import { useEffect, useState } from "react";
 import { TERMINAL_TRANSFER_STATES } from "@shared/transfer/transfer.constants";
 import { cn } from "@/lib/utils";
@@ -200,7 +200,7 @@ function itemSummary(item: TransferItemSnapshot, state: RowState, job: TransferJ
   if (state === "running") {
     return [bytes, item.bytesPerSec > 0 ? formatSpeed(item.bytesPerSec) : null].filter(Boolean).join(" · ");
   }
-  if (state === "paused") return job.autoPaused ? "Connection lost" : (bytes ?? "Paused");
+  if (state === "paused") return !item.paused && job.autoPaused ? "Connection lost" : (bytes ?? "Paused");
   if (state === "completed") return item.doneBytes > 0 ? `${formatBytes(item.doneBytes)} moved` : "Completed";
   if (state === "failed") return bytes ?? "Failed";
   return item.state === "skipped" ? "Skipped" : (bytes ?? "Canceled");
@@ -239,8 +239,8 @@ function itemDetail(
       return { text: "Waiting for conflict decision", full: "Waiting for conflict decision", destructive: false };
     case "paused":
       return {
-        text: job.autoPaused ? "Waiting for the connection to return" : "Paused",
-        full: job.autoPaused ? "Waiting for the connection to return" : "Paused",
+        text: !item.paused && job.autoPaused ? "Waiting for the connection to return" : "Paused",
+        full: !item.paused && job.autoPaused ? "Waiting for the connection to return" : "Paused",
         destructive: false,
       };
     case "completed":
@@ -517,6 +517,12 @@ function ItemRow({
   const detail = itemDetail(job, item, state);
   const processedFiles = item.doneFiles + item.skippedFiles;
   const filesLabel = item.state === "skipped" ? `${item.skippedFiles} skipped` : `${processedFiles}/${item.totalFiles} files`;
+  const itemTerminal =
+    item.state === "completed" || item.state === "skipped" || item.state === "failed" || item.state === "canceled";
+  const jobActive = !TERMINAL_TRANSFER_STATES.includes(job.state);
+  const canPauseItem = jobActive && job.state === "running" && !item.paused && !itemTerminal;
+  const canResumeItem = jobActive && item.paused;
+  const canCancelItem = jobActive && !itemTerminal;
 
   return (
     <div
@@ -600,6 +606,32 @@ function ItemRow({
             doneFiles={item.doneFiles}
             skippedFiles={item.skippedFiles}
           />
+        )}
+      </div>
+      <div className="flex shrink-0 items-center gap-0.5">
+        {canPauseItem && (
+          <RowAction
+            label={`Pause ${item.name}`}
+            onClick={() => itemAction(job.id, item.name, "pause")}
+          >
+            <Pause className="size-3.5" />
+          </RowAction>
+        )}
+        {canResumeItem && (
+          <RowAction
+            label={`Resume ${item.name}`}
+            onClick={() => itemAction(job.id, item.name, "resume")}
+          >
+            <Play className="size-3.5" />
+          </RowAction>
+        )}
+        {canCancelItem && (
+          <RowAction
+            label={`Cancel ${item.name}`}
+            onClick={() => itemAction(job.id, item.name, "cancel")}
+          >
+            <X className="size-3.5" />
+          </RowAction>
         )}
       </div>
     </div>
@@ -748,7 +780,9 @@ export function QueueDrawer(): React.JSX.Element | null {
   const pct = totalBytes > 0 ? Math.floor((doneBytes / totalBytes) * 100) : null;
   const activeSpeed = active.reduce((a, j) => a + (j.state === "running" ? j.bytesPerSec : 0), 0);
   const activeItems = active.reduce((a, j) => {
-    const remaining = j.items.filter((item) => item.state === "pending" || item.state === "running").length;
+    const remaining = j.items.filter(
+      (item) => item.state === "pending" || item.state === "running" || item.state === "paused",
+    ).length;
     return a + Math.max(1, remaining);
   }, 0);
   const summary =

@@ -85,6 +85,12 @@ interface PlanItem {
   doneBytes: number;
   /** Files of this item currently streaming; drives live per-item sampling. */
   runningFiles: number;
+  /** This item's files still waiting for a worker. */
+  queue: PlanFile[];
+  /** Paused by the user; its files wait while other items keep transferring. */
+  userPaused: boolean;
+  /** Canceled by the user; its remaining files are never transferred. */
+  canceled: boolean;
   errors: string[];
   startedAt?: number;
   finishedAt?: number;
@@ -111,6 +117,8 @@ interface PlanFile {
   target?: { finalPath: string; partPath: string };
   /** Committed to the destination; a retry may keep it instead of copying again. */
   completed?: boolean;
+  /** Counted as skipped after its item was canceled. */
+  canceled?: boolean;
 }
 
 /** Shared shape for job- and item-level speed sampling. */
@@ -131,12 +139,16 @@ interface Conflict {
 
 interface InFlight {
   relPath: string;
+  /** Selected item this file belongs to, for item-level controls. */
+  item: PlanItem;
   src: Readable | null;
   dst: TransferWriteStream | null;
   partPath: string | null;
   /** Force-fails the transfer promise; stream destroy alone can hang on a dead channel. */
   abort: ((err: Error) => void) | null;
   controller: AbortController;
+  /** Aborted by a pause; the file is requeued even if the pause clears first. */
+  paused: boolean;
 }
 
 export interface QueueHooks {
@@ -176,7 +188,6 @@ class Job {
   previousCompleted = new Map<string, { size: number; scanMtimeMs: number }>();
   /** Files the retry kept from the previous attempt instead of copying again. */
   alreadyDone = new Set<string>();
-  queue: PlanFile[] = [];
   inFlight = new Map<string, InFlight>();
   doneFiles = 0;
   skippedFiles = 0;
@@ -196,6 +207,8 @@ class Job {
   lastSpeedSampleAt = 0;
   lastEmit = 0;
   resumeWaiters: (() => void)[] = [];
+  /** Workers waiting for a paused item to resume or be canceled. */
+  itemWaiters: (() => void)[] = [];
   conflictWaiter: (() => void) | null = null;
   settled: Promise<void> = Promise.resolve();
   /** One-deep stream pipeline; off for same-session copies that share a pool. */
@@ -257,6 +270,9 @@ export class TransferQueue {
       totalBytes: 0,
       doneBytes: 0,
       runningFiles: 0,
+      queue: [],
+      userPaused: false,
+      canceled: false,
       errors: [],
       samples: [],
       speedSamples: [],
@@ -274,12 +290,14 @@ export class TransferQueue {
   }
 
   private itemState(job: Job, item: PlanItem): TransferItemState {
+    if (item.canceled) return "canceled";
     if (item.errors.length > 0) return "failed";
     if (item.totalFiles > 0 && item.doneFiles + item.skippedFiles >= item.totalFiles) {
       return item.doneFiles > 0 ? "completed" : "skipped";
     }
     if (item.totalFiles === 0 && item.skippedSymlinks > 0) return "skipped";
     if (item.totalFiles === 0 && TERMINAL_TRANSFER_STATES.includes(job.state)) return "completed";
+    if (item.userPaused) return "paused";
     if (job.state === "canceled") return "canceled";
     if (job.state === "failed") return "failed";
     if (item.runningFiles > 0 || item.doneFiles > 0 || item.doneBytes > 0) return "running";
@@ -290,6 +308,7 @@ export class TransferQueue {
     return {
       name: item.name,
       state: this.itemState(job, item),
+      paused: item.userPaused && !item.canceled,
       totalFiles: item.totalFiles,
       doneFiles: item.doneFiles,
       skippedFiles: item.skippedFiles + item.skippedSymlinks,
@@ -501,7 +520,14 @@ export class TransferQueue {
       job.state = job.autoPaused ? "paused" : "running";
       this.emit(job, true);
       await this.execute(job);
-      if (!job.canceled) job.state = job.errors.length > 0 ? "failed" : "completed";
+      if (!job.canceled) {
+        job.state =
+          job.errors.length > 0
+            ? "failed"
+            : job.items.length > 0 && job.items.every((item) => item.canceled)
+              ? "canceled"
+              : "completed";
+      }
     } catch (err) {
       if (!job.canceled) {
         job.errors.push({ relPath: "", message: (err as Error).message });
@@ -558,10 +584,11 @@ export class TransferQueue {
   private async enumerate(job: Job): Promise<void> {
     const { sourceBase, names } = job.request;
     const walk = async (item: PlanItem, relPath: string, knownStat?: EndpointStat): Promise<void> => {
-      if (job.canceled) return;
+      if (job.canceled || item.canceled) return;
       const abs = joinPath(sourceBase, relPath);
       await this.ready(job);
       const stat = knownStat ?? (await this.operation(job, () => job.from.statOrNull(abs)));
+      if (item.canceled) return;
       if (!stat) throw new Error(`Source disappeared: ${relPath}`);
       if (stat.isSymlink) {
         // §6: symlinks are never followed during recursive operations.
@@ -625,6 +652,7 @@ export class TransferQueue {
     job.destNames = new Map([...listings].map(([dir, entries]) => [dir, new Set(entries.keys())]));
     for (const file of job.planFiles) {
       if (job.canceled) return;
+      if (file.canceled || file.item.canceled) continue;
       const slash = file.relPath.lastIndexOf("/");
       const dir = slash === -1 ? job.request.destDir : joinPath(job.request.destDir, file.relPath.slice(0, slash));
       const name = file.relPath.slice(slash + 1);
@@ -668,6 +696,7 @@ export class TransferQueue {
     // Include planned names as well as existing names when allocating keep-both.
     for (const file of job.planFiles) {
       if (job.canceled) return;
+      if (file.canceled || file.item.canceled) continue;
       const slash = file.relPath.lastIndexOf("/");
       const dir = slash < 0 ? job.request.destDir : joinPath(job.request.destDir, file.relPath.slice(0, slash));
       const names = job.destNames.get(dir) ?? new Set<string>();
@@ -723,7 +752,12 @@ export class TransferQueue {
     }
     if (job.canceled) return;
 
-    job.queue = job.planFiles.filter((file) => !job.alreadyDone.has(file.relPath));
+    // Each item owns its own queue so pausing one never stalls the others.
+    for (const file of job.planFiles) {
+      if (job.alreadyDone.has(file.relPath) || file.canceled || file.item.canceled) continue;
+      file.item.queue.push(file);
+    }
+    const queued = job.items.reduce((total, item) => total + item.queue.length, 0);
     const refs = [job.request.from, job.request.to].filter((ref) => ref.kind === "sftp");
     // A same-session copy needs one read and one write channel per file. A
     // worker that pipelines two files could hold a read channel while waiting
@@ -735,7 +769,7 @@ export class TransferQueue {
       const configured = this.sessions.transferConcurrency(ref.sessionId);
       limit = Math.min(limit, sameSession ? Math.floor((configured + 1) / 2) : configured);
     }
-    const workers = Array.from({ length: Math.min(limit, job.queue.length || 1) }, () => this.worker(job));
+    const workers = Array.from({ length: Math.min(limit, queued || 1) }, () => this.worker(job));
     await Promise.all(workers);
   }
 
@@ -755,11 +789,18 @@ export class TransferQueue {
       } catch {
         break;
       }
-      const file = job.queue.shift();
+      const file = this.nextFile(job);
       if (!file) {
+        // A paused item can hold every remaining file; wait for a resume or cancel.
+        if (!inflight) {
+          if (this.hasQueuedFiles(job) && !job.canceled) {
+            await this.waitForItem(job);
+            continue;
+          }
+          break;
+        }
         // The queue looks drained, but the in-flight file can still re-queue
         // itself on a retriable failure. Settle it, then look again.
-        if (!inflight) break;
         const settling = inflight;
         inflight = null;
         await settling;
@@ -774,6 +815,29 @@ export class TransferQueue {
       if (previous) await previous;
     }
     await inflight;
+  }
+
+  /** Next file from the first item that is neither paused nor canceled. */
+  private nextFile(job: Job): PlanFile | undefined {
+    for (const item of job.items) {
+      if (item.userPaused || item.canceled) continue;
+      const file = item.queue.shift();
+      if (file) return file;
+    }
+    return undefined;
+  }
+
+  private hasQueuedFiles(job: Job): boolean {
+    return job.items.some((item) => item.queue.length > 0);
+  }
+
+  private async waitForItem(job: Job): Promise<void> {
+    if (job.canceled) return;
+    await new Promise<void>((resolve) => job.itemWaiters.push(resolve));
+  }
+
+  private wakeItemWaiters(job: Job): void {
+    for (const wake of job.itemWaiters.splice(0)) wake();
   }
 
   private destPathsFor(job: Job, file: PlanFile): { finalPath: string; partPath: string } | "skip" {
@@ -795,10 +859,29 @@ export class TransferQueue {
     return file.target;
   }
 
+  /** Count a file its item had canceled exactly once, so job totals still add up. */
+  private skipCanceledFile(job: Job, file: PlanFile): void {
+    if (file.completed || file.canceled) return;
+    file.canceled = true;
+    job.skippedFiles++;
+    file.item.skippedFiles++;
+    this.settleItem(file.item);
+    this.emit(job);
+  }
+
   private async transferFile(job: Job, file: PlanFile): Promise<void> {
     // A cancel can land between a worker's loop check and this call. Refuse
     // before allocating a target so no new file starts after cancellation.
     if (job.canceled) return;
+    const item = file.item;
+    if (item.canceled) {
+      this.skipCanceledFile(job, file);
+      return;
+    }
+    if (item.userPaused) {
+      item.queue.unshift(file);
+      return;
+    }
     const target = this.destPathsFor(job, file);
     if (target === "skip") {
       job.skippedFiles++;
@@ -807,12 +890,20 @@ export class TransferQueue {
       this.emit(job);
       return;
     }
-    const item = file.item;
     item.runningFiles++;
     if (!item.startedAt) item.startedAt = Date.now();
     const { finalPath, partPath } = target;
     const controller = new AbortController();
-    const flight: InFlight = { relPath: file.relPath, src: null, dst: null, partPath, abort: null, controller };
+    const flight: InFlight = {
+      relPath: file.relPath,
+      item,
+      src: null,
+      dst: null,
+      partPath,
+      abort: null,
+      controller,
+      paused: false,
+    };
     job.inFlight.set(file.relPath, flight);
     this.emit(job);
     const aborted = new Promise<never>((_, reject) => {
@@ -1008,11 +1099,11 @@ export class TransferQueue {
       job.samples = [];
       item.samples = [];
       let retry = false;
-      if (!job.canceled && !committing) {
+      if (!job.canceled && !item.canceled && !committing) {
         if (this.sessionDown(job)) {
           this.setAutoPaused(job, true);
           retry = true;
-        } else if (job.userPaused || job.autoPaused) retry = true;
+        } else if (job.userPaused || job.autoPaused || item.userPaused || flight.paused) retry = true;
         else if (this.isChannelError(err)) {
           const attempts = (job.retries.get(file.relPath) ?? 0) + 1;
           job.retries.set(file.relPath, attempts);
@@ -1022,10 +1113,11 @@ export class TransferQueue {
           }
         }
       }
-      if (retry && !job.canceled) job.queue.unshift(file);
+      if (retry && !job.canceled && !item.canceled) item.queue.unshift(file);
       else {
         discard();
-        if (!job.canceled) {
+        if (item.canceled) this.skipCanceledFile(job, file);
+        else if (!job.canceled) {
           const message = committing
             ? `Could not confirm replacement of ${file.relPath}; check the destination before retrying. ${(err as Error).message}`
             : (err as Error).message;
@@ -1124,6 +1216,61 @@ export class TransferQueue {
     this.emit(job, true);
   }
 
+  pauseItem(jobId: string, name: string): void {
+    const job = this.jobs.get(jobId);
+    if (!job || TERMINAL_TRANSFER_STATES.includes(job.state)) return;
+    const item = job.items.find((candidate) => candidate.name === name);
+    if (!item || item.canceled || item.userPaused) return;
+    const processed = item.doneFiles + item.skippedFiles + item.failedFiles;
+    if (item.totalFiles > 0 && processed >= item.totalFiles) return;
+    item.userPaused = true;
+    this.flushSpeedSample(item, item.doneBytes);
+    item.lastSpeedSampleAt = 0;
+    // Destroy this item's streams; its workers requeue the files and move on.
+    this.abortItemInFlight(job, item);
+    this.emit(job, true);
+  }
+
+  resumeItem(jobId: string, name: string): void {
+    const job = this.jobs.get(jobId);
+    const item = job?.items.find((candidate) => candidate.name === name);
+    if (!job || !item || !item.userPaused) return;
+    item.userPaused = false;
+    // Workers may be parked because every remaining file belongs to this item.
+    this.wakeItemWaiters(job);
+    this.emit(job, true);
+  }
+
+  cancelItem(jobId: string, name: string): void {
+    const job = this.jobs.get(jobId);
+    if (!job || TERMINAL_TRANSFER_STATES.includes(job.state)) return;
+    const item = job.items.find((candidate) => candidate.name === name);
+    if (!item || item.canceled) return;
+    item.canceled = true;
+    item.userPaused = false;
+    item.finishedAt ??= Date.now();
+    // Count waiting files as skipped now. In-flight files settle in their own
+    // catch path, so a file that commits during the abort is not double-counted.
+    for (const file of job.planFiles) {
+      if (file.item !== item || file.completed || file.canceled || job.inFlight.has(file.relPath)) continue;
+      file.canceled = true;
+      job.skippedFiles++;
+      item.skippedFiles++;
+    }
+    item.queue = [];
+    // A conflict prompt for this item must not block the rest of the job.
+    for (const conflict of job.conflicts.values()) {
+      if (conflict.action !== null) continue;
+      const file = job.planFiles.find((candidate) => candidate.relPath === conflict.relPath);
+      if (file?.item === item) conflict.action = "skip";
+    }
+    this.settleItem(item);
+    this.abortItemInFlight(job, item);
+    job.conflictWaiter?.();
+    this.wakeItemWaiters(job);
+    this.emit(job, true);
+  }
+
   cancel(jobId: string): void {
     const job = this.jobs.get(jobId);
     if (!job || TERMINAL_TRANSFER_STATES.includes(job.state)) return;
@@ -1136,6 +1283,7 @@ export class TransferQueue {
     for (const wake of this.slotWaiters.splice(0)) wake();
     const waiters = job.resumeWaiters.splice(0);
     for (const w of waiters) w();
+    this.wakeItemWaiters(job);
     this.emit(job, true);
   }
 
@@ -1195,6 +1343,18 @@ export class TransferQueue {
 
   private abortInFlight(job: Job): void {
     for (const flight of job.inFlight.values()) {
+      flight.paused = true;
+      flight.abort?.(new Error("Transfer interrupted"));
+      flight.controller.abort();
+      flight.src?.destroy();
+      flight.dst?.destroy();
+    }
+  }
+
+  private abortItemInFlight(job: Job, item: PlanItem): void {
+    for (const flight of job.inFlight.values()) {
+      if (flight.item !== item) continue;
+      flight.paused = true;
       flight.abort?.(new Error("Transfer interrupted"));
       flight.controller.abort();
       flight.src?.destroy();

@@ -40,13 +40,15 @@ export interface TransferSpeedPoint {
 }
 
 /** State of one selected item (file or folder) inside a transfer job. */
-export type TransferItemState = "pending" | "running" | "completed" | "skipped" | "failed" | "canceled";
+export type TransferItemState = "pending" | "running" | "paused" | "completed" | "skipped" | "failed" | "canceled";
 
 /** Per-item progress so the drawer can show a row, bar, and stats per selection. */
 export interface TransferItemSnapshot {
   /** Top-level selected name, relative to the job's source base. */
   name: string;
   state: TransferItemState;
+  /** Paused by the user at the item level; the rest of the job can keep running. */
+  paused: boolean;
   totalFiles: number;
   doneFiles: number;
   skippedFiles: number;

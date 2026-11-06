@@ -1053,6 +1053,107 @@ test("running jobs are re-broadcast with live true-counter progress", { timeout:
   }
 });
 
+test("pausing one item holds its files while the rest of the job continues", async () => {
+  const f = await fixture();
+  try {
+    const payload = Buffer.alloc(CHUNK * 2, 27);
+    await fs.writeFile(`${f.source}/a`, payload);
+    await fs.writeFile(`${f.source}/b`, Buffer.alloc(4096, 5));
+    let paused = false;
+    const aStarts: number[] = [];
+    const source = wrap(f.local, {
+      createReadStream: async (p, options) => {
+        const read = await f.local.createReadStream(p, options);
+        if (!p.endsWith("/a")) return read;
+        aStarts.push(options?.start ?? 0);
+        if (paused) return read;
+        paused = true;
+        return Readable.from(
+          (async function* () {
+            let emitted = 0;
+            for await (const chunk of read) {
+              emitted += chunk.length;
+              yield chunk;
+              if (emitted >= CHUNK) {
+                const job = h.queue.snapshots()[0];
+                h.queue.pauseItem(job.id, "a");
+                break;
+              }
+            }
+          })(),
+        );
+      },
+    });
+    let progressedWhilePaused = false;
+    let resumed = false;
+    const h = harness(
+      source,
+      f.local,
+      "replace",
+      (snapshot) => {
+        const a = snapshot.items.find((item) => item.name === "a");
+        const b = snapshot.items.find((item) => item.name === "b");
+        if (a?.state === "paused" && b?.state === "completed") progressedWhilePaused = true;
+        if (progressedWhilePaused && !resumed) {
+          resumed = true;
+          h.queue.resumeItem(snapshot.id, "a");
+        }
+      },
+      1,
+    );
+    const result = await h.run(f.source, f.dest, ["a", "b"]);
+    assert.equal(result.state, "completed", JSON.stringify(result.errors));
+    assert(progressedWhilePaused, "b must finish while a is paused");
+    assert.equal(result.items.find((item) => item.name === "a")?.state, "completed");
+    assert.equal(result.items.find((item) => item.name === "b")?.state, "completed");
+    assert(aStarts.length >= 2 && aStarts[1] > 0, "the paused item resumes from its checkpoint");
+    assert.deepEqual(await fs.readFile(`${f.dest}/a`), payload);
+    assert.deepEqual(await fs.readFile(`${f.dest}/b`), Buffer.alloc(4096, 5));
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test("canceling one item stops its files without canceling the job", async () => {
+  const f = await fixture();
+  try {
+    await fs.writeFile(`${f.source}/a`, Buffer.alloc(CHUNK * 2, 27));
+    await fs.writeFile(`${f.source}/b`, Buffer.alloc(4096, 5));
+    let canceled = false;
+    const source = wrap(f.local, {
+      createReadStream: async (p, options) => {
+        const read = await f.local.createReadStream(p, options);
+        if (!p.endsWith("/a") || canceled) return read;
+        canceled = true;
+        return Readable.from(
+          (async function* () {
+            let emitted = 0;
+            for await (const chunk of read) {
+              emitted += chunk.length;
+              yield chunk;
+              if (emitted >= CHUNK) {
+                const job = h.queue.snapshots()[0];
+                h.queue.cancelItem(job.id, "a");
+                break;
+              }
+            }
+          })(),
+        );
+      },
+    });
+    const h = harness(source, f.local, "replace", undefined, 1);
+    const result = await h.run(f.source, f.dest, ["a", "b"]);
+    assert.equal(result.state, "completed", JSON.stringify(result.errors));
+    assert.equal(result.errors.length, 0, "a canceled item must not fail the job");
+    assert.equal(result.items.find((item) => item.name === "a")?.state, "canceled");
+    assert.equal(result.items.find((item) => item.name === "b")?.state, "completed");
+    assert.deepEqual(await fs.readdir(f.dest), ["b"]);
+    assert.deepEqual(await fs.readFile(`${f.dest}/b`), Buffer.alloc(4096, 5));
+  } finally {
+    await f.cleanup();
+  }
+});
+
 test("reports a separate snapshot with its own stats for each selected item", async () => {
   const f = await fixture();
   try {

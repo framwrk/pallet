@@ -45,6 +45,9 @@ export function registerTransferHandlers(): void {
   handle(TransferChannels.pause, (id: string) => transferQueue.pause(id));
   handle(TransferChannels.resume, (id: string) => transferQueue.resume(id));
   handle(TransferChannels.cancel, (id: string) => transferQueue.cancel(id));
+  handle(TransferChannels.pauseItem, (id: string, name: string) => transferQueue.pauseItem(id, name));
+  handle(TransferChannels.resumeItem, (id: string, name: string) => transferQueue.resumeItem(id, name));
+  handle(TransferChannels.cancelItem, (id: string, name: string) => transferQueue.cancelItem(id, name));
   handle(TransferChannels.retry, (id: string) => transferQueue.retry(id));
   handle(TransferChannels.remove, (id: string) => transferQueue.remove(id));
   handle(TransferChannels.resolveConflict, (id: string, action: ConflictAction, applyToAll: boolean) =>
