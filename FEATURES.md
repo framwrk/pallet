@@ -293,8 +293,9 @@ responsive.
 
 ### Queue controls
 
-The queue drawer shows progress, transfer rate, and bytes moved for each job. Each row also names the
-files currently in flight.
+The queue drawer shows one row per selected item, each with its own progress bar, transfer rate, and
+bytes moved. Selected folders are grouped into a single row that aggregates the files beneath them.
+Each item row also names the files currently in flight.
 
 | Button               | What it does                     |
 | -------------------- | -------------------------------- |
@@ -304,9 +305,10 @@ files currently in flight.
 | **Cancel**           | Stops and cleans up staged files |
 | **Remove from list** | Clears a finished job            |
 
-**Advanced stats** in each row reports measured average and median throughput (all-time and the last
-30 seconds), elapsed time, estimated time left, bytes moved, and file counts. The drawer header
-summarizes active jobs, with an aggregate progress bar and combined transfer rate.
+**Advanced stats** in each item row reports measured average and median throughput (all-time and the
+last 30 seconds), elapsed time, estimated time left, bytes moved, and file counts. Multi-item jobs
+also expose the same stats for the whole job. The drawer header summarizes active items, with an
+aggregate progress bar and combined transfer rate.
 
 **Clear** removes all finished jobs at once. The drawer header shows aggregate progress across all
 running jobs. These controls and the live progress reporting apply to every transfer direction,
@@ -390,14 +392,14 @@ resizes to fit the selected tab.
 
 ### General
 
-| Setting                    | Default    | What it does                                                                             |
-| -------------------------- | ---------- | ---------------------------------------------------------------------------------------- |
-| **Show hidden files**      | Off        | The same switch as **⌘⇧.** in the file browser.                                          |
-| **Sort files by**          | Name, A–Z  | Sort applied to both panes and to new listings.                                          |
-| **Folders first**          | On         | Keep folders above files regardless of the sort key.                                     |
-| **Calculate folder sizes** | Off        | Total each folder's contents instead of showing `--`. See [Folder sizes](#folder-sizes). |
-| **Include remote folders** | Off        | Extends the above to connected servers. Only appears while folder sizes are on.          |
-| **Preview files up to**    | 1 MB       | Largest file the inspector previews inline; larger files still show their metadata.      |
+| Setting                    | Default   | What it does                                                                             |
+| -------------------------- | --------- | ---------------------------------------------------------------------------------------- |
+| **Show hidden files**      | Off       | The same switch as **⌘⇧.** in the file browser.                                          |
+| **Sort files by**          | Name, A–Z | Sort applied to both panes and to new listings.                                          |
+| **Folders first**          | On        | Keep folders above files regardless of the sort key.                                     |
+| **Calculate folder sizes** | Off       | Total each folder's contents instead of showing `--`. See [Folder sizes](#folder-sizes). |
+| **Include remote folders** | Off       | Extends the above to connected servers. Only appears while folder sizes are on.          |
+| **Preview files up to**    | 1 MB      | Largest file the inspector previews inline; larger files still show their metadata.      |
 
 ### Appearance
 
@@ -408,29 +410,29 @@ make while Pallet is running.
 
 ### Transfers
 
-| Setting                      | Default | What it does                                                                        |
-| ---------------------------- | ------- | ----------------------------------------------------------------------------------- |
-| **Default concurrency**      | 4       | 1-7. Seeds the concurrency field in Quick Connect; existing connections are unchanged. |
-| **Default keepalive**        | 15 s    | 0-300. Seeds the keepalive field; 0 disables keepalive.                             |
-| **Reconnect automatically**  | On      | Reconnect dropped sessions with backoff instead of disconnecting.                  |
-| **Stall timeout**            | 60 s    | Abandon a file after this long without progress.                                    |
-| **Retries per file**         | 5       | Per-file retries after a dead channel before reporting failure.                     |
-| **Speed window**             | 30 s    | Trailing window for the transfer drawer's average and median speeds.                |
+| Setting                     | Default | What it does                                                                           |
+| --------------------------- | ------- | -------------------------------------------------------------------------------------- |
+| **Default concurrency**     | 4       | 1-7. Seeds the concurrency field in Quick Connect; existing connections are unchanged. |
+| **Default keepalive**       | 15 s    | 0-300. Seeds the keepalive field; 0 disables keepalive.                                |
+| **Reconnect automatically** | On      | Reconnect dropped sessions with backoff instead of disconnecting.                      |
+| **Stall timeout**           | 60 s    | Abandon a file after this long without progress.                                       |
+| **Retries per file**        | 5       | Per-file retries after a dead channel before reporting failure.                        |
+| **Speed window**            | 30 s    | Trailing window for the transfer drawer's average and median speeds.                   |
 
 ### Updates
 
-| Setting                            | Default | What it does                                                     |
-| ---------------------------------- | ------- | ---------------------------------------------------------------- |
-| **Check for updates automatically** | On      | Check GitHub Releases on launch and once a day.                  |
-| **Include prerelease versions**     | On      | Include releases GitHub flags as prereleases.                    |
+| Setting                             | Default | What it does                                    |
+| ----------------------------------- | ------- | ----------------------------------------------- |
+| **Check for updates automatically** | On      | Check GitHub Releases on launch and once a day. |
+| **Include prerelease versions**     | On      | Include releases GitHub flags as prereleases.   |
 
 ### Advanced
 
-| Setting             | Default   | What it does                                                          |
-| ------------------- | --------- | --------------------------------------------------------------------- |
-| **Upload delay**    | 800 ms    | Wait for an external editor to settle before uploading a saved file.  |
-| **Change polling**  | 1000 ms   | How often Pallet checks the editor's local copy for changes.          |
-| **Upload timeout**  | 60000 ms  | Abort a stalled re-upload from the external editor.                   |
+| Setting            | Default  | What it does                                                         |
+| ------------------ | -------- | -------------------------------------------------------------------- |
+| **Upload delay**   | 800 ms   | Wait for an external editor to settle before uploading a saved file. |
+| **Change polling** | 1000 ms  | How often Pallet checks the editor's local copy for changes.         |
+| **Upload timeout** | 60000 ms | Abort a stalled re-upload from the external editor.                  |
 
 ### About
 

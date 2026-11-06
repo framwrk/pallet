@@ -13,7 +13,12 @@ import {
   X,
   XCircle,
 } from "lucide-react";
-import type { TransferJobSnapshot, TransferState } from "@shared/transfer/transfer.types";
+import type {
+  TransferItemSnapshot,
+  TransferJobSnapshot,
+  TransferSpeedStats,
+  TransferState,
+} from "@shared/transfer/transfer.types";
 import { clearFinishedJobs, jobAction, removeJob, setDrawerOpen, useTransfers } from "@/store/transfer.store";
 import { useEffect, useState } from "react";
 import { TERMINAL_TRANSFER_STATES } from "@shared/transfer/transfer.constants";
@@ -22,6 +27,9 @@ import { formatBytes } from "@/lib/format.utils";
 import { useAppState } from "@/store/pane.store";
 
 const LIST_ID = "transfer-drawer-jobs";
+
+/** A queued item is a row of its own but still waiting for a worker. */
+type RowState = TransferState | "queued";
 
 function formatSpeed(bytesPerSec: number): string {
   return bytesPerSec > 0 ? `${formatBytes(bytesPerSec)}/s` : "0 B/s";
@@ -53,7 +61,7 @@ function useNow(intervalMs = 1000): number {
   return now;
 }
 
-function iconTone(state: TransferState): string {
+function iconTone(state: RowState): string {
   switch (state) {
     case "completed":
       return "bg-green-500/10 text-green-600 dark:text-green-400";
@@ -69,7 +77,7 @@ function iconTone(state: TransferState): string {
   }
 }
 
-function StateIcon({ state }: { state: TransferState }): React.JSX.Element {
+function StateIcon({ state, compact = false }: { state: RowState; compact?: boolean }): React.JSX.Element {
   const Icon =
     state === "completed"
       ? CheckCircle2
@@ -86,15 +94,32 @@ function StateIcon({ state }: { state: TransferState }): React.JSX.Element {
                 : ArrowLeftRight;
   return (
     <span
-      className={cn("grid size-8 shrink-0 place-items-center rounded-lg", iconTone(state))}
+      className={cn("grid shrink-0 place-items-center rounded-lg", compact ? "size-6" : "size-8", iconTone(state))}
       aria-hidden
     >
-      <Icon className="size-4" />
+      <Icon className={compact ? "size-3.5" : "size-4"} />
     </span>
   );
 }
 
-/** Bytes and rate shown at the end of a row's title line. */
+function barTone(state: RowState): string {
+  switch (state) {
+    case "failed":
+      return "bg-destructive";
+    case "completed":
+      return "bg-green-500";
+    case "waiting":
+      return "bg-caution";
+    case "paused":
+    case "canceled":
+    case "queued":
+      return "bg-muted-foreground/50";
+    default:
+      return "bg-primary";
+  }
+}
+
+/** Bytes and rate shown at the end of a job's title line. */
 function jobSummary(job: TransferJobSnapshot): string {
   const bytes = job.totalBytes > 0 ? `${formatBytes(job.doneBytes)} of ${formatBytes(job.totalBytes)}` : null;
   switch (job.state) {
@@ -114,7 +139,7 @@ function jobSummary(job: TransferJobSnapshot): string {
   }
 }
 
-/** Secondary line: the live file(s), or what the job is waiting on. */
+/** Secondary line: what the job is doing, or what it is waiting on. */
 function jobDetail(job: TransferJobSnapshot): { text: string; full: string; destructive: boolean } {
   if (job.state === "failed") {
     const error = job.errors[0]?.message;
@@ -152,6 +177,88 @@ function jobDetail(job: TransferJobSnapshot): { text: string; full: string; dest
   }
 }
 
+/** Item state plus the job-level pause/scan cues that apply while it waits. */
+function itemDisplayState(job: TransferJobSnapshot, item: TransferItemSnapshot): RowState {
+  if (item.state === "running" && job.state === "paused") return "paused";
+  if (item.state === "running" && job.state === "waiting") return "waiting";
+  if (item.state === "pending") {
+    if (job.state === "enumerating") return "enumerating";
+    if (job.state === "waiting") return "waiting";
+    if (job.state === "paused") return "paused";
+    return "queued";
+  }
+  if (item.state === "skipped") return "canceled";
+  return item.state;
+}
+
+function itemSummary(item: TransferItemSnapshot, state: RowState, job: TransferJobSnapshot): string {
+  const bytes = item.totalBytes > 0 ? `${formatBytes(item.doneBytes)} of ${formatBytes(item.totalBytes)}` : null;
+  if (state === "enumerating") return item.totalBytes > 0 ? `${formatBytes(item.totalBytes)} found` : "Preparing…";
+  if (state === "queued") return "Queued";
+  if (state === "waiting") return "On hold";
+  if (state === "running") {
+    return [bytes, item.bytesPerSec > 0 ? formatSpeed(item.bytesPerSec) : null].filter(Boolean).join(" · ");
+  }
+  if (state === "paused") return job.autoPaused ? "Connection lost" : (bytes ?? "Paused");
+  if (state === "completed") return item.doneBytes > 0 ? `${formatBytes(item.doneBytes)} moved` : "Completed";
+  if (state === "failed") return bytes ?? "Failed";
+  return item.state === "skipped" ? "Skipped" : (bytes ?? "Canceled");
+}
+
+/** Secondary line for one item: its live file, or what it is waiting on. */
+function itemDetail(
+  job: TransferJobSnapshot,
+  item: TransferItemSnapshot,
+  state: RowState,
+): { text: string; full: string; destructive: boolean } {
+  if (item.error) return { text: item.error, full: item.error, destructive: true };
+  if (state === "failed") {
+    const error = job.errors.find((e) => e.relPath === "")?.message;
+    return { text: error ?? "Transfer failed", full: error ?? "Transfer failed", destructive: true };
+  }
+  if (state === "running") {
+    const current = job.currentFiles
+      .filter((path) => path === item.name || path.startsWith(`${item.name}/`))
+      .map((path) => (path === item.name ? path : path.slice(item.name.length + 1)));
+    if (current.length > 0) {
+      const [first, ...rest] = current;
+      return {
+        text: rest.length > 0 ? `${first} +${rest.length} more` : first,
+        full: current.join("\n"),
+        destructive: false,
+      };
+    }
+  }
+  switch (state) {
+    case "queued":
+      return { text: "Queued", full: "Queued", destructive: false };
+    case "enumerating":
+      return { text: "Scanning source…", full: "Scanning source", destructive: false };
+    case "waiting":
+      return { text: "Waiting for conflict decision", full: "Waiting for conflict decision", destructive: false };
+    case "paused":
+      return {
+        text: job.autoPaused ? "Waiting for the connection to return" : "Paused",
+        full: job.autoPaused ? "Waiting for the connection to return" : "Paused",
+        destructive: false,
+      };
+    case "completed":
+      return {
+        text: item.skippedFiles > 0 ? `Completed · ${item.skippedFiles} skipped` : "Completed",
+        full: item.skippedFiles > 0 ? `Completed with ${item.skippedFiles} skipped` : "Completed",
+        destructive: false,
+      };
+    case "canceled":
+      return {
+        text: item.state === "skipped" ? "Skipped" : "Canceled before finishing",
+        full: item.state === "skipped" ? "Skipped" : "Canceled before finishing",
+        destructive: false,
+      };
+    default:
+      return { text: "Starting…", full: "Starting", destructive: false };
+  }
+}
+
 function StatRow({ label, value }: { label: string; value: string }): React.JSX.Element {
   return (
     <div className="flex items-baseline justify-between gap-3">
@@ -161,33 +268,56 @@ function StatRow({ label, value }: { label: string; value: string }): React.JSX.
   );
 }
 
-function AdvancedStats({ job, id }: { job: TransferJobSnapshot; id: string }): React.JSX.Element {
+interface AdvancedStatsProps {
+  id: string;
+  state: RowState;
+  speedStats: TransferSpeedStats;
+  startedAt: number;
+  finishedAt?: number;
+  totalBytes: number;
+  doneBytes: number;
+  totalFiles: number;
+  doneFiles: number;
+  skippedFiles: number;
+}
+
+function AdvancedStats({
+  id,
+  state,
+  speedStats,
+  startedAt,
+  finishedAt,
+  totalBytes,
+  doneBytes,
+  totalFiles,
+  doneFiles,
+  skippedFiles,
+}: AdvancedStatsProps): React.JSX.Element {
   const { speedStatsWindowSeconds } = useAppState();
   const recentSpeedLabel = `Last ${speedStatsWindowSeconds}s`;
   const now = useNow();
-  const elapsedMs = Math.max(0, (job.finishedAt ?? now) - job.startedAt);
-  const remainingBytes = Math.max(0, job.totalBytes - job.doneBytes);
+  const elapsedMs = Math.max(0, (finishedAt ?? now) - startedAt);
+  const remainingBytes = Math.max(0, totalBytes - doneBytes);
   // The trailing average smooths out per-second noise better than the live rate.
-  const estimateRate = job.speedStats.recentAverageBytesPerSec || job.bytesPerSec;
-  const etaMs =
-    job.state === "running" && remainingBytes > 0 && estimateRate > 0 ? (remainingBytes / estimateRate) * 1000 : null;
+  const estimateRate = speedStats.recentAverageBytesPerSec;
+  const etaMs = state === "running" && remainingBytes > 0 && estimateRate > 0 ? (remainingBytes / estimateRate) * 1000 : null;
   const timeLeft =
-    job.state === "completed"
+    state === "completed"
       ? "Done"
-      : job.state === "failed" || job.state === "canceled"
+      : state === "failed" || state === "canceled"
         ? "Stopped"
-        : job.state === "paused"
-          ? "Paused"
-          : etaMs === null
-            ? "Estimating…"
-            : etaMs < 1000
-              ? "Almost done"
-              : `~${formatDuration(etaMs)}`;
-  const processedFiles = job.doneFiles + job.skippedFiles;
+        : state === "queued"
+          ? "Waiting"
+          : state === "paused"
+            ? "Paused"
+            : etaMs === null
+              ? "Estimating…"
+              : etaMs < 1000
+                ? "Almost done"
+                : `~${formatDuration(etaMs)}`;
+  const processedFiles = doneFiles + skippedFiles;
   const files =
-    job.skippedFiles > 0
-      ? `${processedFiles} of ${job.totalFiles} · ${job.skippedFiles} skipped`
-      : `${processedFiles} of ${job.totalFiles}`;
+    skippedFiles > 0 ? `${processedFiles} of ${totalFiles} · ${skippedFiles} skipped` : `${processedFiles} of ${totalFiles}`;
 
   return (
     <div
@@ -200,19 +330,19 @@ function AdvancedStats({ job, id }: { job: TransferJobSnapshot; id: string }): R
           <dl className="space-y-1">
             <StatRow
               label="Average"
-              value={formatStatSpeed(job.speedStats.averageBytesPerSec)}
+              value={formatStatSpeed(speedStats.averageBytesPerSec)}
             />
             <StatRow
               label="Median"
-              value={formatStatSpeed(job.speedStats.medianBytesPerSec)}
+              value={formatStatSpeed(speedStats.medianBytesPerSec)}
             />
             <StatRow
               label={`${recentSpeedLabel} average`}
-              value={formatStatSpeed(job.speedStats.recentAverageBytesPerSec)}
+              value={formatStatSpeed(speedStats.recentAverageBytesPerSec)}
             />
             <StatRow
               label={`${recentSpeedLabel} median`}
-              value={formatStatSpeed(job.speedStats.recentMedianBytesPerSec)}
+              value={formatStatSpeed(speedStats.recentMedianBytesPerSec)}
             />
           </dl>
         </div>
@@ -229,11 +359,7 @@ function AdvancedStats({ job, id }: { job: TransferJobSnapshot; id: string }): R
             />
             <StatRow
               label="Moved"
-              value={
-                job.totalBytes > 0
-                  ? `${formatBytes(job.doneBytes)} of ${formatBytes(job.totalBytes)}`
-                  : formatBytes(job.doneBytes)
-              }
+              value={totalBytes > 0 ? `${formatBytes(doneBytes)} of ${formatBytes(totalBytes)}` : formatBytes(doneBytes)}
             />
             <StatRow
               label="Files"
@@ -271,64 +397,86 @@ function RowAction({
   );
 }
 
-function JobRow({ job }: { job: TransferJobSnapshot }): React.JSX.Element {
+function AdvancedStatsToggle({
+  expanded,
+  controls,
+  onClick,
+}: {
+  expanded: boolean;
+  controls: string;
+  onClick: () => void;
+}): React.JSX.Element {
+  return (
+    <button
+      type="button"
+      className="text-muted-foreground hover:text-foreground hover:bg-accent focus-visible:ring-ring flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] transition-colors focus-visible:ring-2 focus-visible:outline-none motion-reduce:transition-none"
+      aria-expanded={expanded}
+      aria-controls={controls}
+      title={expanded ? "Hide advanced stats" : "Show advanced stats"}
+      onClick={onClick}
+    >
+      <ChartNoAxesColumn className="size-3" />
+      Advanced stats
+      <ChevronDown className={cn("size-3 transition-transform motion-reduce:transition-none", expanded && "rotate-180")} />
+    </button>
+  );
+}
+
+function ItemRow({
+  job,
+  item,
+  index,
+}: {
+  job: TransferJobSnapshot;
+  item: TransferItemSnapshot;
+  index: number;
+}): React.JSX.Element {
   const [expanded, setExpanded] = useState(false);
-  const canExpand = job.state !== "enumerating" && job.state !== "waiting";
-  const detailsId = `transfer-stats-${job.id}`;
-  const pct = job.totalBytes > 0 ? Math.min(100, Math.floor((job.doneBytes / job.totalBytes) * 100)) : 0;
-  // A completed job is 100% of the work, even when some files were skipped.
-  const barPct = job.state === "completed" ? 100 : pct;
-  const terminal = TERMINAL_TRANSFER_STATES.includes(job.state);
-  const summary = jobSummary(job);
-  const detail = jobDetail(job);
-  const processedFiles = job.doneFiles + job.skippedFiles;
-  const filesLabel =
-    job.state === "enumerating"
-      ? `${job.totalFiles} found`
-      : job.state === "waiting"
-        ? `${job.totalFiles} files`
-        : `${processedFiles}/${job.totalFiles} files`;
+  const state = itemDisplayState(job, item);
+  const canExpand = state !== "enumerating" && state !== "waiting" && state !== "queued";
+  const detailsId = `transfer-item-stats-${job.id}-${index}`;
+  const pct = item.totalBytes > 0 ? Math.min(100, Math.floor((item.doneBytes / item.totalBytes) * 100)) : 0;
+  const barPct = item.state === "completed" || item.state === "skipped" ? 100 : pct;
+  const summary = itemSummary(item, state, job);
+  const detail = itemDetail(job, item, state);
+  const processedFiles = item.doneFiles + item.skippedFiles;
+  const filesLabel = item.state === "skipped" ? `${item.skippedFiles} skipped` : `${processedFiles}/${item.totalFiles} files`;
 
   return (
     <div
       role="listitem"
-      className="flex items-start gap-3 border-t px-3 py-2.5 first:border-t-0"
+      className="flex items-start gap-3 border-t px-3 py-2 pl-11"
     >
-      <StateIcon state={job.state} />
+      <StateIcon
+        state={state}
+        compact
+      />
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline gap-3">
           <span
-            className="truncate text-[13px] font-medium"
-            title={job.label}
+            className="truncate text-[12px] font-medium"
+            title={item.name}
           >
-            {job.label}
+            {item.name}
           </span>
           <span className="text-muted-foreground ml-auto hidden shrink-0 text-[11px] tabular-nums sm:inline">{summary}</span>
         </div>
-        <div className="mt-2 flex items-center gap-2">
+        <div className="mt-1.5 flex items-center gap-2">
           <div
             className="bg-foreground/10 h-1.5 flex-1 overflow-hidden rounded-full"
             role="progressbar"
-            aria-label={`${job.label} progress`}
+            aria-label={`${item.name} progress`}
             aria-valuemin={0}
             aria-valuemax={100}
             aria-valuenow={barPct}
-            aria-valuetext={job.totalBytes > 0 ? `${barPct}%` : "Preparing"}
+            aria-valuetext={item.totalBytes > 0 ? `${barPct}%` : "Preparing"}
           >
             <div
               className={cn(
                 "h-full rounded-full",
                 // Bridge the queue's 100 ms counter updates without easing to a stop between them.
-                job.state === "running" && "transition-[width] duration-300 ease-linear motion-reduce:transition-none",
-                job.state === "failed"
-                  ? "bg-destructive"
-                  : job.state === "completed"
-                    ? "bg-green-500"
-                    : job.state === "waiting"
-                      ? "bg-caution"
-                      : job.state === "paused" || job.state === "canceled"
-                        ? "bg-muted-foreground/50"
-                        : "bg-primary",
+                state === "running" && "transition-[width] duration-300 ease-linear motion-reduce:transition-none",
+                barTone(state),
               )}
               style={{ width: `${barPct}%` }}
             />
@@ -336,11 +484,11 @@ function JobRow({ job }: { job: TransferJobSnapshot }): React.JSX.Element {
           <span
             className={cn(
               "w-9 shrink-0 text-right text-xs font-medium tabular-nums",
-              job.state === "failed" && "text-destructive",
-              job.state === "canceled" && "text-muted-foreground",
+              state === "failed" && "text-destructive",
+              (state === "canceled" || state === "queued") && "text-muted-foreground",
             )}
           >
-            {job.state === "enumerating" ? "—" : `${barPct}%`}
+            {state === "enumerating" || state === "queued" ? "—" : `${barPct}%`}
           </span>
         </div>
         <div className="mt-1 flex min-w-0 items-center gap-3">
@@ -355,70 +503,157 @@ function JobRow({ job }: { job: TransferJobSnapshot }): React.JSX.Element {
           </span>
           <span className="text-muted-foreground shrink-0 text-[11px] tabular-nums">{filesLabel}</span>
           {canExpand && (
-            <button
-              type="button"
-              className="text-muted-foreground hover:text-foreground hover:bg-accent focus-visible:ring-ring flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] transition-colors focus-visible:ring-2 focus-visible:outline-none motion-reduce:transition-none"
-              aria-expanded={expanded}
-              aria-controls={detailsId}
-              title={expanded ? "Hide advanced stats" : "Show advanced stats"}
+            <AdvancedStatsToggle
+              expanded={expanded}
+              controls={detailsId}
               onClick={() => setExpanded(!expanded)}
-            >
-              <ChartNoAxesColumn className="size-3" />
-              Advanced stats
-              <ChevronDown
-                className={cn("size-3 transition-transform motion-reduce:transition-none", expanded && "rotate-180")}
-              />
-            </button>
+            />
           )}
         </div>
         {expanded && canExpand && (
           <AdvancedStats
-            job={job}
             id={detailsId}
+            state={state}
+            speedStats={item.speedStats}
+            startedAt={item.startedAt ?? job.startedAt}
+            finishedAt={item.finishedAt}
+            totalBytes={item.totalBytes}
+            doneBytes={item.doneBytes}
+            totalFiles={item.totalFiles}
+            doneFiles={item.doneFiles}
+            skippedFiles={item.skippedFiles}
           />
         )}
       </div>
-      <div className="flex shrink-0 items-center gap-0.5">
-        {job.state === "running" && (
-          <RowAction
-            label="Pause transfer"
-            onClick={() => jobAction(job.id, "pause")}
-          >
-            <Pause className="size-3.5" />
-          </RowAction>
-        )}
-        {job.state === "paused" && !job.autoPaused && (
-          <RowAction
-            label="Resume transfer"
-            onClick={() => jobAction(job.id, "resume")}
-          >
-            <Play className="size-3.5" />
-          </RowAction>
-        )}
-        {(job.state === "failed" || job.state === "canceled") && (
-          <RowAction
-            label="Retry transfer"
-            onClick={() => jobAction(job.id, "retry")}
-          >
-            <RotateCcw className="size-3.5" />
-          </RowAction>
-        )}
-        {terminal ? (
-          <RowAction
-            label="Remove transfer from list"
-            onClick={() => removeJob(job.id)}
-          >
-            <Trash2 className="size-3.5" />
-          </RowAction>
-        ) : (
-          <RowAction
-            label="Cancel transfer"
-            onClick={() => jobAction(job.id, "cancel")}
-          >
-            <X className="size-3.5" />
-          </RowAction>
-        )}
+    </div>
+  );
+}
+
+function JobRow({ job }: { job: TransferJobSnapshot }): React.JSX.Element {
+  const [expanded, setExpanded] = useState(false);
+  const canExpand = job.state !== "enumerating" && job.state !== "waiting";
+  const showJobStats = canExpand && job.items.length > 1;
+  const detailsId = `transfer-stats-${job.id}`;
+  const processedFiles = job.doneFiles + job.skippedFiles;
+  const terminal = TERMINAL_TRANSFER_STATES.includes(job.state);
+  const summary = jobSummary(job);
+  const detail = jobDetail(job);
+  const filesLabel =
+    job.state === "enumerating"
+      ? `${job.totalFiles} found`
+      : job.state === "waiting"
+        ? `${job.totalFiles} files`
+        : `${processedFiles}/${job.totalFiles} files`;
+
+  return (
+    <div
+      role="listitem"
+      className="border-t first:border-t-0"
+    >
+      <div className="flex items-start gap-3 px-3 py-2.5">
+        <StateIcon state={job.state} />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-baseline gap-3">
+            <span
+              className="truncate text-[13px] font-medium"
+              title={job.label}
+            >
+              {job.label}
+            </span>
+            <span className="text-muted-foreground ml-auto hidden shrink-0 text-[11px] tabular-nums sm:inline">{summary}</span>
+          </div>
+          <div className="mt-1 flex min-w-0 items-center gap-3">
+            <span
+              className={cn(
+                "min-w-0 flex-1 truncate text-[11px]",
+                detail.destructive ? "text-destructive" : "text-muted-foreground font-file",
+              )}
+              title={detail.full}
+            >
+              {detail.text}
+            </span>
+            <span className="text-muted-foreground shrink-0 text-[11px] tabular-nums">{filesLabel}</span>
+            {showJobStats && (
+              <AdvancedStatsToggle
+                expanded={expanded}
+                controls={detailsId}
+                onClick={() => setExpanded(!expanded)}
+              />
+            )}
+          </div>
+          {expanded && showJobStats && (
+            <AdvancedStats
+              id={detailsId}
+              state={job.state}
+              speedStats={job.speedStats}
+              startedAt={job.startedAt}
+              finishedAt={job.finishedAt}
+              totalBytes={job.totalBytes}
+              doneBytes={job.doneBytes}
+              totalFiles={job.totalFiles}
+              doneFiles={job.doneFiles}
+              skippedFiles={job.skippedFiles}
+            />
+          )}
+        </div>
+        <div className="flex shrink-0 items-center gap-0.5">
+          {job.state === "running" && (
+            <RowAction
+              label="Pause transfer"
+              onClick={() => jobAction(job.id, "pause")}
+            >
+              <Pause className="size-3.5" />
+            </RowAction>
+          )}
+          {job.state === "paused" && !job.autoPaused && (
+            <RowAction
+              label="Resume transfer"
+              onClick={() => jobAction(job.id, "resume")}
+            >
+              <Play className="size-3.5" />
+            </RowAction>
+          )}
+          {(job.state === "failed" || job.state === "canceled") && (
+            <RowAction
+              label="Retry transfer"
+              onClick={() => jobAction(job.id, "retry")}
+            >
+              <RotateCcw className="size-3.5" />
+            </RowAction>
+          )}
+          {terminal ? (
+            <RowAction
+              label="Remove transfer from list"
+              onClick={() => removeJob(job.id)}
+            >
+              <Trash2 className="size-3.5" />
+            </RowAction>
+          ) : (
+            <RowAction
+              label="Cancel transfer"
+              onClick={() => jobAction(job.id, "cancel")}
+            >
+              <X className="size-3.5" />
+            </RowAction>
+          )}
+        </div>
       </div>
+      {job.items.length > 0 && (
+        <div
+          role="list"
+          aria-label={`${job.label} items`}
+          className="border-t"
+        >
+          {job.items.map((item, index) => (
+            <ItemRow
+              key={`${item.name}-${index}`}
+              job={job}
+              item={item}
+              index={index}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -434,7 +669,12 @@ export function QueueDrawer(): React.JSX.Element | null {
   const doneBytes = active.reduce((a, j) => a + j.doneBytes, 0);
   const pct = totalBytes > 0 ? Math.floor((doneBytes / totalBytes) * 100) : null;
   const activeSpeed = active.reduce((a, j) => a + (j.state === "running" ? j.bytesPerSec : 0), 0);
-  const summary = active.length > 0 ? `${active.length} active${pct === null ? "" : ` · ${pct}%`}` : `${jobs.length} finished`;
+  const activeItems = active.reduce((a, j) => {
+    const remaining = j.items.filter((item) => item.state === "pending" || item.state === "running").length;
+    return a + Math.max(1, remaining);
+  }, 0);
+  const summary =
+    active.length > 0 ? `${activeItems} item${activeItems === 1 ? "" : "s"} · ${pct ?? 0}%` : `${jobs.length} finished`;
 
   return (
     <section

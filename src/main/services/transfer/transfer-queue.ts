@@ -14,6 +14,8 @@ import type {
   ConflictAction,
   ConflictPrompt,
   TransferError,
+  TransferItemSnapshot,
+  TransferItemState,
   TransferJobSnapshot,
   TransferRequest,
   TransferSpeedStats,
@@ -65,8 +67,31 @@ const CHUNK_THRESHOLD = 16 * 1024 * 1024;
  */
 const SHUTDOWN_TIMEOUT_MS = 5_000;
 
+/** One selected file or folder, tracked so the drawer can show a row per item. */
+interface PlanItem {
+  name: string;
+  totalFiles: number;
+  doneFiles: number;
+  skippedFiles: number;
+  failedFiles: number;
+  skippedSymlinks: number;
+  totalBytes: number;
+  doneBytes: number;
+  /** Files of this item currently streaming; drives live per-item sampling. */
+  runningFiles: number;
+  errors: string[];
+  startedAt?: number;
+  finishedAt?: number;
+  samples: { t: number; bytes: number }[];
+  speedSamples: SpeedSample[];
+  speedStats: TransferSpeedStats;
+  lastSpeedSampleAt: number;
+}
+
 interface PlanFile {
   relPath: string;
+  /** Selected item this file belongs to. */
+  item: PlanItem;
   size: number;
   mtimeMs: number;
   /** Enumeration timestamp; unlike mtimeMs it is never replaced by a precise re-stat. */
@@ -77,6 +102,13 @@ interface PlanFile {
   target?: { finalPath: string; partPath: string };
   /** Committed to the destination; a retry may keep it instead of copying again. */
   completed?: boolean;
+}
+
+/** Shared shape for job- and item-level speed sampling. */
+interface SpeedTracked {
+  speedSamples: SpeedSample[];
+  speedStats: TransferSpeedStats;
+  lastSpeedSampleAt: number;
 }
 
 interface Conflict {
@@ -125,6 +157,8 @@ class Job {
   canceled = false;
   planDirs: string[] = [];
   planFiles: PlanFile[] = [];
+  /** Selected items in request order; each owns the files beneath it. */
+  items: PlanItem[] = [];
   skippedSymlinks = 0;
   conflicts = new Map<string, Conflict>();
   /** Files committed by the job this retry replaces, keyed by relative path. */
@@ -199,11 +233,66 @@ export class TransferQueue {
     return this.getOptions().speedStatsWindowMs ?? SPEED_STATS_WINDOW_MS;
   }
 
+  private makeItem(name: string): PlanItem {
+    return {
+      name,
+      totalFiles: 0,
+      doneFiles: 0,
+      skippedFiles: 0,
+      failedFiles: 0,
+      skippedSymlinks: 0,
+      totalBytes: 0,
+      doneBytes: 0,
+      runningFiles: 0,
+      errors: [],
+      samples: [],
+      speedSamples: [],
+      speedStats: ZERO_SPEED_STATS,
+      lastSpeedSampleAt: 0,
+    };
+  }
+
+  private settleItem(item: PlanItem): void {
+    if (item.finishedAt) return;
+    const processed = item.doneFiles + item.skippedFiles + item.failedFiles;
+    if (item.totalFiles > 0 && processed >= item.totalFiles) item.finishedAt = Date.now();
+  }
+
+  private itemState(job: Job, item: PlanItem): TransferItemState {
+    if (item.errors.length > 0) return "failed";
+    if (item.totalFiles > 0 && item.doneFiles + item.skippedFiles >= item.totalFiles) {
+      return item.doneFiles > 0 ? "completed" : "skipped";
+    }
+    if (item.totalFiles === 0 && item.skippedSymlinks > 0) return "skipped";
+    if (item.totalFiles === 0 && TERMINAL_TRANSFER_STATES.includes(job.state)) return "completed";
+    if (job.state === "canceled") return "canceled";
+    if (job.state === "failed") return "failed";
+    if (item.runningFiles > 0 || item.doneFiles > 0 || item.doneBytes > 0) return "running";
+    return "pending";
+  }
+
+  private itemSnapshot(job: Job, item: PlanItem): TransferItemSnapshot {
+    return {
+      name: item.name,
+      state: this.itemState(job, item),
+      totalFiles: item.totalFiles,
+      doneFiles: item.doneFiles,
+      skippedFiles: item.skippedFiles + item.skippedSymlinks,
+      totalBytes: item.totalBytes,
+      doneBytes: item.doneBytes,
+      bytesPerSec: this.bytesPerSecOfSamples(item.samples),
+      speedStats: item.speedStats,
+      startedAt: item.startedAt,
+      finishedAt: item.finishedAt ?? (TERMINAL_TRANSFER_STATES.includes(job.state) ? job.finishedAt : undefined),
+      error: item.errors[0],
+    };
+  }
+
   /** Bytes/second over the trailing 3 s sample window. */
-  private bytesPerSecOf(job: Job): number {
+  private bytesPerSecOfSamples(samples: { t: number; bytes: number }[]): number {
     const now = Date.now();
     const windowStart = now - 3000;
-    const recent = job.samples.filter((s) => s.t >= windowStart);
+    const recent = samples.filter((s) => s.t >= windowStart);
     if (recent.length < 2) return 0;
     return (
       ((recent[recent.length - 1].bytes - recent[0].bytes) / Math.max(1, recent[recent.length - 1].t - recent[0].t)) * 1000
@@ -224,10 +313,11 @@ export class TransferQueue {
       skippedFiles: job.skippedFiles + job.skippedSymlinks,
       totalBytes: job.totalBytes,
       doneBytes: job.doneBytes,
-      bytesPerSec: this.bytesPerSecOf(job),
+      bytesPerSec: this.bytesPerSecOfSamples(job.samples),
       speedStats: job.speedStats,
       currentFiles: [...job.inFlight.keys()],
       errors: job.errors.slice(0, 20),
+      items: job.items.map((item) => this.itemSnapshot(job, item)),
     };
   }
 
@@ -260,7 +350,10 @@ export class TransferQueue {
       const running = [...this.jobs.values()].filter((j) => j.state === "running");
       const now = Date.now();
       for (const job of running) {
-        this.sampleSpeed(job, now);
+        this.sampleSpeed(job, job.doneBytes, now);
+        for (const item of job.items) {
+          if (item.runningFiles > 0) this.sampleSpeed(item, item.doneBytes, now);
+        }
         this.hooks.onUpdate(this.snapshot(job));
       }
       if (running.length === 0) this.maybeStopProgressTicker();
@@ -281,31 +374,40 @@ export class TransferQueue {
    * sample marks a discontinuity (first sample, pause, or a long ticker gap)
    * so later intervals measure only progress since that boundary.
    */
-  private sampleSpeed(job: Job, now: number): void {
-    if (job.lastSpeedSampleAt === 0) {
-      job.lastSpeedSampleAt = now;
-      job.speedSamples.push({ bytes: job.doneBytes, activeMs: 0 });
+  private sampleSpeed(target: SpeedTracked, doneBytes: number, now: number): void {
+    if (target.lastSpeedSampleAt === 0) {
+      target.lastSpeedSampleAt = now;
+      target.speedSamples.push({ bytes: doneBytes, activeMs: 0 });
       return;
     }
-    const activeMs = now - job.lastSpeedSampleAt;
+    const activeMs = now - target.lastSpeedSampleAt;
     if (activeMs < SPEED_SAMPLE_MS) return;
-    job.lastSpeedSampleAt = now;
+    target.lastSpeedSampleAt = now;
     if (activeMs > SPEED_SAMPLE_MS * 2) {
-      job.speedSamples.push({ bytes: job.doneBytes, activeMs: 0 });
+      target.speedSamples.push({ bytes: doneBytes, activeMs: 0 });
       return;
     }
-    job.speedSamples.push({ bytes: job.doneBytes, activeMs });
-    job.speedStats = speedStatsFromSamples(job.speedSamples, this.speedStatsWindowMs);
+    target.speedSamples.push({ bytes: doneBytes, activeMs });
+    target.speedStats = speedStatsFromSamples(target.speedSamples, this.speedStatsWindowMs);
   }
 
   /** Capture the final partial interval so short transfers still report stats. */
-  private flushSpeedSample(job: Job, now = Date.now()): void {
-    if (job.lastSpeedSampleAt === 0) return;
-    const activeMs = now - job.lastSpeedSampleAt;
-    job.lastSpeedSampleAt = now;
+  private flushSpeedSample(target: SpeedTracked, doneBytes: number, now = Date.now()): void {
+    if (target.lastSpeedSampleAt === 0) return;
+    const activeMs = now - target.lastSpeedSampleAt;
+    target.lastSpeedSampleAt = now;
     if (activeMs < SPEED_MIN_SAMPLE_MS || activeMs > SPEED_SAMPLE_MS * 2) return;
-    job.speedSamples.push({ bytes: job.doneBytes, activeMs });
-    job.speedStats = speedStatsFromSamples(job.speedSamples, this.speedStatsWindowMs);
+    target.speedSamples.push({ bytes: doneBytes, activeMs });
+    target.speedStats = speedStatsFromSamples(target.speedSamples, this.speedStatsWindowMs);
+  }
+
+  /** Flush running item samples; pausing also resets their measurement boundary. */
+  private flushItemSpeeds(job: Job, reset: boolean): void {
+    for (const item of job.items) {
+      if (item.lastSpeedSampleAt === 0) continue;
+      this.flushSpeedSample(item, item.doneBytes);
+      if (reset) item.lastSpeedSampleAt = 0;
+    }
   }
 
   enqueue(request: TransferRequest): string {
@@ -378,7 +480,8 @@ export class TransferQueue {
       job.to?.dispose();
       release();
       if (TERMINAL_TRANSFER_STATES.includes(job.state) && !job.finishedAt) job.finishedAt = Date.now();
-      this.flushSpeedSample(job);
+      this.flushSpeedSample(job, job.doneBytes);
+      this.flushItemSpeeds(job, false);
       this.emit(job, true);
       if (TERMINAL_TRANSFER_STATES.includes(job.state)) this.hooks.record?.(this.snapshot(job), job.request);
     }
@@ -414,7 +517,7 @@ export class TransferQueue {
   /** §3.4: enumerate everything before moving a byte. */
   private async enumerate(job: Job): Promise<void> {
     const { sourceBase, names } = job.request;
-    const walk = async (relPath: string, knownStat?: EndpointStat): Promise<void> => {
+    const walk = async (item: PlanItem, relPath: string, knownStat?: EndpointStat): Promise<void> => {
       if (job.canceled) return;
       const abs = joinPath(sourceBase, relPath);
       await this.ready(job);
@@ -423,6 +526,7 @@ export class TransferQueue {
       if (stat.isSymlink) {
         // §6: symlinks are never followed during recursive operations.
         job.skippedSymlinks++;
+        item.skippedSymlinks++;
         return;
       }
       if (stat.isDir) {
@@ -431,11 +535,12 @@ export class TransferQueue {
           if (!child.name || child.name === "." || child.name === ".." || child.name.includes("/")) {
             throw new Error(`Invalid directory entry: ${child.name}`);
           }
-          await walk(`${relPath}/${child.name}`, child.stat);
+          await walk(item, `${relPath}/${child.name}`, child.stat);
         }
       } else {
         job.planFiles.push({
           relPath,
+          item,
           size: stat.size,
           mtimeMs: stat.mtimeMs,
           scanMtimeMs: stat.mtimeMs,
@@ -443,6 +548,8 @@ export class TransferQueue {
           checkpoint: 0,
         });
         job.totalBytes += stat.size;
+        item.totalFiles++;
+        item.totalBytes += stat.size;
         this.emit(job);
       }
     };
@@ -450,7 +557,9 @@ export class TransferQueue {
       if (job.canceled) return;
       if (!name || name === "." || name === ".." || name.includes("/") || name.includes("\0"))
         throw new Error("Invalid source name");
-      await walk(name);
+      const item = this.makeItem(name);
+      job.items.push(item);
+      await walk(item, name);
     }
   }
 
@@ -498,10 +607,17 @@ export class TransferQueue {
         file.completed = true;
         job.doneFiles++;
         job.doneBytes += file.size;
+        file.item.doneFiles++;
+        file.item.doneBytes += file.size;
+        this.settleItem(file.item);
         continue;
       }
       if (!st) continue;
-      if (st.isDir) job.errors.push({ relPath: file.relPath, message: "A folder with this name exists" });
+      if (st.isDir) {
+        const message = "A folder with this name exists";
+        job.errors.push({ relPath: file.relPath, message });
+        file.item.errors.push(message);
+      }
       job.conflicts.set(file.relPath, {
         relPath: file.relPath,
         destSize: st.size,
@@ -646,9 +762,14 @@ export class TransferQueue {
     const target = this.destPathsFor(job, file);
     if (target === "skip") {
       job.skippedFiles++;
+      file.item.skippedFiles++;
+      this.settleItem(file.item);
       this.emit(job);
       return;
     }
+    const item = file.item;
+    item.runningFiles++;
+    if (!item.startedAt) item.startedAt = Date.now();
     const { finalPath, partPath } = target;
     const controller = new AbortController();
     const flight: InFlight = { relPath: file.relPath, src: null, dst: null, partPath, abort: null, controller };
@@ -682,6 +803,7 @@ export class TransferQueue {
     const credit = (bytes: number): void => {
       if (bytes <= 0) return;
       job.doneBytes += bytes;
+      item.doneBytes += bytes;
       uncredited += bytes;
     };
     const confirm = (offset: number): void => {
@@ -690,12 +812,16 @@ export class TransferQueue {
       file.checkpoint = offset;
     };
     const rollback = (): void => {
-      if (uncredited > 0) job.doneBytes -= uncredited;
+      if (uncredited > 0) {
+        job.doneBytes -= uncredited;
+        item.doneBytes -= uncredited;
+      }
       uncredited = 0;
     };
     const discard = (): void => {
       rollback();
       job.doneBytes -= file.checkpoint;
+      item.doneBytes -= file.checkpoint;
       file.checkpoint = 0;
     };
     let committing = false;
@@ -778,8 +904,11 @@ export class TransferQueue {
           bytes += chunk.length;
           credit(chunk.length);
           if (checkpointed) confirm(dst.confirmedBytes?.() ?? offset);
-          job.samples.push({ t: Date.now(), bytes: job.doneBytes });
+          const now = Date.now();
+          job.samples.push({ t: now, bytes: job.doneBytes });
           if (job.samples.length > 200) job.samples.splice(0, 100);
+          item.samples.push({ t: now, bytes: item.doneBytes });
+          if (item.samples.length > 200) item.samples.splice(0, 100);
           this.emit(job);
           cb(null, chunk);
         },
@@ -821,6 +950,7 @@ export class TransferQueue {
       committing = true;
       await job.to.renameReplacing(partPath, finalPath);
       job.doneFiles++;
+      item.doneFiles++;
       file.completed = true;
       file.target = undefined;
       file.checkpoint = 0;
@@ -836,6 +966,7 @@ export class TransferQueue {
       // theirs, and a resume starts at the last confirmed offset.
       rollback();
       job.samples = [];
+      item.samples = [];
       let retry = false;
       if (!job.canceled && !committing) {
         if (this.sessionDown(job)) {
@@ -854,16 +985,20 @@ export class TransferQueue {
       if (retry && !job.canceled) job.queue.unshift(file);
       else {
         discard();
-        if (!job.canceled)
-          job.errors.push({
-            relPath: file.relPath,
-            message: committing
-              ? `Could not confirm replacement of ${file.relPath}; check the destination before retrying. ${(err as Error).message}`
-              : (err as Error).message,
-          });
+        if (!job.canceled) {
+          const message = committing
+            ? `Could not confirm replacement of ${file.relPath}; check the destination before retrying. ${(err as Error).message}`
+            : (err as Error).message;
+          job.errors.push({ relPath: file.relPath, message });
+          item.errors.push(message);
+          item.failedFiles++;
+        }
       }
     } finally {
       clearTimeout(timer);
+      item.runningFiles = Math.max(0, item.runningFiles - 1);
+      this.settleItem(item);
+      if (item.runningFiles === 0) this.flushSpeedSample(item, item.doneBytes);
       job.inFlight.delete(file.relPath);
       this.emit(job);
     }
@@ -901,7 +1036,8 @@ export class TransferQueue {
       job.state = value || job.userPaused ? "paused" : "running";
     }
     if (value) {
-      this.flushSpeedSample(job);
+      this.flushSpeedSample(job, job.doneBytes);
+      this.flushItemSpeeds(job, true);
       job.lastSpeedSampleAt = 0;
       // Streams on the dead connection may never reject on their own —
       // destroy them so workers fall into the requeue path deterministically.
@@ -929,7 +1065,8 @@ export class TransferQueue {
     if (!job || job.state !== "running") return;
     job.userPaused = true;
     job.state = "paused";
-    this.flushSpeedSample(job);
+    this.flushSpeedSample(job, job.doneBytes);
+    this.flushItemSpeeds(job, true);
     job.lastSpeedSampleAt = 0;
     this.abortInFlight(job);
     this.emit(job, true);

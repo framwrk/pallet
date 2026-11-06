@@ -1046,3 +1046,41 @@ test("running jobs are re-broadcast with live true-counter progress", { timeout:
     await f.cleanup();
   }
 });
+
+test("reports a separate snapshot with its own stats for each selected item", async () => {
+  const f = await fixture();
+  try {
+    const single = Buffer.alloc(4096, 1);
+    const inside = [Buffer.alloc(2048, 2), Buffer.alloc(3072, 3)];
+    await fs.writeFile(`${f.source}/single.bin`, single);
+    await fs.mkdir(`${f.source}/tree`);
+    await fs.writeFile(`${f.source}/tree/a.bin`, inside[0]);
+    await fs.writeFile(`${f.source}/tree/b.bin`, inside[1]);
+    const result = await harness(f.local, f.local).run(f.source, f.dest, ["single.bin", "tree"]);
+    assert.equal(result.state, "completed", JSON.stringify(result.errors));
+    assert.equal(result.items.length, 2, "one row per selected item");
+
+    const [file, folder] = result.items;
+    assert.equal(file.name, "single.bin");
+    assert.equal(file.state, "completed");
+    assert.equal(file.totalFiles, 1);
+    assert.equal(file.totalBytes, single.length);
+    assert.equal(file.doneBytes, single.length);
+    assert.equal(typeof file.startedAt, "number");
+    assert.equal(typeof file.finishedAt, "number");
+
+    assert.equal(folder.name, "tree");
+    assert.equal(folder.state, "completed");
+    assert.equal(folder.totalFiles, 2);
+    assert.equal(folder.totalBytes, inside[0].length + inside[1].length);
+    assert.equal(folder.doneBytes, folder.totalBytes, "folder progress sums the files beneath it");
+
+    assert.equal(
+      result.items.reduce((sum, item) => sum + item.totalBytes, 0),
+      result.totalBytes,
+      "item totals add up to the job total",
+    );
+  } finally {
+    await f.cleanup();
+  }
+});
