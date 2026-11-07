@@ -78,27 +78,48 @@ function iconTone(state: RowState): string {
   }
 }
 
+/** Every state's icon is stacked in the same well, so a state change is a
+ * crossfade with a slight scale and blur instead of a hard swap
+ * (DESIGN.md › Motion). Completed pulses once as the success confirmation. */
+const STATE_ICON_DEFS: { key: string; states: RowState[]; Icon: typeof CheckCircle2 }[] = [
+  { key: "completed", states: ["completed"], Icon: CheckCircle2 },
+  { key: "failed", states: ["failed"], Icon: AlertCircle },
+  { key: "canceled", states: ["canceled"], Icon: XCircle },
+  { key: "paused", states: ["paused"], Icon: Pause },
+  { key: "waiting", states: ["waiting"], Icon: AlertCircle },
+  { key: "enumerating", states: ["enumerating"], Icon: ScanSearch },
+  { key: "running", states: ["running", "queued"], Icon: ArrowLeftRight },
+];
+
 function StateIcon({ state, compact = false }: { state: RowState; compact?: boolean }): React.JSX.Element {
-  const Icon =
-    state === "completed"
-      ? CheckCircle2
-      : state === "failed"
-        ? AlertCircle
-        : state === "canceled"
-          ? XCircle
-          : state === "paused"
-            ? Pause
-            : state === "waiting"
-              ? AlertCircle
-              : state === "enumerating"
-                ? ScanSearch
-                : ArrowLeftRight;
   return (
     <span
-      className={cn("grid shrink-0 place-items-center rounded-lg", compact ? "size-6" : "size-8", iconTone(state))}
+      className={cn(
+        "relative grid shrink-0 place-items-center overflow-hidden rounded-lg transition-colors duration-[140ms]",
+        compact ? "size-6" : "size-8",
+        iconTone(state),
+      )}
       aria-hidden
     >
-      <Icon className={compact ? "size-3.5" : "size-4"} />
+      {STATE_ICON_DEFS.map((def) => {
+        const active = def.states.includes(state);
+        const { Icon } = def;
+        return (
+          <span
+            key={def.key}
+            className="absolute inset-0 grid place-items-center"
+          >
+            <Icon
+              className={cn(
+                compact ? "size-3.5" : "size-4",
+                "ease-entrance transition-[opacity,filter,transform] duration-[140ms]",
+                active ? "blur-0 scale-100 opacity-100" : "scale-95 opacity-0 blur-[2px]",
+                def.key === "completed" && active && "[animation:pallet-confirm-pulse_320ms_var(--ease-onscreen)]",
+              )}
+            />
+          </span>
+        );
+      })}
     </span>
   );
 }
@@ -397,7 +418,8 @@ function AdvancedStats({
   return (
     <div
       id={id}
-      className="bg-background/60 mt-2.5 rounded-lg border px-3 py-2.5 text-[11px]"
+      className="bg-background/60 pallet-settle mt-2.5 rounded-lg border px-3 py-2.5 text-[11px]"
+      data-settle=""
     >
       <SpeedGraph points={speedHistory} />
       <div className="mt-3 grid gap-x-8 gap-y-3 sm:grid-cols-2">
@@ -463,7 +485,7 @@ function RowAction({
   return (
     <button
       type="button"
-      className="text-muted-foreground hover:bg-accent hover:text-accent-foreground focus-visible:ring-ring grid size-6 place-items-center rounded-md transition-colors focus-visible:ring-2 focus-visible:outline-none motion-reduce:transition-none"
+      className="text-muted-foreground hover:bg-accent hover:text-accent-foreground focus-visible:ring-ring grid size-6 place-items-center rounded-md transition-colors duration-[140ms] focus-visible:ring-2 focus-visible:outline-none motion-reduce:transition-none"
       title={label}
       aria-label={label}
       onClick={onClick}
@@ -485,7 +507,7 @@ function AdvancedStatsToggle({
   return (
     <button
       type="button"
-      className="text-muted-foreground hover:text-foreground hover:bg-accent focus-visible:ring-ring flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] transition-colors focus-visible:ring-2 focus-visible:outline-none motion-reduce:transition-none"
+      className="text-muted-foreground hover:text-foreground hover:bg-accent focus-visible:ring-ring flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] transition-colors duration-[140ms] focus-visible:ring-2 focus-visible:outline-none motion-reduce:transition-none"
       aria-expanded={expanded}
       aria-controls={controls}
       title={expanded ? "Hide advanced stats" : "Show advanced stats"}
@@ -493,7 +515,12 @@ function AdvancedStatsToggle({
     >
       <ChartNoAxesColumn className="size-3" />
       Advanced stats
-      <ChevronDown className={cn("size-3 transition-transform motion-reduce:transition-none", expanded && "rotate-180")} />
+      <ChevronDown
+        className={cn(
+          "ease-onscreen size-3 transition-transform duration-[150ms] motion-reduce:transition-none",
+          expanded && "rotate-180",
+        )}
+      />
     </button>
   );
 }
@@ -638,7 +665,7 @@ function ItemRow({
   );
 }
 
-function JobRow({ job }: { job: TransferJobSnapshot }): React.JSX.Element {
+function JobRow({ job, index }: { job: TransferJobSnapshot; index: number }): React.JSX.Element {
   const [expanded, setExpanded] = useState(false);
   const canExpand = job.state !== "enumerating" && job.state !== "waiting";
   const showJobStats = canExpand && job.items.length > 1;
@@ -657,7 +684,8 @@ function JobRow({ job }: { job: TransferJobSnapshot }): React.JSX.Element {
   return (
     <div
       role="listitem"
-      className="border-t first:border-t-0"
+      className="animate-in fade-in slide-in-from-top-1 fill-mode-both ease-entrance border-t duration-[200ms] first:border-t-0"
+      style={{ animationDelay: `${Math.min(index, 12) * 30}ms` }}
     >
       <div className="flex items-start gap-3 px-3 py-2.5">
         <StateIcon state={job.state} />
@@ -817,7 +845,7 @@ export function QueueDrawer(): React.JSX.Element | null {
           {finished.length > 0 && (
             <button
               type="button"
-              className="text-muted-foreground hover:bg-accent hover:text-accent-foreground focus-visible:ring-ring rounded px-1.5 py-0.5 text-[11px] transition-colors focus-visible:ring-2 focus-visible:outline-none motion-reduce:transition-none"
+              className="text-muted-foreground hover:bg-accent hover:text-accent-foreground focus-visible:ring-ring rounded px-1.5 py-0.5 text-[11px] transition-colors duration-[140ms] focus-visible:ring-2 focus-visible:outline-none motion-reduce:transition-none"
               onClick={clearFinishedJobs}
             >
               Clear
@@ -840,20 +868,32 @@ export function QueueDrawer(): React.JSX.Element | null {
           />
         </div>
       )}
-      {drawerOpen && (
-        <div
-          id={LIST_ID}
-          role="list"
-          className="max-h-60 overflow-y-auto overscroll-contain"
-        >
-          {jobs.map((job) => (
-            <JobRow
-              key={job.id}
-              job={job}
-            />
-          ))}
+      <div
+        className={cn(
+          // Rows stay mounted; a grid-row collapse lets reopening animate in
+          // both directions (240ms in, 190ms out, ease in out).
+          "ease-onscreen grid transition-[grid-template-rows]",
+          drawerOpen ? "grid-rows-[1fr] duration-[240ms]" : "grid-rows-[0fr] duration-[190ms]",
+        )}
+      >
+        <div className="min-h-0 overflow-hidden">
+          <div
+            id={LIST_ID}
+            role="list"
+            className="max-h-60 overflow-y-auto overscroll-contain"
+            aria-hidden={!drawerOpen || undefined}
+            inert={!drawerOpen}
+          >
+            {jobs.map((job, index) => (
+              <JobRow
+                key={job.id}
+                job={job}
+                index={index}
+              />
+            ))}
+          </div>
         </div>
-      )}
+      </div>
     </section>
   );
 }

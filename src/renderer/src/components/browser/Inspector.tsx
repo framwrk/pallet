@@ -209,7 +209,7 @@ export function Inspector(): React.JSX.Element | null {
   // the inspector is closed keeps it from walking anything you cannot see.
   const folderSizes = useFolderSizes(app.inspectorOpen && entry && isSizeable(entry) ? [entry.path] : [], pane.backend);
 
-  if (!app.inspectorOpen) return null;
+  const open = app.inspectorOpen;
 
   const mode = draftMode ?? (entry ? entry.mode & 0o7777 : 0);
   const dirty = entry !== null && draftMode !== null && draftMode !== (entry.mode & 0o7777);
@@ -219,135 +219,156 @@ export function Inspector(): React.JSX.Element | null {
     try {
       await window.pallet.sftp.chmod(pane.backend.sessionId, entry.path, draftMode);
       refresh(app.active);
-      pushToast(`Permissions updated for ${entry.name}`, "info");
+      pushToast(`Permissions updated for ${entry.name}`, "success");
     } catch (err) {
       pushToast((err as Error).message);
     }
   }
 
   return (
-    <aside className="bg-sidebar flex w-64 shrink-0 flex-col gap-3 overflow-y-auto border-l p-3">
-      <div className="flex items-center justify-between">
-        <span className="text-muted-foreground text-xs font-semibold tracking-wide">INFO</span>
-        <button
-          className="hover:bg-accent rounded p-0.5"
-          onClick={() => setInspectorOpen(false)}
-          aria-label="Close inspector"
-        >
-          <X className="size-3.5" />
-        </button>
-      </div>
-
-      {!entry ? (
-        <p className="text-muted-foreground text-xs">
-          {pane.selected.size > 1 ? `${pane.selected.size} items selected` : "No selection"}
-        </p>
-      ) : (
-        <>
-          <div className="flex items-center gap-2">
-            {isDirLike(entry) ? (
-              <Folder
-                className="text-primary size-8"
-                fill="currentColor"
-                strokeWidth={0}
-              />
-            ) : (
-              <FileIcon className="text-muted-foreground size-8" />
-            )}
-            <div className="min-w-0">
-              <div className="truncate text-sm font-medium">{entry.name}</div>
-              <div className="text-muted-foreground text-[11px]">
-                {entry.kind === "dir"
-                  ? "Folder"
-                  : entry.kind === "symlink"
-                    ? "Symbolic link"
-                    : localPath.extname(entry.name)
-                      ? `${localPath.extname(entry.name).slice(1).toUpperCase()} file`
-                      : "File"}
-              </div>
-            </div>
-          </div>
-
-          <Preview
-            key={entry.path + entry.mtimeMs + app.previewMaxBytes}
-            entry={entry}
-            backend={pane.backend}
-            maxBytes={app.previewMaxBytes}
-          />
-
-          <dl className="flex flex-col gap-1 text-xs">
-            {(
-              [
-                ["Kind", entry.kind === "dir" ? "Folder" : entry.kind === "symlink" ? "Symlink" : "File"],
-                [
-                  "Size",
-                  !isDirLike(entry)
-                    ? formatBytes(entry.size)
-                    : folderSizes.has(entry.path)
-                      ? formatBytes(folderSizes.get(entry.path)!)
-                      : "--",
-                ],
-                ["Modified", formatModified(entry.mtimeMs)],
-                ["Where", localPath.dirname(entry.path)],
-                ["Extension", localPath.extname(entry.name) || "--"],
-              ] as const
-            ).map(([k, v]) => (
-              <div
-                key={k}
-                className="grid grid-cols-[4.5rem_1fr] gap-2"
-              >
-                <dt className="text-muted-foreground">{k}</dt>
-                <dd className="break-all">{v}</dd>
-              </div>
-            ))}
-            {entry.kind === "symlink" && (
-              <div className="grid grid-cols-[4.5rem_1fr] gap-2">
-                <dt className="text-muted-foreground">Target</dt>
-                <dd className="flex items-center gap-1">
-                  <CornerUpRight className="size-3" /> {entry.targetKind ?? "unknown"}
-                </dd>
-              </div>
-            )}
-          </dl>
-
-          <div className="border-t pt-2">
-            <div className="mb-1 flex items-center justify-between">
-              <span className="text-xs font-medium">Permissions</span>
-              <code className="text-muted-foreground text-[11px]">{modeString(mode, entry.kind)}</code>
-            </div>
-            <PermissionsMatrix
-              mode={mode}
-              editable={editable}
-              onChange={(m) => setDraftMode(m)}
-            />
-            <div className="mt-2 flex items-center gap-2">
-              <input
-                className={cn(
-                  "border-input bg-background w-16 rounded-sm border px-1.5 py-0.5 font-mono text-xs",
-                  !editable && "opacity-60",
-                )}
-                value={mode.toString(8).padStart(4, "0")}
-                disabled={!editable}
-                onChange={(e) => {
-                  const parsed = Number.parseInt(e.target.value, 8);
-                  if (Number.isInteger(parsed)) setDraftMode(parsed & 0o7777);
-                }}
-                spellCheck={false}
-              />
-              {editable && (
-                <Button
-                  size="xs"
-                  disabled={!dirty}
-                  onClick={() => void applyMode()}
-                >
-                  Apply
-                </Button>
-              )}
-              {!editable && <span className="text-muted-foreground text-[10px]">Editable on remote files</span>}
-            </div>
-          </div>
-        </>
+    // The rail always claims layout (the panes glide aside); its clipped
+    // zero-width state hides everything once the exit settles. The content
+    // stays mounted while visibility interpolates out (190ms), so the rail
+    // slides shut with its contents instead of emptying first.
+    <aside
+      className={cn(
+        "bg-sidebar ease-onscreen shrink-0 overflow-hidden border-l transition-[width]",
+        open ? "w-64 duration-[240ms]" : "w-0 duration-[190ms]",
       )}
+    >
+      <div
+        className={cn(
+          "pallet-settle flex h-full w-64 flex-col gap-3 overflow-y-auto p-3",
+          "transition-[visibility] duration-[190ms]",
+          open ? "visible" : "pointer-events-none invisible",
+        )}
+        data-settle={open ? "" : undefined}
+        aria-hidden={!open || undefined}
+      >
+        <div className="flex items-center justify-between">
+          <span className="text-muted-foreground text-xs font-semibold tracking-wide">INFO</span>
+          <button
+            className="hover:bg-accent rounded p-0.5 transition-colors duration-[140ms]"
+            onClick={() => setInspectorOpen(false)}
+            aria-label="Close inspector"
+          >
+            <X className="size-3.5" />
+          </button>
+        </div>
+
+        {!entry ? (
+          <p className="text-muted-foreground text-xs">
+            {pane.selected.size > 1 ? `${pane.selected.size} items selected` : "No selection"}
+          </p>
+        ) : (
+          <>
+            <div className="flex items-center gap-2">
+              {isDirLike(entry) ? (
+                <Folder
+                  className="text-primary size-8"
+                  fill="currentColor"
+                  strokeWidth={0}
+                />
+              ) : (
+                <FileIcon className="text-muted-foreground size-8" />
+              )}
+              <div className="min-w-0">
+                <div className="truncate text-sm font-medium">{entry.name}</div>
+                <div className="text-muted-foreground text-[11px]">
+                  {entry.kind === "dir"
+                    ? "Folder"
+                    : entry.kind === "symlink"
+                      ? "Symbolic link"
+                      : localPath.extname(entry.name)
+                        ? `${localPath.extname(entry.name).slice(1).toUpperCase()} file`
+                        : "File"}
+                </div>
+              </div>
+            </div>
+
+            {open && (
+              <Preview
+                key={entry.path + entry.mtimeMs + app.previewMaxBytes}
+                entry={entry}
+                backend={pane.backend}
+                maxBytes={app.previewMaxBytes}
+              />
+            )}
+
+            <dl className="flex flex-col gap-1 text-xs">
+              {(
+                [
+                  ["Kind", entry.kind === "dir" ? "Folder" : entry.kind === "symlink" ? "Symlink" : "File"],
+                  [
+                    "Size",
+                    !isDirLike(entry)
+                      ? formatBytes(entry.size)
+                      : folderSizes.has(entry.path)
+                        ? formatBytes(folderSizes.get(entry.path)!)
+                        : "--",
+                  ],
+                  ["Modified", formatModified(entry.mtimeMs)],
+                  ["Where", localPath.dirname(entry.path)],
+                  ["Extension", localPath.extname(entry.name) || "--"],
+                ] as const
+              ).map(([k, v]) => (
+                <div
+                  key={k}
+                  className="grid grid-cols-[4.5rem_1fr] gap-2"
+                >
+                  <dt className="text-muted-foreground">{k}</dt>
+                  <dd className="break-all">{v}</dd>
+                </div>
+              ))}
+              {entry.kind === "symlink" && (
+                <div className="grid grid-cols-[4.5rem_1fr] gap-2">
+                  <dt className="text-muted-foreground">Target</dt>
+                  <dd className="flex items-center gap-1">
+                    <CornerUpRight className="size-3" /> {entry.targetKind ?? "unknown"}
+                  </dd>
+                </div>
+              )}
+            </dl>
+
+            <div className="border-t pt-2">
+              <div className="mb-1 flex items-center justify-between">
+                <span className="text-xs font-medium">Permissions</span>
+                <code className="text-muted-foreground text-[11px]">{modeString(mode, entry.kind)}</code>
+              </div>
+              <PermissionsMatrix
+                mode={mode}
+                editable={editable}
+                onChange={(m) => setDraftMode(m)}
+              />
+              <div className="mt-2 flex items-center gap-2">
+                <input
+                  className={cn(
+                    "border-input bg-background w-16 rounded-sm border px-1.5 py-0.5 font-mono text-xs",
+                    !editable && "opacity-60",
+                  )}
+                  value={mode.toString(8).padStart(4, "0")}
+                  disabled={!editable}
+                  onChange={(e) => {
+                    const parsed = Number.parseInt(e.target.value, 8);
+                    if (Number.isInteger(parsed)) setDraftMode(parsed & 0o7777);
+                  }}
+                  spellCheck={false}
+                />
+                {editable && (
+                  <Button
+                    size="xs"
+                    disabled={!dirty}
+                    onClick={() => void applyMode()}
+                  >
+                    Apply
+                  </Button>
+                )}
+                {!editable && <span className="text-muted-foreground text-[10px]">Editable on remote files</span>}
+              </div>
+            </div>
+          </>
+        )}
+      </div>
     </aside>
   );
 }
