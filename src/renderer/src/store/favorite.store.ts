@@ -58,7 +58,7 @@ export async function reorderFavorites(ids: string[]): Promise<void> {
 export async function connectFavorite(favoriteId: string, paneId: PaneId = "right"): Promise<void> {
   const favorite = getState().favorites.find((f) => f.id === favoriteId);
   if (!favorite) return;
-  if (!beginConnection({ paneId, label: favorite.name, favoriteId })) {
+  if (!beginConnection({ paneId, label: favorite.name, host: favorite.host, favoriteId })) {
     const pending = getState().connecting;
     pushToast(`Connecting to ${pending?.label ?? "another server"} — wait for it to finish`, "info");
     return;

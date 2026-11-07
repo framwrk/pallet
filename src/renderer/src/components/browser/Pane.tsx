@@ -56,7 +56,7 @@ function Breadcrumbs({ paneId, cwd, backend }: { paneId: PaneId; cwd: string; ba
   const [draft, setDraft] = useState(cwd);
   const [error, setError] = useState<string | null>(null);
   const lib = pathLib(backend);
-  const rootLabel = backend.kind === "sftp" ? backend.host : "Macintosh HD";
+  const rootLabel = backend.kind === "sftp" ? "/" : "Macintosh HD";
 
   const segments = useMemo(() => {
     const segs = lib.segments(cwd);
@@ -129,6 +129,7 @@ function Breadcrumbs({ paneId, cwd, backend }: { paneId: PaneId; cwd: string; ba
           <button
             className={cn(
               "hover:bg-accent max-w-40 truncate rounded-sm px-1 py-0.5 text-xs",
+              seg.name === "/" && backend.kind === "sftp" && "px-2",
               i === segments.length - 1 ? "font-medium" : "text-muted-foreground",
             )}
             onClick={() => {

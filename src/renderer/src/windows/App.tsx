@@ -27,6 +27,7 @@ import {
   useAppState,
 } from "@/store/pane.store";
 import { disconnectPane, initSftpEvents } from "@/store/sftp.store";
+import { useEffect, useState } from "react";
 import { ConfirmDeleteDialog } from "@/components/browser/ConfirmDeleteDialog";
 import { ConflictDialog } from "@/components/transfer/ConflictDialog";
 import { ConnectDialog } from "@/components/connection/QuickConnect";
@@ -35,6 +36,7 @@ import { GoToDialog } from "@/components/browser/GoToDialog";
 import { HostKeyDialog } from "@/components/connection/HostKeyDialog";
 import { Inspector } from "@/components/browser/Inspector";
 import { Pane } from "@/components/browser/Pane";
+import { PendingPane } from "@/components/browser/PendingPane";
 import { QueueDrawer } from "@/components/transfer/QueueDrawer";
 import { SettingsDialog } from "@/components/settings/SettingsDialog";
 import { Sidebar } from "@/components/connection/Sidebar";
@@ -43,7 +45,6 @@ import { Toolbar } from "@/components/browser/Toolbar";
 import { UpdateToast } from "@/components/feedback/UpdateToast";
 import { initTransferEvents } from "@/store/transfer.store";
 import { loadFavorites } from "@/store/favorite.store";
-import { useEffect } from "react";
 import { visibleEntries } from "@/lib/entry.utils";
 
 function isEditableTarget(target: EventTarget | null): boolean {
@@ -80,7 +81,12 @@ function handleKeyDown(e: KeyboardEvent): void {
   // through so native traversal can move focus — previously it was swallowed
   // here and switchPane() also no-op'd, leaving focus stuck on the document.
   const focused = e.target instanceof Element && !e.target.closest("[role='dialog'], input, textarea, [contenteditable]");
-  if (e.key === "Tab" && focused && getState().panes.right.backend.kind !== "none") {
+  if (
+    e.key === "Tab" &&
+    focused &&
+    getState().panes.right.backend.kind !== "none" &&
+    getState().connecting?.paneId !== "right"
+  ) {
     e.preventDefault();
     switchPane();
     return;
@@ -207,9 +213,42 @@ function handleKeyDown(e: KeyboardEvent): void {
   }
 }
 
+/**
+ * Hold a value on screen for one exit transition after it clears. The pending
+ * skeleton hands off to the real pane while it fades instead of cutting over.
+ */
+function useHeldValue<T>(value: T | null, holdMs: number): T | null {
+  const [held, setHeld] = useState<T | null>(value);
+  const [previous, setPrevious] = useState<T | null>(value);
+
+  // Derive during render (React's "adjust state on prop change" pattern) so a
+  // new attempt is on screen immediately; only the exit waits on a timer.
+  if (value !== previous) {
+    setPrevious(value);
+    if (value !== null) setHeld(value);
+  }
+
+  useEffect(() => {
+    if (value !== null || held === null) return;
+    const timer = window.setTimeout(() => setHeld(null), holdMs);
+    return () => window.clearTimeout(timer);
+  }, [value, held, holdMs]);
+
+  return value ?? held;
+}
+
 function App(): React.JSX.Element {
   const app = useAppState();
-  const hasRightPane = app.panes.right.backend.kind !== "none";
+  const right = app.panes.right;
+  const pendingRight = app.connecting?.paneId === "right" ? app.connecting : null;
+  // The placeholder covers the handshake and the first listing fetch. Once the
+  // listing lands the real pane mounts beneath it and the placeholder fades.
+  const skeletonLive = pendingRight !== null && right.cwd === "";
+  const heldAttempt = useHeldValue(skeletonLive ? pendingRight : null, 190);
+  const skeletonLeaving = heldAttempt !== null && !skeletonLive;
+  // Keep the slot while the placeholder fades, including when a failed attempt
+  // has no pane behind it; it collapses once the fade ends.
+  const hasRightPane = right.backend.kind !== "none" || heldAttempt !== null;
 
   useEffect(() => {
     initSftpEvents();
@@ -253,7 +292,16 @@ function App(): React.JSX.Element {
           {hasRightPane && (
             <>
               <div className="bg-border w-px shrink-0" />
-              <Pane paneId="right" />
+              <div className="bg-background relative flex min-w-0 flex-1 overflow-hidden">
+                {right.backend.kind !== "none" && <Pane paneId="right" />}
+                {heldAttempt && (
+                  <PendingPane
+                    attempt={heldAttempt}
+                    isActive={app.active === "right"}
+                    leaving={skeletonLeaving}
+                  />
+                )}
+              </div>
             </>
           )}
           <Inspector />

@@ -71,6 +71,8 @@ export interface ConnectionAttempt {
   paneId: PaneId;
   /** Server identity shown while the connection opens. */
   label: string;
+  /** Host shown in the pane chip, matching the connected pane's chip. */
+  host: string;
   /** Set when the attempt came from a favorite, so its row can show progress. */
   favoriteId?: string;
 }
