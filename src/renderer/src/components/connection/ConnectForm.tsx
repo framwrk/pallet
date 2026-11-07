@@ -537,7 +537,7 @@ export function ConnectForm({
       <div className={cn("grid gap-2", isPane && "pallet-disclosure-grid grid-cols-2")}>
         <button
           type="button"
-          className="border-border/80 bg-background/25 text-muted-foreground hover:bg-muted/50 hover:text-foreground focus-visible:ring-ring/50 flex h-9 items-center justify-between rounded-lg border px-2.5 text-left text-xs transition-colors outline-none focus-visible:ring-2"
+          className="border-border/80 bg-background/25 text-muted-foreground hover:bg-muted/50 hover:text-foreground focus-visible:ring-ring/50 flex h-9 items-center justify-between rounded-lg border px-2.5 text-left text-xs transition-colors duration-[140ms] outline-none focus-visible:ring-2"
           aria-label="Connection options"
           aria-expanded={showOptions}
           onClick={() => setShowOptions((value) => !value)}
@@ -546,12 +546,14 @@ export function ConnectForm({
             <Settings2 className="size-3.5" />
             <span className="text-foreground font-medium">Options</span>
           </span>
-          <ChevronDown className={cn("size-3.5 transition-transform", showOptions && "rotate-180")} />
+          <ChevronDown
+            className={cn("ease-onscreen size-3.5 transition-transform duration-[150ms]", showOptions && "rotate-180")}
+          />
         </button>
         {isPane && (
           <button
             type="button"
-            className="border-border/80 bg-background/25 text-muted-foreground hover:bg-muted/50 hover:text-foreground focus-visible:ring-ring/50 flex h-9 items-center justify-between rounded-lg border px-2.5 text-left text-xs transition-colors outline-none focus-visible:ring-2"
+            className="border-border/80 bg-background/25 text-muted-foreground hover:bg-muted/50 hover:text-foreground focus-visible:ring-ring/50 flex h-9 items-center justify-between rounded-lg border px-2.5 text-left text-xs transition-colors duration-[140ms] outline-none focus-visible:ring-2"
             aria-label="Favorite details"
             aria-expanded={showFavoriteDetails}
             onClick={() => setShowFavoriteDetails((value) => !value)}
@@ -560,7 +562,12 @@ export function ConnectForm({
               <Star className="size-3.5" />
               <span className="text-foreground font-medium">Favorite</span>
             </span>
-            <ChevronDown className={cn("size-3.5 transition-transform", showFavoriteDetails && "rotate-180")} />
+            <ChevronDown
+              className={cn(
+                "ease-onscreen size-3.5 transition-transform duration-[150ms]",
+                showFavoriteDetails && "rotate-180",
+              )}
+            />
           </button>
         )}
       </div>

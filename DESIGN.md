@@ -228,7 +228,7 @@ One-pixel hairlines define joined regions. Avoid double borders where two panels
 - **Secondary:** glass or neutral fill with a hairline; it must remain visible on both the window backdrop and stable content surfaces.
 - **Ghost / toolbar:** transparent at rest; a compact rounded hover well appears on hover or keyboard focus.
 - **Hover / Focus:** modest tonal change. Keyboard focus uses a crisp two-layer blue ring and never relies on color alone.
-- **Active:** `translateY(1px)` or a slight darkening, not elastic scaling.
+- **Active:** scales to `0.97` with a slight darkening, resetting on release; per the motion spec, no `translateY` and no elastic overshoot.
 
 ### Navigation
 
@@ -282,10 +282,31 @@ One-pixel hairlines define joined regions. Avoid double borders where two panels
 
 ### Motion
 
-- Use `140ms` for hover/focus color changes, `180ms` for controls and popovers, and `240ms` for sidebar, inspector, and drawer transitions.
-- Standard easing is `cubic-bezier(0.2, 0.8, 0.2, 1)`; panels may use `cubic-bezier(0.16, 1, 0.3, 1)`.
-- Motion explains state or spatial continuity: panel reveal, selection movement, transfer progress, connection status, and mode change. Never animate routine file-row entry.
-- Respect Reduce Motion by removing transforms and using immediate or short opacity/state changes.
+Motion explains state or spatial continuity: panel reveal, selection movement, transfer progress, connection status, and mode change. Never animate routine file-row entry. Respect Reduce Motion by removing transforms and using immediate or short opacity/state changes.
+
+#### Timing
+
+- Use `140ms` for hover/focus color changes, `180ms` as the default for dropdowns, popovers, and menus (`150–250ms` allowed), and `240ms` for sidebar, inspector, and drawer transitions entering.
+- Exits are about 20% shorter than their entrances: a `240ms` panel entrance leaves in roughly `190ms`; an `180ms` popover leaves in roughly `145ms`.
+- Stagger list rows by `30ms` when the whole list animates in — initial load, refresh, or filtered results. Individual rows never animate during scrolling or incremental updates.
+
+#### Easing and choreography
+
+- Entrances ease out. Movements that stay onscreen (paging, expansion, repositioning, panel slides) ease in and out.
+- Larger transitions stagger when their details settle: the container arrives first, and its contents follow in sequence rather than settling all at once.
+- Popovers, menus, and other transient surfaces begin at scale `0.95` and transition in from the control that opened them — never from the center of the screen, and never as a plain center fade. Exits return to that same trigger.
+- Objects that travel across the screen (shared elements, a pane's content relocating) follow gentle arcs, not straight lines.
+- New and old states overlap during a transition: outgoing content stays visible while the incoming state takes over. Use masks — a wipe or gradient reveal — for region reveals and color changes rather than abrupt swaps.
+- Icons that change meaning crossfade with a slight scale and blur instead of a hard swap.
+- A brief pulse confirms success, such as a Verified Green pulse on a completed transfer. Pulses are reserved for positive confirmation, never decoration.
+
+#### Direct manipulation and shared identity
+
+- Primary buttons scale to `0.97` while pressed, paired with a slight darkening. They do not translate. This replaces the earlier `translateY(1px)` treatment.
+- Switch knobs stretch up to 12% in their direction of travel while animating between stops.
+- Draggable bounds rubber band past their limit and settle back. Overshooting springs are reserved for direct manipulation; everyday UI transitions use no spring overshoot.
+- Elements that persist across locations — a connection chip moving from the sidebar to the titlebar, a file preview opening in the inspector — share the same layout ID so they travel as one object instead of disappearing and reappearing.
+- Don't tween a hand-held animation: when express motion is authored keyframe-by-keyframe, present it as authored rather than interpolating additional frames into it.
 
 ## Do's and Don'ts
 

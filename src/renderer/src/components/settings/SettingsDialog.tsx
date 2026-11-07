@@ -1498,7 +1498,7 @@ export function SettingsDialog(): React.JSX.Element {
       }}
     >
       <DialogPrimitive.Portal>
-        <DialogPrimitive.Backdrop className="dialog-backdrop fixed inset-0 z-50 transition-all duration-200 data-ending-style:opacity-0 data-starting-style:opacity-0" />
+        <DialogPrimitive.Backdrop className="dialog-backdrop ease-entrance fixed inset-0 z-50 transition-all duration-200 data-ending-style:opacity-0 data-ending-style:duration-[160ms] data-starting-style:opacity-0" />
         <DialogPrimitive.Viewport
           className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 lg:p-10"
           onPointerDown={(event) => {
@@ -1516,7 +1516,7 @@ export function SettingsDialog(): React.JSX.Element {
             initialFocus={popupRef}
             finalFocus={false}
             aria-label="Settings"
-            className="bg-background text-foreground relative flex size-full min-h-0 min-w-0 flex-col overflow-hidden transition-[opacity,scale] duration-150 ease-out outline-none [-webkit-app-region:no-drag] data-ending-style:scale-[0.985] data-ending-style:opacity-0 data-starting-style:scale-[0.985] data-starting-style:opacity-0 sm:max-h-[44rem] sm:max-w-[60rem] sm:rounded-2xl sm:border sm:shadow-2xl/40"
+            className="bg-background text-foreground ease-entrance relative flex size-full min-h-0 min-w-0 flex-col overflow-hidden transition-[opacity,scale] duration-200 outline-none [-webkit-app-region:no-drag] data-ending-style:scale-[0.985] data-ending-style:opacity-0 data-ending-style:duration-[160ms] data-starting-style:scale-[0.985] data-starting-style:opacity-0 sm:max-h-[44rem] sm:max-w-[60rem] sm:rounded-2xl sm:border sm:shadow-2xl/40"
           >
             <header className="flex h-12 shrink-0 items-center border-b ps-5 pe-2">
               <div className="flex min-w-0 items-center gap-1.5 text-[13px] font-medium">

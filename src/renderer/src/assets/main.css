@@ -81,6 +81,10 @@
   --radius-2xl: calc(var(--radius) * 1.8);
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
+  /* Motion vocabulary (DESIGN.md › Motion): entrances ease out, onscreen
+     movement eases in and out, anchors handle the rest. */
+  --ease-entrance: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease-onscreen: cubic-bezier(0.45, 0.05, 0.55, 0.95);
 }
 
 /* Light palette is the default; .dark re-states the shipped dark values so
@@ -199,6 +203,88 @@
   }
 }
 
+/* Switch knob stretch (DESIGN.md › Motion): the thumb bulges up to 12% along
+   its direction of travel while moving between stops. */
+@keyframes pallet-switch-thumb-on {
+  0% {
+    transform: translateX(0) scaleX(1);
+  }
+  50% {
+    transform: translateX(6px) scaleX(1.12);
+  }
+  100% {
+    transform: translateX(12px) scaleX(1);
+  }
+}
+
+@keyframes pallet-switch-thumb-off {
+  0% {
+    transform: translateX(12px) scaleX(1);
+  }
+  50% {
+    transform: translateX(6px) scaleX(1.12);
+  }
+  100% {
+    transform: translateX(0) scaleX(1);
+  }
+}
+
+/* Success confirmation (DESIGN.md › Motion): a brief pulse, reserved for
+   positive confirmation — completed transfers, saved permissions. */
+@keyframes pallet-confirm-pulse {
+  0% {
+    transform: scale(1);
+  }
+  35% {
+    transform: scale(1.15);
+  }
+  70% {
+    transform: scale(0.96);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+/* Detail settlement (DESIGN.md › Motion): a container arrives first and its
+   contents follow in 30ms steps. The children keep the animation only while
+   [data-settle] is present, so toggling the attribute restarts the sequence
+   without remounting the (exit-persistent) subtree. */
+@keyframes pallet-detail-settle {
+  from {
+    opacity: 0;
+    transform: translateY(-5px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.pallet-settle[data-settle] > * {
+  animation: pallet-detail-settle 200ms var(--ease-entrance) both;
+}
+
+.pallet-settle[data-settle] > *:nth-child(2) {
+  animation-delay: 30ms;
+}
+
+.pallet-settle[data-settle] > *:nth-child(3) {
+  animation-delay: 60ms;
+}
+
+.pallet-settle[data-settle] > *:nth-child(4) {
+  animation-delay: 90ms;
+}
+
+.pallet-settle[data-settle] > *:nth-child(5) {
+  animation-delay: 120ms;
+}
+
+.pallet-settle[data-settle] > *:nth-child(6) {
+  animation-delay: 150ms;
+}
+
 @layer components {
   .pallet-sidebar {
     isolation: isolate;
@@ -272,6 +358,19 @@
   .pallet-sidebar *::before,
   .pallet-sidebar *::after {
     scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Reduce Motion removes transforms everywhere (DESIGN.md › Motion): panels
+   stop sliding, thumbs stop stretching, pulses stop playing. Color/state
+   changes collapse to near-instant instead. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
 }

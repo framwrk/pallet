@@ -61,7 +61,9 @@ export interface PaneState {
 export interface Toast {
   id: number;
   message: string;
-  kind: "error" | "info";
+  kind: "error" | "info" | "success";
+  /** The exit animation is playing; the row is inert until removal. */
+  exiting?: boolean;
 }
 
 /** A remote connection that is opening but has no session yet. */
@@ -508,10 +510,20 @@ export function pushToast(message: string, kind: Toast["kind"] = "error"): numbe
   return toast.id;
 }
 
+/** Pulls the toast out of the stack once its exit animation has finished. */
+function removeToast(id: number): void {
+  setApp({ toasts: state.toasts.filter((t) => t.id !== id) });
+}
+
+/** Dismissal is an exit, not an unmount: the row stays on screen for the
+ * 145ms outro (20% shorter than the 180ms entrance, DESIGN.md › Motion), then
+ * removeToast drops it. Idempotent — re-dismissals and the auto timeout are
+ * no-ops once the exit started. */
 export function dismissToast(id: number): void {
-  if (state.toasts.some((t) => t.id === id)) {
-    setApp({ toasts: state.toasts.filter((t) => t.id !== id) });
-  }
+  const toast = state.toasts.find((t) => t.id === id);
+  if (!toast || toast.exiting) return;
+  setApp({ toasts: state.toasts.map((t) => (t.id === id ? { ...t, exiting: true } : t)) });
+  setTimeout(() => removeToast(id), 145);
 }
 
 // --- selection -------------------------------------------------------------

@@ -47,14 +47,14 @@ function SidebarItem({
         "group flex h-8 w-full items-center gap-2 rounded-[6px] px-2 text-left text-[13px] outline-none",
         "text-sidebar-foreground/85 hover:bg-sidebar-accent/70 hover:text-sidebar-foreground",
         "focus-visible:ring-primary/55 focus-visible:ring-2 focus-visible:ring-inset",
-        "transition-[background-color,color,box-shadow] duration-150 disabled:pointer-events-none disabled:opacity-40",
+        "transition-[background-color,color,box-shadow] duration-[140ms] disabled:pointer-events-none disabled:opacity-40",
         isCurrent && "bg-sidebar-accent text-sidebar-accent-foreground shadow-[inset_0_0_0_1px_var(--sidebar-border)]",
       )}
       onClick={() => openLocal(path)}
     >
       <Icon
         className={cn(
-          "text-muted-foreground group-hover:text-sidebar-foreground size-4 shrink-0 transition-colors duration-150",
+          "text-muted-foreground group-hover:text-sidebar-foreground size-4 shrink-0 transition-colors duration-[140ms]",
           isCurrent && "text-primary group-hover:text-primary",
         )}
       />
@@ -98,7 +98,7 @@ function FavoriteItem({
         "group relative flex h-8 w-full cursor-default items-center gap-2 rounded-[6px] px-2 text-left text-[13px] outline-none",
         "text-sidebar-foreground/85 hover:bg-sidebar-accent/70 hover:text-sidebar-foreground",
         "focus-visible:ring-primary/55 focus-visible:ring-2 focus-visible:ring-inset",
-        "transition-[background-color,color,box-shadow] duration-150",
+        "transition-[background-color,color,box-shadow] duration-[140ms]",
         dragTarget && "pallet-sidebar-drop-target",
         connecting && "bg-sidebar-accent/60",
         disabled && "cursor-not-allowed",
@@ -125,7 +125,7 @@ function FavoriteItem({
           className="text-primary size-4 shrink-0 animate-spin"
         />
       ) : (
-        <Server className="text-muted-foreground group-hover:text-sidebar-foreground size-4 shrink-0 transition-colors duration-150" />
+        <Server className="text-muted-foreground group-hover:text-sidebar-foreground size-4 shrink-0 transition-colors duration-[140ms]" />
       )}
       <span className="truncate">{favorite.name}</span>
       {favorite.colorLabel !== "none" && (
@@ -197,13 +197,13 @@ export function Sidebar(): React.JSX.Element {
           className={cn(
             "group text-sidebar-foreground flex h-8 w-full items-center gap-2 rounded-full px-2.5 text-left text-[13px] outline-none",
             "bg-background/30 hover:bg-background/45 focus-visible:ring-primary/55 focus-visible:ring-2 focus-visible:ring-inset",
-            "transition-[background-color,box-shadow] duration-150",
+            "transition-[background-color,box-shadow] duration-[140ms]",
             "disabled:hover:bg-background/30 disabled:cursor-not-allowed disabled:opacity-50",
           )}
           onClick={() => openQuickConnect()}
           title={connecting ? "A connection is already opening" : "Connect to Server (⌘K)"}
         >
-          <Plug className="text-muted-foreground group-hover:text-sidebar-foreground size-4 shrink-0 transition-colors duration-150" />
+          <Plug className="text-muted-foreground group-hover:text-sidebar-foreground size-4 shrink-0 transition-colors duration-[140ms]" />
           <span className="truncate font-medium">Connect to Server</span>
           <kbd
             aria-hidden="true"
