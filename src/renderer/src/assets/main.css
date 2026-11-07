@@ -285,7 +285,27 @@
   animation-delay: 150ms;
 }
 
+/* Connection placeholder (DESIGN.md › Motion): rows fill the pane instead of a
+   fixed count, and a soft opacity wave travels down them so the real listing
+   settles in without a visible count jump. */
+@keyframes pallet-skeleton-wave {
+  0%,
+  100% {
+    opacity: 0.45;
+  }
+
+  50% {
+    opacity: 1;
+  }
+}
+
 @layer components {
+  .pallet-skeleton-bar {
+    border-radius: 2px;
+    background: color-mix(in oklch, var(--muted-foreground) 32%, transparent);
+    animation: pallet-skeleton-wave 1600ms var(--ease-onscreen) infinite;
+  }
+
   .pallet-sidebar {
     isolation: isolate;
     background: color-mix(in oklch, var(--sidebar) 74%, transparent);
@@ -372,5 +392,10 @@
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+  }
+
+  .pallet-skeleton-bar {
+    animation: none !important;
+    opacity: 0.65;
   }
 }

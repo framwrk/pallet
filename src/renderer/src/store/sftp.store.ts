@@ -50,7 +50,7 @@ export function initSftpEvents(): void {
  * pane opts in for remote-to-remote work.
  */
 export async function connectRemote(profile: ConnectProfile, localPath?: string, paneId: PaneId = "right"): Promise<void> {
-  const attempt = { paneId, label: `${profile.username}@${profile.host}` };
+  const attempt = { paneId, label: `${profile.username}@${profile.host}`, host: profile.host };
   if (!beginConnection(attempt)) {
     const pending = getState().connecting;
     throw new Error(pending ? `Still connecting to ${pending.label}` : "Another connection is already opening");
