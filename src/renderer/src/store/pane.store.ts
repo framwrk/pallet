@@ -457,8 +457,10 @@ export function setConflictPromptCount(count: number): void {
 
 /** Swap a pane's backend; the listing and history belong to the old one. */
 export function setBackend(id: PaneId, backend: PaneBackend): void {
+  generation[id]++;
   setPane(id, {
     backend,
+    loading: false,
     cwd: "",
     entries: [],
     availBytes: null,

@@ -12,6 +12,7 @@ import { createReadStream, createWriteStream, promises as fs } from "fs";
 import { isDirMode, isSymlinkMode } from "../../utils/file-mode";
 import type { SFTPWrapper } from "ssh2";
 import type { SessionManager } from "../sftp/session-manager";
+import { TLSSocket } from "tls";
 
 export interface EndpointStat {
   size: number;
@@ -524,6 +525,25 @@ class FtpEndpoint implements TransferEndpoint {
     }
     const input = new PassThrough();
     input.on("error", () => {});
+    let dataReady = Promise.resolve();
+    if (this.sessions.protocol(this.sessionId) === "ftps") {
+      const prepare = lease.client.prepareTransfer;
+      dataReady = new Promise<void>((resolve) => {
+        const prepareUpload: typeof prepare = async (ftp) => {
+          try {
+            const response = await prepare(ftp);
+            const socket = ftp.dataSocket as (TLSSocket & { secureConnecting?: boolean }) | undefined;
+            if (socket instanceof TLSSocket && socket.secureConnecting) socket.once("secureConnect", resolve);
+            else resolve();
+            return response;
+          } finally {
+            // basic-ftp may replace the strategy itself after selecting EPSV/PASV.
+            if (lease.client.prepareTransfer === prepareUpload) lease.client.prepareTransfer = prepare;
+          }
+        };
+        lease.client.prepareTransfer = prepareUpload;
+      });
+    }
     let settled = false;
     const uploaded = lease.client.uploadFrom(input, p);
     const output = new Writable({
@@ -532,11 +552,16 @@ class FtpEndpoint implements TransferEndpoint {
         else input.once("drain", callback);
       },
       final(callback) {
-        input.end();
-        uploaded.then(
-          () => callback(),
-          (err) => callback(err as Error),
-        );
+        // basic-ftp can start piping before TLS finishes. Ending an empty
+        // source then closes the data socket during its handshake.
+        void dataReady.then(() => {
+          if (output.destroyed) return;
+          input.end();
+          uploaded.then(
+            () => callback(),
+            (err) => callback(err as Error),
+          );
+        });
       },
       destroy(err, callback) {
         if (!settled) lease.release(true);

@@ -61,7 +61,7 @@ afterAll(() => {
     }
   }
   rmSync(root, { recursive: true, force: true });
-});
+}, 65_000);
 
 test("mayReplaceDestination allows only a missing or identical destination", () => {
   const source: FileIdentity = { dev: 1, ino: 2 };

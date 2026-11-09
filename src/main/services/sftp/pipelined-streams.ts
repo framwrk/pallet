@@ -216,8 +216,8 @@ class WriteStream extends Writable {
       if (this.destroyed) return;
       if (err) {
         this.failure = err as Error;
-        entry.done = true; // stop the frontier from stalling on a failed write
-        callback(err);
+        // The scheduling callback may already have admitted the next write.
+        // Fail the stream without calling that callback a second time.
         this.destroy(err as Error);
         return;
       }
@@ -225,7 +225,8 @@ class WriteStream extends Writable {
       this.advanceAcked();
       this.releaseSlot();
     });
-    if (this.outstanding < WINDOW) callback();
+    if (this.failure) callback(this.failure);
+    else if (this.outstanding < WINDOW) callback();
     else this.deferred = callback;
   }
 

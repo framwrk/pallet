@@ -2,7 +2,10 @@ import { PassThrough, Readable } from "node:stream";
 import { EventEmitter } from "node:events";
 import type { SFTPWrapper } from "ssh2";
 import { SessionManager } from "../src/main/services/sftp/session-manager";
+import { Socket } from "node:net";
+import { TLSSocket } from "node:tls";
 import assert from "node:assert/strict";
+import { createPipelinedWriteStream } from "../src/main/services/sftp/pipelined-streams";
 import { makeEndpoint } from "../src/main/services/transfer/transfer-endpoint";
 import { pipeline } from "node:stream/promises";
 import { test } from "node:test";
@@ -103,6 +106,42 @@ test("canceling an FTP stream disposes its connection without waiting for a repl
   controller.abort();
   await closed;
   assert(disposed);
+});
+
+test("empty FTPS uploads wait for the data TLS handshake before EOF", async () => {
+  const socket = Object.assign(new TLSSocket(new Socket()), { secureConnecting: true });
+  const client = {
+    prepareTransfer: async (context: { dataSocket: TLSSocket }) => {
+      assert.equal(context.dataSocket, socket);
+      return { code: 229, message: "Passive mode" };
+    },
+    uploadFrom: async (source: Readable) => {
+      await client.prepareTransfer({ dataSocket: socket });
+      const result = new Promise<void>((resolve, reject) => {
+        source.once("end", () => {
+          if (socket.secureConnecting) reject(new Error("EOF interrupted the TLS handshake"));
+          else resolve();
+        });
+        source.resume();
+      });
+      // Like servers that wait for STOR, finish TLS only after prepareTransfer returns.
+      setImmediate(() => {
+        socket.secureConnecting = false;
+        socket.emit("secureConnect");
+      });
+      return result;
+    },
+  };
+  const manager = {
+    protocol: () => "ftps",
+    acquireFtpClient: async () => ({ client, release: () => {} }),
+  } as unknown as SessionManager;
+  try {
+    const endpoint = makeEndpoint(manager, { kind: "sftp", sessionId: "ftps" });
+    await pipeline(Readable.from([]), await endpoint.createWriteStream("/empty"));
+  } finally {
+    socket.destroy();
+  }
 });
 
 test("SFTP metadata distinguishes permissions from missing files", async () => {
@@ -228,4 +267,48 @@ test("SFTP upload fails when close-time metadata is rejected", async () => {
   const endpoint = makeEndpoint(manager, { kind: "sftp", sessionId: "sftp" });
   const stream = await endpoint.createWriteStream("/part", 0o644, { meta: { mtimeMs: 1, mode: 0o644 } });
   await assert.rejects(pipeline(Readable.from(Buffer.from("data")), stream), /Permission/);
+});
+
+test("a late SFTP write failure reports the server error once", async () => {
+  const failure = new Error("Disk quota exceeded on WRITE");
+  const sftp = {
+    open: (_p: string, _f: string, _m: number, callback: (err: Error | null, handle: Buffer) => void) =>
+      callback(null, Buffer.from("handle")),
+    write: (_h: Buffer, _b: Buffer, _o: number, _l: number, _pos: number, callback: (err: Error | null) => void) =>
+      setImmediate(() => callback(failure)),
+    close: (_h: Buffer, callback: (err: Error | null) => void) => callback(null),
+  } as unknown as SFTPWrapper;
+  const stream = await createPipelinedWriteStream(sftp, "/part", 0o644);
+  await assert.rejects(pipeline(Readable.from(Buffer.from("data")), stream), (err) => err === failure);
+  assert.equal(stream.confirmedBytes(), 0);
+});
+
+test("an SFTP write failure with a full pipeline does not hang", async () => {
+  const failure = new Error("Disk quota exceeded on WRITE");
+  const sftp = {
+    open: (_p: string, _f: string, _m: number, callback: (err: Error | null, handle: Buffer) => void) =>
+      callback(null, Buffer.from("handle")),
+    write: (_h: Buffer, _b: Buffer, _o: number, _l: number, _pos: number, callback: (err: Error | null) => void) =>
+      setImmediate(() => callback(failure)),
+    close: (_h: Buffer, callback: (err: Error | null) => void) => callback(null),
+  } as unknown as SFTPWrapper;
+  const stream = await createPipelinedWriteStream(sftp, "/part", 0o644);
+  await assert.rejects(
+    pipeline(Readable.from(Array.from({ length: 40 }, () => Buffer.alloc(1024))), stream),
+    (err) => err === failure,
+  );
+  assert.equal(stream.confirmedBytes(), 0);
+});
+
+test("a synchronous SFTP write failure reports the original error", async () => {
+  const failure = new Error("SFTP channel is closed");
+  const sftp = {
+    open: (_p: string, _f: string, _m: number, callback: (err: Error | null, handle: Buffer) => void) =>
+      callback(null, Buffer.from("handle")),
+    write: (_h: Buffer, _b: Buffer, _o: number, _l: number, _pos: number, callback: (err: Error | null) => void) =>
+      callback(failure),
+    close: (_h: Buffer, callback: (err: Error | null) => void) => callback(null),
+  } as unknown as SFTPWrapper;
+  const stream = await createPipelinedWriteStream(sftp, "/part", 0o644);
+  await assert.rejects(pipeline(Readable.from(Buffer.from("data")), stream), (err) => err === failure);
 });

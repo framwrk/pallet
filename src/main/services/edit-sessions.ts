@@ -84,14 +84,21 @@ export class EditSessions {
 
     const name = remotePath.slice(remotePath.lastIndexOf("/") + 1);
     const tempDir = join(app.getPath("temp"), "pallet-edits", randomUUID());
-    await fs.mkdir(tempDir, { recursive: true });
     const localPath = join(tempDir, name);
 
     const endpoint = makeEndpoint(this.sessions, { kind: "sftp", sessionId });
-    const stat = await endpoint.statOrNull(remotePath);
-    if (!stat) throw new Error("Remote file not found");
-    const src = await endpoint.createReadStream(remotePath);
-    await pipeline(src, createWriteStream(localPath));
+    let stat;
+    try {
+      await fs.mkdir(tempDir, { recursive: true });
+      stat = await endpoint.statOrNull(remotePath);
+      if (!stat) throw new Error("Remote file not found");
+      const src = await endpoint.createReadStream(remotePath);
+      await pipeline(src, createWriteStream(localPath));
+    } catch (err) {
+      endpoint.dispose();
+      await fs.rm(tempDir, { recursive: true, force: true });
+      throw err;
+    }
 
     const edit: EditSession = {
       sessionId,
@@ -162,7 +169,8 @@ export class EditSessions {
       return;
     }
     edit.uploading = true;
-    const partPath = edit.remotePath + PART_SUFFIX;
+    const remoteDir = edit.remotePath.slice(0, edit.remotePath.lastIndexOf("/") + 1);
+    const partPath = `${remoteDir}.pallet-${randomUUID()}${PART_SUFFIX}`;
     const abort = new AbortController();
     edit.abort = abort;
     let stallTimer: NodeJS.Timeout | undefined;

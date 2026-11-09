@@ -13,7 +13,7 @@ import {
 import { Readable, Writable } from "node:stream";
 import { afterAll, afterEach, beforeAll, beforeEach, expect, mock, test } from "bun:test";
 import { dirname, join } from "node:path";
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { PART_SUFFIX } from "../src/shared/transfer/transfer.constants";
 import type { SessionManager } from "../src/main/services/sftp/session-manager";
 import { tmpdir } from "node:os";
@@ -227,7 +227,8 @@ test("a stalled upload times out, cleans up its part, and allows the next save",
   await waitFor(() => events.some((event) => event.kind === "error"));
 
   expect(events.find((event) => event.kind === "error")?.message).toContain("timed out");
-  expect(endpoint.removed).toContain(`${REMOTE}${PART_SUFFIX}`);
+  expect(endpoint.removed).toHaveLength(1);
+  expect(endpoint.removed[0]).toMatch(/^\/remote\/\.pallet-.+\.pallet-part$/);
   expect(endpoint.uploads).toEqual([]);
 
   writeFileSync(localPath, "recovered content");
@@ -244,4 +245,36 @@ test("closeAll removes every session's temp directory", async () => {
 
   expect(existsSync(dirname(first))).toBe(false);
   expect(existsSync(dirname(second))).toBe(false);
+});
+
+test("a missing remote file leaves no local temp directory or endpoint", async () => {
+  const before = readdirSync(join(tempRoot, "pallet-edits"));
+  await expect(editSessions.open("s1", "/remote/missing.txt")).rejects.toThrow("Remote file not found");
+  expect(readdirSync(join(tempRoot, "pallet-edits"))).toEqual(before);
+  expect(endpoint.disposed).toBe(true);
+});
+
+test("a failed download leaves no local temp directory or endpoint", async () => {
+  const before = readdirSync(join(tempRoot, "pallet-edits"));
+  endpoint.createReadStream = async () =>
+    Readable.from(
+      (async function* () {
+        yield Buffer.from("partial");
+        throw new Error("Download interrupted");
+      })(),
+    );
+  await expect(editSessions.open("s1", REMOTE)).rejects.toThrow("Download interrupted");
+  expect(readdirSync(join(tempRoot, "pallet-edits"))).toEqual(before);
+  expect(endpoint.disposed).toBe(true);
+});
+
+test("saving an edit preserves an unrelated .pallet-part file", async () => {
+  const foreignPart = `${REMOTE}${PART_SUFFIX}`;
+  endpoint.parts.set(foreignPart, Buffer.from("unrelated content"));
+  const localPath = await editSessions.open("s1", REMOTE);
+  writeFileSync(localPath, "saved edit");
+  await waitFor(() => events.some((event) => event.kind === "uploaded"));
+
+  expect(endpoint.files.get(REMOTE)?.toString()).toBe("saved edit");
+  expect(endpoint.parts.get(foreignPart)?.toString()).toBe("unrelated content");
 });

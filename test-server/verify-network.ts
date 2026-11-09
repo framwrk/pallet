@@ -175,17 +175,11 @@ try {
   recovered.end();
   console.log("✓ Outage blocks new and existing traffic; existing session and new connections recover");
 
-  docker(
-    "exec",
+  const clearOverrides = ["DOWNLOAD_KBIT", "UPLOAD_KBIT", "DELAY_MS", "JITTER_MS", "LOSS_PERCENT"].flatMap((name) => [
     "-e",
-    "PALLET_TEST_NETWORK=weak",
-    ...["DOWNLOAD_KBIT", "UPLOAD_KBIT", "DELAY_MS", "JITTER_MS", "LOSS_PERCENT"].flatMap((name) => [
-      "-e",
-      `PALLET_TEST_${name}=`,
-    ]),
-    container,
-    "test-server-network",
-  );
+    `PALLET_TEST_${name}=`,
+  ]);
+  docker("exec", "-e", "PALLET_TEST_NETWORK=weak", ...clearOverrides, container, "test-server-network");
   assert.equal(shaping("eth0").options.rate.rate, 187_500);
   assert.equal(shaping("pallet-up").options.rate.rate, 62_500);
   assert.equal(shaping("eth0").options.delay.delay, 0.15);
@@ -194,13 +188,13 @@ try {
 
   // tc reports bytes/second; netem rounds delay to the kernel's psched tick, so assert a
   // ceiling instead of exact equality like the slower profiles above.
-  docker("exec", "-e", "PALLET_TEST_NETWORK=optimal", container, "test-server-network");
+  docker("exec", "-e", "PALLET_TEST_NETWORK=optimal", ...clearOverrides, container, "test-server-network");
   assert.equal(shaping("eth0").options.rate.rate, 12_500_000);
   assert.equal(shaping("pallet-up").options.rate.rate, 6_250_000);
   assert(shaping("eth0").options.delay.delay <= 0.01, "Optimal profile must not exceed its 10 ms delay");
   console.log("✓ Optimal profile applies fiber-class rates and latency");
 
-  docker("exec", "-e", "PALLET_TEST_NETWORK=performant", container, "test-server-network");
+  docker("exec", "-e", "PALLET_TEST_NETWORK=performant", ...clearOverrides, container, "test-server-network");
   assert.equal(shaping("eth0").options.rate.rate, 125_000_000);
   assert.equal(shaping("pallet-up").options.rate.rate, 125_000_000);
   assert(shaping("eth0").options.delay.delay <= 0.001, "Performant profile must not exceed its 1 ms delay");
