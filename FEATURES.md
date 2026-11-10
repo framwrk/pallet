@@ -201,6 +201,9 @@ has no usable keys, the connection form says what to fix.
 the pane, marks the session _reconnecting_, and retries with backoff (1, 2, 4, 8, 15 seconds). Any
 running transfer pauses and resumes automatically once the connection returns.
 
+Transfers also retry a refused replacement connection during a short server restart, within the
+configured transfer retry limit.
+
 Disconnect with the **×** on the server chip in a pane's breadcrumb bar. The right pane shows Quick
 Connect again; the left pane returns to the local disk.
 

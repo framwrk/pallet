@@ -385,6 +385,36 @@ test("metadata timeout during enumeration retries without losing files", async (
   }
 });
 
+for (const [reason, failure] of [
+  ["refused", Object.assign(new Error("connect ECONNREFUSED (control socket)"), { code: "ECONNREFUSED" })],
+  ["unexpectedly closed", new Error("Server sent FIN packet unexpectedly, closing connection.")],
+] as const) {
+  test(`a ${reason} replacement connection retries after the server returns`, async () => {
+    const f = await fixture();
+    try {
+      await fs.writeFile(`${f.source}/a`, "replacement");
+      await fs.writeFile(`${f.dest}/a`, "original");
+      let attempts = 0;
+      const dest = wrap(f.local, {
+        createWriteStream: async (p, mode, options) => {
+          if (++attempts === 1) {
+            assert.equal(await fs.readFile(`${f.dest}/a`, "utf8"), "original");
+            throw failure;
+          }
+          return f.local.createWriteStream(p, mode, options);
+        },
+      });
+      const result = await harness(f.local, dest).run(f.source, f.dest, ["a"]);
+      assert.equal(result.state, "completed");
+      assert.equal(attempts, 2);
+      assert.equal(await fs.readFile(`${f.dest}/a`, "utf8"), "replacement");
+      assert.deepEqual(await fs.readdir(f.dest), ["a"]);
+    } finally {
+      await f.cleanup();
+    }
+  });
+}
+
 test("jobs sharing a session run within one connection budget", async () => {
   const f = await fixture();
   try {
