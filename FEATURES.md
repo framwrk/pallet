@@ -2,7 +2,7 @@
 
 What Pallet can do, and how to do it.
 
-To move a file, launch the app, press **⌘K** to connect to a server, click a file, and press **F5**
+To copy a file, launch the app, press **⌘K** to connect to a server, click a file, and press **F5**
 to send it to the other pane. The rest of this document covers the details.
 
 - [The window](#the-window)
@@ -63,9 +63,9 @@ Return. Escape cancels.
 **Go to Folder (⌘⇧G).** Opens a dialog for typing a path directly, in either pane.
 
 **Sorting.** Click the **Name**, **Size**, or **Date Modified** column header. Click again to
-reverse the order. Folders sort before files in every column, and names use natural order, so
-`file2` comes before `file10`. Each pane sorts independently. When you sort by Size, folders sort
-by name among themselves, even while Pallet calculates folder sizes.
+reverse the order. Folders sort before files by default, and names use natural order, so
+`file2` comes before `file10`. Each pane sorts independently. With **Folders first** enabled, folders sort
+by name among themselves in the Size column, even while Pallet calculates folder sizes.
 
 In narrow panes, Date Modified and then Size are hidden so filenames remain readable alongside the
 inspector. Widen the pane or close the inspector to show those columns again.
@@ -79,8 +79,8 @@ available`). With a selection, it switches to `3 of 19 selected`.
 **Large directories** are virtualized: Pallet renders only the visible rows, so a 10,000-file
 directory opens and scrolls without stalling.
 
-**Symlinks** appear with an arrow badge and show their target, so you know whether descending into
-them works. Pallet does not follow symlinks during a recursive copy or delete.
+**Symlinks** appear with an arrow badge. The inspector shows the target kind when known.
+Transfers skip symlinks; recursive deletes do not follow them.
 
 ### Folder sizes
 
@@ -96,8 +96,8 @@ differs by location:
   walks run at a time.
 - **Remotely:** sizing a tree is the most expensive operation Pallet runs on a server, so it needs
   a second switch: **Include remote folders**. SFTP sizing walks the tree with one round trip per
-  directory. Only one remote sizing job runs per server at a time, so sizing does not compete with
-  your transfers. Results are cached.
+  directory. Only one remote sizing job runs per session at a time to limit competition with
+  transfers. Results are cached.
 
 Totals are _apparent size_ (the sum of the file sizes inside, excluding directory metadata), not
 disk usage. Symlinks count at their own size, and Pallet does not follow them, so a link to `/`
@@ -140,15 +140,15 @@ deletes are permanent, and Pallet asks for confirmation first.
 **Copy and paste (⌘C, ⌘V).** Copy in one pane and paste in the other. It works in every direction,
 including local to remote and remote to local: pasting routes through the transfer queue.
 
-**Copy to the other pane (F5 or ⌘D).** **Move to the other pane (F6).**
+**Copy to the other pane (F5 or ⌘D).** **Move between local panes (F6).**
 
-**Undo (⌘Z).** Undoes local renames and moves, up to 20 levels deep. Transfers and deletes are not
+**Undo (⌘Z).** Undoes local renames and moves, up to 50 levels deep. Transfers and deletes are not
 undoable; recover Trash items through Finder instead.
 
 The right-click menu on a file includes **Open** and **Reveal in Finder**. Open uses the file's
 default app.
 
-**Right-click a file** (local): Open · Reveal in Finder · Rename · Copy · Move to Trash.
+**Right-click a file** (local): Open · Reveal in Finder · Rename · Copy · Transfer to Remote / Other Pane · Move to Trash.
 **Right-click empty space**: New Folder · Paste · Refresh.
 
 ---
@@ -175,7 +175,7 @@ the selected pane when the right pane is already connected, and otherwise opens 
 | **Authenticate**                    | Password for every protocol; **Private Key** and **SSH Agent** are also available for SFTP.                                         |
 | **Password** / **Key + Passphrase** | Key auth takes a path to your private key; the passphrase field appears with it. Agent auth uses keys already loaded in your agent. |
 | **Remote Path**                     | Where to start browsing. Blank means your server-side home directory.                                                               |
-| **Local Path**                      | Optional. Sets the _left_ pane to this folder when you connect, so a favorite can restore both sides of a working setup at once.    |
+| **Local Path**                      | Optional. Opens this folder in the left pane when connecting the right pane, if the left pane is still local.                     |
 | **Note**                            | Free text, shown when editing the favorite.                                                                                         |
 | **Color Label**                     | A dot for spotting the connection in a long favorites list.                                                                         |
 
@@ -197,14 +197,14 @@ at least one usable key loaded; if `SSH_AUTH_SOCK` is unset, the socket is unrea
 has no usable keys, the connection form says what to fix.
 
 **If the connection drops** (Wi-Fi dies, the laptop sleeps, the server restarts), Pallet grays out
-the pane, marks the session _reconnecting_, and retries with backoff (1, 2, 4, 8, 15 seconds). Any
-running transfer pauses and resumes automatically once the connection returns.
+the pane and, by default, retries after 1, 2, 4, 8, and 15 seconds. Transfers pause during recovery
+and resume when the connection returns. If all five attempts fail, use **Reconnect** in the pane.
 
 Transfers also retry a refused replacement connection during a short server restart, within the
 configured transfer retry limit.
 
-Disconnect with the **×** on the server chip in a pane's breadcrumb bar. The right pane shows Quick
-Connect again; the left pane returns to the local disk.
+Disconnect with the **×** on the server chip, or **⌘W** / **File → Close Remote Pane** for the active
+remote pane. The window stays open; the right pane shows Quick Connect, or the left returns to disk.
 
 ---
 
@@ -213,14 +213,14 @@ Connect again; the left pane returns to the local disk.
 Pallet uses _trust-on-first-use_, the same model as ForkLift and Transmit.
 
 **The first time you connect to a host,** Pallet shows a dialog with its key type and SHA-256
-fingerprint. Compare the fingerprint against the one your server reports (`ssh-keyscan your-host`
-or your provider's console), then click **Trust**. Pallet stores the key, and you won't see the
+fingerprint. Compare it with a fingerprint from your provider's console or server administrator,
+then click **Trust**. Pallet stores the key, and you won't see the
 dialog again.
 
 **If a host's fingerprint changes,** Pallet shows a more prominent warning with the old and new
 fingerprints. The server was either rebuilt deliberately, or someone is intercepting your
-connection, and the fingerprint alone cannot tell you which. You can dismiss the warning, but
-don't dismiss it unless you know why the key changed.
+connection, and the fingerprint alone cannot tell you which. Choose **Cancel** to reject it, or
+**Trust New Key** only after verifying the change.
 
 ---
 
@@ -257,9 +257,8 @@ Once a pane is connected, most local operations work the same way:
 **Right-click a remote file**: Open · Edit in External Editor · Copy · Transfer to Local or the other
 server · Rename · Delete · Refresh.
 
-**One limitation:** remote-to-remote moves (copy then delete in one command) are not supported.
-Copy the files, then delete the originals. A move attempt fails with an explanation instead of
-silently copying and deleting, because a failure partway through that sequence loses data.
+**Moves involving any remote pane are unsupported.** Copy the files, verify the result, then delete
+the originals. F6 only moves between local panes.
 
 ---
 
@@ -273,8 +272,8 @@ two servers.
 Use the keyboard instead: **F5** or **⌘D** to copy to the other pane, **F6** to move (local only),
 or **⌘C** and **⌘V** to copy and paste.
 
-Everything goes through the **transfer queue** in the drawer at the bottom (even a 4 KB local
-copy), so progress, conflicts, and error handling behave identically no matter what you move.
+Copies go through the **transfer queue** in the drawer at the bottom, including local copies.
+Local moves run directly and support undo.
 
 ### How a transfer runs
 
@@ -377,7 +376,7 @@ Press **⌘I** or **Space** to toggle it. The inspector shows details for a sing
 - Name, kind, size, date modified, full path, and extension
 - **Permissions matrix**: a grid of R/W/X checkboxes across Owner, Group, and Others, plus the
   octal value (`0644`) and the symbolic string (`-rw-r--r--`)
-- **Inline preview** for images and text files under 1 MB
+- **Inline preview** for supported images and text files up to the configured limit (1 MB by default)
 
 **On a remote file, the permissions are editable.** Select checkboxes or enter an octal value to
 change permissions on the server. Local permissions are read-only.
@@ -389,17 +388,16 @@ change permissions on the server. Local permissions are read-only.
 Right-click a remote file → **Edit in External Editor**.
 
 Pallet downloads the file to a temporary location, opens it in your default app for that file type,
-and monitors it. Every save re-uploads the file through the same `.pallet-part` staging as any
-other transfer. A toast confirms each upload.
-
-Keep the file open and keep saving; each save is another upload. Close the editor when you finish.
+and polls for changes. Settled saves re-upload through `.pallet-part` staging; a toast confirms
+each upload. Wait for confirmation before disconnecting or quitting: either ends monitoring and
+removes the temporary copy. Closing the editor alone does not end monitoring.
 
 ---
 
 ## Settings
 
-Press **⌘,** or choose **Pallet → Settings**. A separate window opens with six tabs, and it
-resizes to fit the selected tab.
+Press **⌘,** or choose **Pallet → Settings**. An in-app modal opens with six sidebar sections.
+Use **⌘F** or **/** to focus its section search when not editing a field.
 
 ### General
 
@@ -443,7 +441,10 @@ make while Pallet is running.
 | ------------------ | -------- | -------------------------------------------------------------------- |
 | **Upload delay**   | 800 ms   | Wait for an external editor to settle before uploading a saved file. |
 | **Change polling** | 1000 ms  | How often Pallet checks the editor's local copy for changes.         |
-| **Upload timeout** | 60000 ms | Abort a stalled re-upload from the external editor.                  |
+| **Upload timeout** | 60000 ms | Maximum duration of an external-editor upload.                       |
+
+**Database path** lets you copy or reveal the SQLite file containing favorites, preferences, host
+keys, and diagnostic transfer history. The history is not a resumable queue.
 
 ### About
 
@@ -460,7 +461,7 @@ release notes, and issue tracker. It also provides:
 The native **Pallet → About Pallet** panel stays deliberately minimal, showing just the app name,
 version, and copyright. Use the settings tab for links and diagnostics.
 
-Changes save as you make them (there is no OK button) and apply to open windows immediately.
+Changes save without an OK button; numeric fields may commit when focus leaves the field.
 Preferences live in the same local SQLite database as your favorites.
 
 ---
@@ -475,26 +476,26 @@ GitHub prereleases are included by default; turn them off in [Settings](#setting
 are plain `MAJOR.MINOR.PATCH`; Pallet does not ship versions like `0.1.0-beta.1`.
 
 Updates are not installed automatically; that requires code signing, which is not in place.
-Instead, the toast downloads the release disk image into `~/Downloads` (with a progress bar) and
-mounts it. To update, click **Download update**, then drag Pallet into Applications. Pallet closes
-once the disk image is open, so the drag-to-Applications window is the last thing left on screen. If
-the image cannot be opened, Pallet stays running and shows an error so you can try again.
+Instead, **Download update** saves the disk image to `~/Downloads`, verifies its published SHA-256,
+and opens it. Missing checksums or mismatches stop the update. Drag Pallet into Applications to
+install. Opening the image cancels active transfers, waits briefly for cleanup, then quits Pallet;
+finish transfers first. If the image cannot be opened, Pallet stays running and shows an error.
 If a release has no disk image, the toast links to the release page.
 
 ---
 
 ## Logs and privacy
 
-**Pallet collects no telemetry.** There are no analytics, no crash reports, and no other outbound
-requests: the only outbound request Pallet makes is the GitHub Releases version check. Your data
-stays on your machine.
+**Pallet collects no telemetry.** Network traffic is for your server connections, GitHub Releases
+update checks, and requested update downloads and checksums. Favorites, preferences, and transfer
+history stay on your machine; files go to the destinations you choose.
 
 Logs go to `~/Library/Logs/Pallet/pallet.log`, rotating at 5 MB. Open them with **Help → Reveal Log
 in Finder**.
 
 Pallet does not log credentials, and it scrubs every line on the way to disk: it replaces inline
 URL passwords, `password:` and `token:` assignments, and private-key bodies with `***`. The log is
-safe to attach to a bug report, though check it first for file paths you would rather not share.
+intended for bug reports; review it for hostnames, file paths, or other sensitive details before sharing.
 
 ---
 
@@ -538,6 +539,7 @@ safe to attach to a bug report, though check it first for file paths you would r
 | -------------- | ----------------- |
 | `⌘I` / `Space` | Toggle inspector  |
 | `⌘K`           | Connect to server |
+| `⌘W`           | Disconnect active remote pane; keep window open |
 | `⌘,`           | Settings          |
 
 ---
@@ -546,7 +548,8 @@ safe to attach to a bug report, though check it first for file paths you would r
 
 Deliberate omissions in the beta, not bugs:
 
-- **Remote-to-remote move**: copy, then delete.
+- **Moves involving remote panes**: copy, verify, then delete.
+- **Symlink transfers**: links are skipped, not copied or followed.
 - **Resume across app restarts or FTP and FTPS checkpoints**: checkpoint resume covers only large
   local and SFTP files within a running job.
 - **Undo for transfers or deletes**: undo covers local rename and move only.

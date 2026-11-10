@@ -37,7 +37,7 @@ remote hosts.
   Pallet resumes it with backoff after the connection returns. Large SFTP transfers keep a deep
   request pipeline in flight — so throughput is not one round trip per chunk — and resume from the
   last destination-confirmed byte. Pallet abandons stalled channels and retries them on fresh ones.
-- **Keyboard-first:** F5 and F6 to copy or move across panes, ⌘K to connect, Return to rename, ⌘⌫
+- **Keyboard-first:** F5 to copy across panes, F6 to move between local panes, ⌘K to connect, Return to rename, ⌘⌫
   to move files to the Trash, and ⌘⇧. for hidden files. The full list, including the known
   limitations, is in [FEATURES.md](FEATURES.md).
 - **Favorites with encrypted secrets:** connections are saved in SQLite on your machine. Pallet
@@ -47,8 +47,8 @@ remote hosts.
   loading every row, and optional folder-size calculation walks only the rows on screen.
 - **Inspector:** a permissions matrix with octal and symbolic views (editable on remote files),
   inline image and text preview, and full path details.
-- **No telemetry:** no analytics, no crash reporting, and no other outbound requests. The only
-  outbound request Pallet makes is a GitHub Releases version check.
+- **No telemetry:** no analytics or crash reporting. Network traffic is for your server connections,
+  GitHub Releases update checks, and update downloads you request.
 
 See [FEATURES.md](FEATURES.md) for everything Pallet can do, including the complete keyboard
 shortcuts and a candid list of what it doesn't do yet.
@@ -56,6 +56,8 @@ shortcuts and a candid list of what it doesn't do yet.
 ## Installing
 
 ### Download
+
+Requires macOS 13 or later on Apple silicon (arm64).
 
 Download the `.dmg` from the [Releases page](https://github.com/framwrk/pallet/releases), open it,
 and drag **Pallet** to your Applications folder.
@@ -83,20 +85,19 @@ Then launch the app again.
 
 ## Building from source
 
-Requires [Bun](https://bun.sh) 1.3 or later and the Xcode command line tools. Pallet is tested with
-Bun only; `npm`, `pnpm`, and `yarn` are untested.
+Requires Node.js, [Bun](https://bun.sh), and the Xcode command line tools on macOS. CI uses Node.js 24
+and Bun 1.4.3. `npm`, `pnpm`, and `yarn` are untested.
 
 ```bash
 git clone https://github.com/framwrk/pallet.git
 cd pallet
-bun install
+bun install --frozen-lockfile
 bun run rebuild     # rebuild native modules against Electron's ABI
 bun run dev         # run in development
 bun run build:mac   # produce a .dmg and .zip in dist/
 ```
 
-See [macOS packaging checks](docs/macos-packaging.md) for the runtime file allowlist and
-inspection of the packaged plist and archive.
+See [macOS packaging](docs/macos-packaging.md) for archive checks and the release workflow.
 
 ### Checks
 
@@ -133,9 +134,10 @@ bun run test:agent
 ### Black-box UI regression
 
 Build once, then run the fast local suite against the real Electron app with a fresh temporary
-profile and files:
+profile and files (rebuild native modules first if you have not already):
 
 ```bash
+bun run rebuild
 bun run build
 bun run test:ui:local
 ```
@@ -263,7 +265,7 @@ the retry succeeds.
 
 Use `PALLET_TEST_PROTOCOL=sftp` (or `ftp` or `ftps`) to select a protocol,
 `PALLET_TEST_FILE_COUNT=2100` for a larger batch, and `PALLET_TEST_TRANSFER_TIMEOUT_MS=900000` when
-deliberately use a slow network profile. The SFTP test includes a file larger than 16 MiB and an
+deliberately using a slow network profile. The SFTP test includes a file larger than 16 MiB and an
 injected interruption partway through it, then checks that the queue resumes at a confirmed offset.
 Use `PALLET_TEST_LARGE_FILE=0` for a small smoke test on a deliberately slow link. Test artifacts
 use unique temporary directories; the tests remove them when they exit normally.
@@ -277,7 +279,8 @@ side behaves under latency.
 ## Contributing
 
 Bug reports and pull requests are welcome. Before you open a pull request (PR), make sure
-`bun run lint` and `bun run typecheck` pass.
+`bun run lint`, `bun run typecheck`, and `bun run test:offline` pass. For UI changes, also build and
+run `bun run test:ui:local`; see [UI regression coverage](docs/ui-regression.md) for other suites.
 
 ## License
 

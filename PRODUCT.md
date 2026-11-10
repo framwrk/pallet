@@ -22,16 +22,16 @@ Pallet is a free and open-source, native-feeling macOS file-transfer client for 
 
 ## Operating Context
 
-The core workspace places local Mac files in the left pane and a connected remote server in the right pane. Users browse both locations, manage files, and transfer files between them with direct manipulation or keyboard shortcuts. Saved favorites, an inspector, and a persistent transfer queue support repeated server workflows.
+The workspace starts with local Mac files on the left and a remote server on the right. The left pane can become a second server for remote-to-remote copies. Saved favorites, an inspector, and a transfer queue support repeated workflows; active jobs do not survive app restarts.
 
 ## Capabilities and Constraints
 
-- The current product supports SFTP with password or private-key authentication, plus FTP and explicit FTPS with password authentication.
+- SFTP supports password, private-key, and SSH-agent authentication. FTP and explicit FTPS use passwords.
 - FTPS validates server certificates by default; users may explicitly relax verification for a trusted private or test server.
 - It provides dual-pane browsing, local and remote file operations, saved connections, transfers with conflict handling, previews, permissions inspection, and external editing of remote files.
-- Transfers are enumerated, staged to temporary files, atomically renamed, and verified. Interrupted or unsafe operations must fail visibly rather than leave silently corrupted results.
-- Pallet currently targets macOS and is distributed as an Electron application built with React and TypeScript.
-- Current beta omissions and release-specific limitations are documented in `FEATURES.md`; they are not permanent product commitments.
+- Transfers are enumerated, staged, checked for size and source changes, then renamed into place. Replacement is atomic locally and on SFTP servers supporting POSIX rename; other servers determine rename behavior. Verification does not use destination checksums.
+- Pallet ships for Apple silicon on macOS 13 or later, using Electron, React, and TypeScript.
+- Current beta omissions and release-specific limitations are documented in [FEATURES.md](FEATURES.md); they are not permanent product commitments.
 
 ## Brand Commitments
 
@@ -45,8 +45,8 @@ The core workspace places local Mac files in the left pane and a connected remot
 
 - `README.md` contains the public product description, installation status, stack, and licensing information.
 - `FEATURES.md` documents the implemented workflows, keyboard conventions, privacy behavior, transfer guarantees, settings, and known beta omissions.
-- `build/icon.icns`, `build/icon.ico`, `build/icon.png`, and `resources/icon.png` contain the current product icon assets.
-- The repository does not contain testimonials, customer claims, benchmarks, or other third-party proof; future work must not fabricate them.
+- `build/icon.icns`, `build/icon.ico`, `build/icon.png`, and `src/renderer/src/assets/pallet-icon.png` contain the current product icon assets.
+- `test-server/bench-transfers.ts` provides a local benchmark harness. There are no published benchmark results, testimonials, or third-party endorsements in the repository; do not fabricate them.
 
 ## Product Principles
 

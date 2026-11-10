@@ -8,10 +8,11 @@ listings independently verify transfers. This is behavioral coverage, not screen
 
 ## Commands and prerequisites
 
-Run from the repository root, on macOS with Bun, the project's installed dependencies, and a
-logged-in graphical desktop. Build first; the runner deliberately does not rebuild implicitly:
+Run from the repository root on a logged-in macOS desktop after the [source setup](../README.md#building-from-source).
+Rebuild native modules and build the app first; the runner does neither implicitly:
 
 ```sh
+bun run rebuild
 bun run build
 bun run test:ui:local
 ```
@@ -64,9 +65,10 @@ For all source checks:
 ```sh
 bun run lint
 bun run typecheck
-bun run build
 bun run test:offline
-PALLET_TEST_UI=1 bun test test-server
+bun run rebuild
+bun run build
+bun run test:ui:local
 ```
 
 CI and release builds run every offline regression in `test-server` via `bun run test:offline`,
@@ -76,11 +78,8 @@ seven days. Docker/native integration remains explicit; ordinary CI has no Docke
 requirement. A CI runner that cannot launch Electron fails the UI step rather than silently
 skipping coverage.
 
-The offline edit-session regressions include saves made immediately as the editor opens,
-unchanged files, and editors that remove and replace the local path. Edit sessions capture the
-downloaded file's size and modification time before opening the editor, then poll serially from
-that baseline. This avoids missing an early save during `fs.watchFile`'s asynchronous initial stat
-while retaining save debouncing, staged uploads, timeout recovery, and cleanup on close.
+Offline edit-session regressions cover immediate saves, unchanged files, editor path replacement,
+save debouncing, staged uploads, timeouts, and cleanup on close.
 
 ## Automated coverage
 
@@ -149,7 +148,7 @@ never personal servers or files. Record OS version, app commit, result and any d
 ### Verification record: November 10, 2026
 
 Verified on macOS 27.0.1 (26A434), using the built app from `10df6cd` plus the offline-CI and
-`ERR_STREAM_PREMATURE_CLOSE` retry changes in this working tree. Lint, typechecks and build passed;
+`ERR_STREAM_PREMATURE_CLOSE` retry changes committed in `2b9235a`. Lint, typechecks and build passed;
 offline regressions passed 122 tests (one display-dependent skip), and Electron local, native and
 integration suites passed 5/5, 1/1 and 21/21 respectively.
 

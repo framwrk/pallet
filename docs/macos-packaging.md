@@ -45,3 +45,14 @@ To preserve an existing `dist/mac-arm64` build, pass
 `--config.directories.output=dist/packaging-check` to `bun run build:mac` and adjust the
 inspection paths. For verification using only the already installed Electron distribution,
 also pass `--config.electronDist=node_modules/electron/dist`.
+
+## Release workflow
+
+- Push a `vMAJOR.MINOR.PATCH` tag only after its commit is on `main` and its version matches `package.json`.
+- [Release CI](../.github/workflows/release.yml) runs lint, typechecks, and offline tests, rebuilds native
+  modules, then builds and verifies the unsigned arm64 package. It does not run the UI suite.
+- `bash scripts/verify-release.sh vX.Y.Z` checks the DMG and app version and writes `dist/checksums.txt`.
+  The release publishes the DMG and checksums; the locally built ZIP is not uploaded. Versions below
+  1.0.0 are marked as GitHub prereleases.
+- `bash scripts/preview-release-notes.sh X.Y.Z` previews GitHub-generated notes with an authenticated
+  `gh` CLI. It reads remote history and does not publish anything.

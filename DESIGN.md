@@ -107,7 +107,7 @@ components:
 
 Pallet should feel like a first-class modern macOS utility: the spatial confidence of a professional workbench, the material refinement of Apple liquid glass, the calm finish of Raycast, and the disciplined panel logic of VS Code. The system is native-feeling rather than decorative. It uses translucent material to clarify the window's layers, not to make every object look frosted.
 
-This is the target specification for the app-wide redesign. Existing code does not yet define the authority for the future visual world. Preserve Pallet's dual-pane model, compact information density, workflows, keyboard behavior, terminology, and safety cues while replacing the current visual shell. Settings may move its existing categories into a Raycast-like sidebar, but its settings, behavior, and hierarchy remain intact.
+This is the target specification for the app-wide redesign, not a description of every shipped detail. Current tokens live in `src/renderer/src/assets/main.css`; implemented workflows are documented in [FEATURES.md](FEATURES.md). Preserve Pallet's dual-pane model, compact information density, workflows, keyboard behavior, terminology, and safety cues while evolving the visual shell.
 
 Apple, Raycast, and VS Code are craft references, not templates. Pallet must remain recognizable through its symmetric local/remote workspace, connection identity, transfer-state language, and blue focus signal. Text or product features shown inside reference screenshots are never part of this specification.
 
@@ -186,7 +186,7 @@ Pallet keeps its dual-pane workspace: the left pane starts local, and the right 
 - **Inspector:** `272–320px` wide, right-docked, translucent at its outer shell, with stable inset surfaces for previews and editable permission controls.
 - **Transfer drawer:** full-width beneath the workspace, `32–38px` collapsed and up to `240px` open. Its shell may use glass; progress rows use stable surfaces.
 - **Dialogs and connection forms:** compact and centered, with label/control alignment maintained. Destructive decisions keep the action nearest the consequence and visually separate Cancel.
-- **Settings:** a compact glass sidebar holds the existing General, Appearance, Transfers, and Advanced categories; the right side uses grouped settings surfaces. Do not add search until the number of settings makes retrieval meaningfully difficult.
+- **Settings:** retain the in-app modal, searchable sidebar, and six categories: General, Appearance, Transfers, Updates, Advanced, and About. The right side uses grouped settings surfaces.
 
 Use a `4px` base spacing unit. Routine gaps are `8px` and `12px`; region padding is `12–16px`; major panel transitions use `20–24px`. Dense file rows target `26–28px`. Controls target `28px`, growing to `32px` only when the interaction benefits from a larger hit area. Minimum pointer targets remain `28px`; keyboard access is mandatory for all compact controls.
 
