@@ -3,15 +3,8 @@ productName: Pallet
 directories:
   buildResources: build
 files:
-  - "!**/.vscode/*"
-  - "!src/*"
-  - "!electron.vite.config.{js,ts,mjs,cjs}"
-  - "!{.eslintcache,eslint.config.mjs,.prettierignore,.prettierrc.yaml,CHANGELOG.md,README.md}"
-  - "!{.env,.env.*,.npmrc,pnpm-lock.yaml,bun.lock,bun.lockb}"
-  - "!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}"
-  - "!{INITIAL_PLAN.md,PROJECT_INFO.md}"
-asarUnpack:
-  - resources/**
+  - out/**
+  - package.json
 mac:
   entitlementsInherit: build/entitlements.mac.plist
   # arm64 only for the beta. A universal build needs every native dependency
@@ -26,11 +19,11 @@ mac:
       arch: arm64
   minimumSystemVersion: "13.0"
   extendInfo:
-    - NSDocumentsFolderUsageDescription: Pallet browses and transfers files in your Documents folder.
-    - NSDownloadsFolderUsageDescription: Pallet browses and transfers files in your Downloads folder.
-    - NSMoviesFolderUsageDescription: Pallet browses and transfers files in your Movies folder.
-    - NSMusicFolderUsageDescription: Pallet browses and transfers files in your Music folder.
-    - NSPicturesFolderUsageDescription: Pallet browses and transfers files in your Pictures folder.
+    NSDocumentsFolderUsageDescription: Pallet browses and transfers files in your Documents folder.
+    NSDownloadsFolderUsageDescription: Pallet browses and transfers files in your Downloads folder.
+    NSMoviesFolderUsageDescription: Pallet browses and transfers files in your Movies folder.
+    NSMusicFolderUsageDescription: Pallet browses and transfers files in your Music folder.
+    NSPicturesFolderUsageDescription: Pallet browses and transfers files in your Pictures folder.
   notarize: false
 dmg:
   artifactName: ${name}-${version}.${ext}

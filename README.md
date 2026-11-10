@@ -95,6 +95,9 @@ bun run dev         # run in development
 bun run build:mac   # produce a .dmg and .zip in dist/
 ```
 
+See [macOS packaging checks](docs/macos-packaging.md) for the runtime file allowlist and
+inspection of the packaged plist and archive.
+
 ### Checks
 
 ```bash
