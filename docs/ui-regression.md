@@ -65,14 +65,16 @@ For all source checks:
 bun run lint
 bun run typecheck
 bun run build
-bun test test-server
+bun run test:offline
 PALLET_TEST_UI=1 bun test test-server
 ```
 
-The macOS CI job builds/rebuilds the declared native dependency for Electron and runs the local
-UI suite after the existing checks, uploading failure diagnostics for seven days. Docker/native
-integration remains explicit; ordinary CI has no Docker or Accessibility requirement. A CI runner
-that cannot launch Electron fails the UI step rather than silently skipping coverage.
+CI and release builds run every offline regression in `test-server` via `bun run test:offline`,
+not just the transfer subset. The macOS CI job builds/rebuilds the declared native dependency for
+Electron and runs the local UI suite after the offline checks, uploading failure diagnostics for
+seven days. Docker/native integration remains explicit; ordinary CI has no Docker or Accessibility
+requirement. A CI runner that cannot launch Electron fails the UI step rather than silently
+skipping coverage.
 
 ## Automated coverage
 
@@ -97,6 +99,10 @@ A group passes only when every assertion returns successfully. Errors stop the s
 nonzero; earlier passed groups are printed. An explicitly selected suite with missing prerequisites
 fails (it is not reported as skipped). The local command names the unselected integration/native
 coverage. The opt-in Bun test is the sole intentionally skipped UI test in ordinary offline runs.
+
+Server restart recovery includes abruptly closed FTP/FTPS data streams. The offline transfer
+regression destroys a stream mid-write to reproduce `ERR_STREAM_PREMATURE_CLOSE` and verifies
+bounded-retry recovery, preservation of the original destination until success, and staging cleanup.
 
 ## Ownership, cleanup, and diagnostics
 
@@ -133,6 +139,28 @@ never personal servers or files. Record OS version, app commit, result and any d
 | macOS Trash | Create a uniquely named disposable local file, select and Command-Delete; verify it leaves source and appears in Trash with identical bytes. Remove only that unique Trash fixture afterward. No suite writes to the user's Trash. |
 | OS drag and drop | Use an actual mouse to drag selected local fixture to a remote pane, then verify destination SHA-256. Also drag a remote source to the other remote pane and verify bytes. No fabricated DataTransfer payload is a substitute. |
 | Favorite reorder | Create three disposable favorites, drag first before third; expect insertion **before** target, restart and verify order; delete all three. Native edit/delete and reconnect are automated, reorder is manual. |
+
+### Verification record: November 10, 2026
+
+Verified on macOS 27.0.1 (26A434), using the built app from `10df6cd` plus the offline-CI and
+`ERR_STREAM_PREMATURE_CLOSE` retry changes in this working tree. Lint, typechecks and build passed;
+offline regressions passed 122 tests (one display-dependent skip), and Electron local, native and
+integration suites passed 5/5, 1/1 and 21/21 respectively.
+
+The separate disposable-profile desktop run passed the requested native-menu, Trash and drag
+checks: Settings menu and repeated Command-comma; focused context-menu Rename; File → Close
+Remote Pane and Command-W disconnecting the active remote while keeping the window open;
+Command-Delete removing the source with identical SHA-256 bytes in Trash; and local → SFTP and
+SFTP → FTP mouse drags with matching destination SHA-256 hashes. Native actions used macOS
+Accessibility and OS mouse events (`CGEvent`), without fabricated drag payloads. These remain
+explicit desktop checks rather than CI coverage. The key picker and favorite reorder were not
+repeated in this run.
+
+The first integration run exposed the FTPS premature-close failure; a reproducing offline test
+failed before the retry fix and passed afterward. The final integration run included actual
+stop/start recovery for all three protocols. Logs and the one-off desktop driver are retained
+under the ignored `.agents/artifacts/2026-11-10-11-16-38-*` paths. All owned Electron processes,
+containers, agents, profiles, fixtures and the uniquely named Trash file were removed.
 
 Other limits: no hardware/1Password agent
 approval, physical laptop sleep, malformed/encrypted private-key matrix, production certificates,

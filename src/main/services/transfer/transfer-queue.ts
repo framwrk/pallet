@@ -1153,9 +1153,17 @@ export class TransferQueue {
   private isChannelError(err: unknown): boolean {
     const code = (err as NodeJS.ErrnoException).code;
     return (
-      ["ENOTCONN", "ETIMEDOUT", "ECONNRESET", "ECONNREFUSED", "ECONNABORTED", "EPIPE", "EHOSTUNREACH", "ENETUNREACH"].includes(
-        code ?? "",
-      ) ||
+      [
+        "ENOTCONN",
+        "ETIMEDOUT",
+        "ECONNRESET",
+        "ECONNREFUSED",
+        "ECONNABORTED",
+        "EPIPE",
+        "EHOSTUNREACH",
+        "ENETUNREACH",
+        "ERR_STREAM_PREMATURE_CLOSE",
+      ].includes(code ?? "") ||
       [421, 425, 426, 450, 451].includes(Number(code)) ||
       /not connected|no response|channel closed|connection (lost|closed|replaced)|socket closed|server sent FIN packet unexpectedly|timed? ?out/i.test(
         (err as Error).message ?? "",
