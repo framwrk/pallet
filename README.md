@@ -121,6 +121,16 @@ dead `SSH_AUTH_SOCK` paths and a successful login:
 bun run test:agent
 ```
 
+### macOS UI regression
+
+After `bun run build`, run the file-list focus and narrow-pane checks against the real Electron window:
+
+```bash
+PALLET_TEST_UI=1 bun test test-server/file-list-focus.test.ts
+```
+
+It uses a temporary profile and folder. Ordinary offline test runs skip this display-dependent check.
+
 ### Local test servers
 
 Docker is required. Start local SFTP, FTP, and explicit FTPS servers in the background:

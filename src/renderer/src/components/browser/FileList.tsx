@@ -174,8 +174,8 @@ export function FileList({ paneId, pane, visible, isActive }: FileListProps): Re
   useEffect(() => {
     const changed = pane.focused !== lastCursor.current;
     lastCursor.current = pane.focused;
-    if (changed && isActive && pane.focused) scrollRef.current?.focus({ preventScroll: true });
-  }, [pane.focused, isActive]);
+    if (changed && isActive && pane.focused && !pane.renaming) scrollRef.current?.focus({ preventScroll: true });
+  }, [pane.focused, pane.renaming, isActive]);
 
   function onRowMouseDown(e: React.MouseEvent, entry: Entry): void {
     setActive(paneId);
@@ -286,7 +286,7 @@ export function FileList({ paneId, pane, visible, isActive }: FileListProps): Re
               aria-rowindex={row.index + 1}
               aria-selected={selected}
               className={cn(
-                "font-file absolute left-0 grid w-full grid-cols-[minmax(0,1fr)_5.5rem_12rem] items-center gap-4 px-3 text-[13px] outline-none",
+                "font-file absolute left-0 grid w-full grid-cols-1 items-center gap-4 px-3 text-[13px] outline-none @min-[240px]:grid-cols-[minmax(0,1fr)_5.5rem] @min-[440px]:grid-cols-[minmax(0,1fr)_5.5rem_12rem]",
                 // row.index % 2 === 1 && !selected && "bg-muted/40",
                 selected && (isActive ? "bg-primary text-primary-foreground" : "bg-muted text-foreground"),
               )}
@@ -350,7 +350,7 @@ export function FileList({ paneId, pane, visible, isActive }: FileListProps): Re
               <span
                 role="gridcell"
                 className={cn(
-                  "text-right tabular-nums",
+                  "hidden text-right tabular-nums @min-[240px]:block",
                   !selected && "text-muted-foreground",
                   selected && isActive && "text-primary-foreground/80",
                 )}
@@ -364,7 +364,7 @@ export function FileList({ paneId, pane, visible, isActive }: FileListProps): Re
               <span
                 role="gridcell"
                 className={cn(
-                  "truncate text-right tabular-nums",
+                  "hidden truncate text-right tabular-nums @min-[440px]:block",
                   !selected && "text-muted-foreground",
                   selected && isActive && "text-primary-foreground/80",
                 )}

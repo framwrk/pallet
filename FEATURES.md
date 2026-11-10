@@ -67,6 +67,9 @@ reverse the order. Folders sort before files in every column, and names use natu
 `file2` comes before `file10`. Each pane sorts independently. When you sort by Size, folders sort
 by name among themselves, even while Pallet calculates folder sizes.
 
+In narrow panes, Date Modified and then Size are hidden so filenames remain readable alongside the
+inspector. Widen the pane or close the inspector to show those columns again.
+
 **Hidden files** are off by default. Toggle with **⌘⇧.** (Command-Shift-period). Pallet remembers
 the setting across launches, and it is the same setting as the one in [Settings](#settings).
 
@@ -92,12 +95,11 @@ differs by location:
   through a large directory does not start calculations for rows you scroll past. At most four
   walks run at a time.
 - **Remotely:** sizing a tree is the most expensive operation Pallet runs on a server, so it needs
-  a second switch: **Include remote folders**. Pallet tries `du -sb` first, which costs a single
-  round trip; on a server whose `du` does not support `-b` (macOS, BSD, BusyBox), it falls back for
-  the rest of the session to an SFTP walk that costs one round trip per directory. Only one remote
-  sizing job runs per server at a time, so sizing does not compete with your transfers.
+  a second switch: **Include remote folders**. SFTP sizing walks the tree with one round trip per
+  directory. Only one remote sizing job runs per server at a time, so sizing does not compete with
+  your transfers. Results are cached.
 
-Totals are _apparent size_ (the sum of the file sizes inside, the same number `du` reports), not
+Totals are _apparent size_ (the sum of the file sizes inside, excluding directory metadata), not
 disk usage. Symlinks count at their own size, and Pallet does not follow them, so a link to `/`
 cannot turn one folder into a walk of the whole filesystem. Unreadable subfolders contribute
 nothing instead of failing the total.
@@ -197,6 +199,9 @@ has no usable keys, the connection form says what to fix.
 **If the connection drops** (Wi-Fi dies, the laptop sleeps, the server restarts), Pallet grays out
 the pane, marks the session _reconnecting_, and retries with backoff (1, 2, 4, 8, 15 seconds). Any
 running transfer pauses and resumes automatically once the connection returns.
+
+Transfers also retry a refused replacement connection during a short server restart, within the
+configured transfer retry limit.
 
 Disconnect with the **×** on the server chip in a pane's breadcrumb bar. The right pane shows Quick
 Connect again; the left pane returns to the local disk.
