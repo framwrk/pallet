@@ -25,7 +25,7 @@
     "server": "docker compose up --build --detach --wait",
     "server:verify": "bun run test-server/verify.ts",
     "server:verify:app": "bun run test-server/verify-app.ts",
-    "test:transfers": "bun test test-server/transfer.test.ts test-server/session-pool.test.ts test-server/transfer-speed.test.ts",
+    "test:transfers": "bun test test-server/transfer.test.ts test-server/session-pool.test.ts test-server/transfer-speed.test.ts test-server/broadcast.test.ts",
     "test:ui:local": "bun run test-server/ui/run.ts local",
     "test:ui:integration": "bun run test-server/ui/run.ts integration",
     "test:ui:native": "bun run test-server/ui/run.ts native",
