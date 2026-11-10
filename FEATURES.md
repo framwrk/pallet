@@ -95,12 +95,11 @@ differs by location:
   through a large directory does not start calculations for rows you scroll past. At most four
   walks run at a time.
 - **Remotely:** sizing a tree is the most expensive operation Pallet runs on a server, so it needs
-  a second switch: **Include remote folders**. Pallet tries `du -sb` first, which costs a single
-  round trip; on a server whose `du` does not support `-b` (macOS, BSD, BusyBox), it falls back for
-  the rest of the session to an SFTP walk that costs one round trip per directory. Only one remote
-  sizing job runs per server at a time, so sizing does not compete with your transfers.
+  a second switch: **Include remote folders**. SFTP sizing walks the tree with one round trip per
+  directory. Only one remote sizing job runs per server at a time, so sizing does not compete with
+  your transfers. Results are cached.
 
-Totals are _apparent size_ (the sum of the file sizes inside, the same number `du` reports), not
+Totals are _apparent size_ (the sum of the file sizes inside, excluding directory metadata), not
 disk usage. Symlinks count at their own size, and Pallet does not follow them, so a link to `/`
 cannot turn one folder into a walk of the whole filesystem. Unreadable subfolders contribute
 nothing instead of failing the total.

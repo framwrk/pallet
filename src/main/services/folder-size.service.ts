@@ -4,14 +4,12 @@
  * Totals are *apparent bytes* — the sum of the sizes of the files inside —
  * not disk usage, so a folder's size is comparable to the file sizes shown
  * next to it and reads the same locally and remotely. Symlinks are counted at
- * their own size and never followed, matching `du` and keeping a link to "/"
+ * their own size and never followed, keeping a link to "/"
  * from turning one folder into a walk of the whole filesystem.
  *
- * Remote sizing prefers `du -sb`, which is one round trip. That flag is GNU's;
- * on a server without it (macOS, BSD, BusyBox) the probe fails once and the
- * session falls back to an SFTP walk for good. The walk is still only one
- * round trip per *directory*, because readdir already carries each child's
- * size and mode.
+ * Remote sizing walks SFTP directories, whose listings already carry each
+ * child's size and mode. Unlike `du`, this excludes directory metadata and
+ * gives the same totals as local and FTP walks.
  */
 import { type Dirent, promises as fs } from "fs";
 import type { FileInfo } from "basic-ftp";
@@ -33,17 +31,12 @@ const LOCAL_JOBS = 4;
  * Remote sizing jobs per session — deliberately one. A session already holds
  * the browse channel plus up to MAX_CONCURRENCY + 1 transfer channels, which
  * at the top of the range is 9 of OpenSSH's default MaxSessions of 10. One
- * more is all that fits, whether it is an exec channel or a leased walk.
+ * more is all that fits for the sizing walk.
  */
 const REMOTE_JOBS_PER_SESSION = 1;
 
 function cacheKey(target: SizeTarget, path: string): string {
   return target.kind === "local" ? `local\0${path}` : `${target.sessionId}\0${path}`;
-}
-
-/** Single-quote for /bin/sh, closing and reopening around embedded quotes. */
-function shellQuote(p: string): string {
-  return `'${p.replaceAll("'", `'\\''`)}'`;
 }
 
 /** Runs jobs up to a limit, dropping any that were cancelled while queued. */
@@ -120,16 +113,6 @@ async function walkLocal(root: string): Promise<number> {
     level = next;
   }
   return total;
-}
-
-/** Returns the total, or null if this server's `du` has no -b. */
-async function tryDu(sessions: SessionManager, sessionId: string, path: string): Promise<number | null> {
-  const { stdout } = await sessions.exec(sessionId, `du -sb -- ${shellQuote(path)}`);
-  const match = /^\s*(\d+)/.exec(stdout);
-  // A nonzero exit is fine on its own: GNU du reports unreadable subdirectories
-  // that way and still prints the total for everything it could reach. Only a
-  // missing number means the flag was rejected.
-  return match ? Number(match[1]) : null;
 }
 
 function readdirRemote(sftp: SFTPWrapper, dir: string): Promise<{ filename: string; attrs: { size: number; mode: number } }[]> {
@@ -250,11 +233,6 @@ export class FolderSizes {
     if (target.kind === "local") return walkLocal(path);
     const { sessionId } = target;
     if (this.sessions.protocol(sessionId) !== "sftp") return walkFtp(this.sessions, sessionId, path);
-    if (this.sessions.duApparentBytes(sessionId) !== false) {
-      const total = await tryDu(this.sessions, sessionId, path);
-      this.sessions.setDuApparentBytes(sessionId, total !== null);
-      if (total !== null) return total;
-    }
     return walkRemote(this.sessions, sessionId, path);
   }
 
