@@ -121,15 +121,24 @@ dead `SSH_AUTH_SOCK` paths and a successful login:
 bun run test:agent
 ```
 
-### macOS UI regression
+### Black-box UI regression
 
-After `bun run build`, run the file-list focus and narrow-pane checks against the real Electron window:
+Build once, then run the fast local suite against the real Electron app with a fresh temporary
+profile and files:
 
 ```bash
-PALLET_TEST_UI=1 bun test test-server/file-list-focus.test.ts
+bun run build
+bun run test:ui:local
 ```
 
-It uses a temporary profile and folder. Ordinary offline test runs skip this display-dependent check.
+`bun run test:ui:native` checks native Settings persistence and folder sizes (macOS desktop and
+Accessibility access required). `PALLET_UI_SERVER_IMAGE=<existing-local-image> bun run test:ui:integration`
+checks connections, favorites, and UI transfers against three owned disposable Docker servers;
+it never pulls images or uses your Compose servers. See [UI regression coverage and prerequisites](docs/ui-regression.md)
+for setup, exact automated/manual coverage, cleanup, and failure diagnostics.
+
+The previous `PALLET_TEST_UI=1 bun test test-server/file-list-focus.test.ts` entry point remains
+supported and runs the same local checks. Ordinary offline runs skip this display-dependent test.
 
 ### Local test servers
 

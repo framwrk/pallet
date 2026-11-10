@@ -1,0 +1,9 @@
+{
+  "extends": "@electron-toolkit/tsconfig/tsconfig.node.json",
+  "include": ["test-server/ui/**/*.ts"],
+  "compilerOptions": {
+    "composite": false,
+    "types": ["node"],
+    "lib": ["ESNext", "DOM"]
+  }
+}

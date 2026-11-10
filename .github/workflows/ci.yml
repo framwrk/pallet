@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   checks:
-    name: Lint, typecheck, and transfer tests
+    name: Lint, typecheck, transfer and UI tests
     runs-on: macos-15
     steps:
       - name: Checkout
@@ -38,3 +38,19 @@ jobs:
 
       - name: Transfer tests
         run: bun run test:transfers
+
+      - name: Build Electron for UI regressions
+        run: bun run rebuild && bun run build
+
+      - name: Local Electron UI regressions
+        run: bun run test:ui:local
+
+      - name: UI failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-regression-diagnostics
+          path: .agents/artifacts/ui/
+          include-hidden-files: true
+          if-no-files-found: ignore
+          retention-days: 7
