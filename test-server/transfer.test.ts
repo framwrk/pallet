@@ -415,6 +415,39 @@ for (const [reason, failure] of [
   });
 }
 
+test("a prematurely closed data stream retries without replacing the original early", async () => {
+  const f = await fixture();
+  try {
+    const payload = randomBytes(128 * 1024);
+    await fs.writeFile(`${f.source}/a`, payload);
+    await fs.writeFile(`${f.dest}/a`, "original");
+    let attempts = 0;
+    const dest = wrap(f.local, {
+      createWriteStream: async (p, mode, options) => {
+        assert.equal(await fs.readFile(`${f.dest}/a`, "utf8"), "original");
+        if (++attempts === 1) {
+          // A dropped FTP(S) data socket can close without emitting an error;
+          // pipeline reports ERR_STREAM_PREMATURE_CLOSE rather than ECONNRESET.
+          return new Writable({
+            write() {
+              this.destroy();
+            },
+          });
+        }
+        return f.local.createWriteStream(p, mode, options);
+      },
+    });
+    const result = await harness(f.local, dest).run(f.source, f.dest, ["a"]);
+    assert.equal(result.state, "completed", JSON.stringify(result.errors));
+    assert.equal(attempts, 2);
+    assert.equal(result.doneBytes, payload.length);
+    assert.deepEqual(await fs.readFile(`${f.dest}/a`), payload);
+    assert.deepEqual(await fs.readdir(f.dest), ["a"]);
+  } finally {
+    await f.cleanup();
+  }
+});
+
 test("jobs sharing a session run within one connection budget", async () => {
   const f = await fixture();
   try {

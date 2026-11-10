@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   checks:
-    name: Lint, typecheck, transfer and UI tests
+    name: Lint, typecheck, offline and UI tests
     runs-on: macos-15
     steps:
       - name: Checkout
@@ -36,8 +36,8 @@ jobs:
       - name: Typecheck
         run: bun run typecheck
 
-      - name: Transfer tests
-        run: bun run test:transfers
+      - name: Offline regression tests
+        run: bun run test:offline
 
       - name: Build Electron for UI regressions
         run: bun run rebuild && bun run build

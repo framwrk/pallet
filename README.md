@@ -115,8 +115,13 @@ changes, safe replacement, and simulated window closure/reopening during transfe
 destroyed windows and isolate send failures per recipient so renderer delivery cannot interrupt copying:
 
 ```bash
-bun run test:transfers
+bun run test:offline
 ```
+
+CI and release builds run this full suite, including authentication, update downloads, navigation,
+editing, folder sizing, local copy/rename, host keys, transfer history/shutdown, and packaging
+regressions. The display-dependent test is skipped here and run separately by CI as
+`test:ui:local`. Use `bun run test:transfers` for just the transfer subset.
 
 SSH agent authentication is covered against a temporary local `ssh-agent`, including missing and
 dead `SSH_AUTH_SOCK` paths and a successful login:
@@ -251,6 +256,10 @@ With the local test servers running, `bun run server:verify:transfers` exercises
 over SFTP, FTP, and FTPS and compares SHA-256 hashes after downloading. It also checks overwrites
 and same-session remote copies with concurrency set to one. Set `PALLET_TEST_DISCONNECT=1` to also
 force a real SSH disconnect in the SFTP test and check automatic recovery.
+
+FTP/FTPS data streams that close prematurely during a server interruption use the same bounded
+retry policy as other lost connections; staged writes preserve the existing destination until
+the retry succeeds.
 
 Use `PALLET_TEST_PROTOCOL=sftp` (or `ftp` or `ftps`) to select a protocol,
 `PALLET_TEST_FILE_COUNT=2100` for a larger batch, and `PALLET_TEST_TRANSFER_TIMEOUT_MS=900000` when
