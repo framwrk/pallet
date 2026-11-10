@@ -111,7 +111,8 @@ bun run typecheck
 
 The offline suite covers deterministic filesystem and fault-injection scenarios without Docker. It
 includes 2,100-file folders, checkpoint resume, pausing and canceling, conflicting names, source
-changes, and safe replacement:
+changes, safe replacement, and simulated window closure/reopening during transfers. Broadcasts skip
+destroyed windows and isolate send failures per recipient so renderer delivery cannot interrupt copying:
 
 ```bash
 bun run test:transfers
