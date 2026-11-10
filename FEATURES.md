@@ -67,6 +67,9 @@ reverse the order. Folders sort before files in every column, and names use natu
 `file2` comes before `file10`. Each pane sorts independently. When you sort by Size, folders sort
 by name among themselves, even while Pallet calculates folder sizes.
 
+In narrow panes, Date Modified and then Size are hidden so filenames remain readable alongside the
+inspector. Widen the pane or close the inspector to show those columns again.
+
 **Hidden files** are off by default. Toggle with **⌘⇧.** (Command-Shift-period). Pallet remembers
 the setting across launches, and it is the same setting as the one in [Settings](#settings).
 

@@ -163,7 +163,7 @@ export function Pane({ paneId }: { paneId: PaneId }): React.JSX.Element {
   }, [visible.length, pane.selected.size, pane.availBytes]);
 
   const shell = cn(
-    "bg-background relative flex min-w-0 flex-1 flex-col overflow-hidden",
+    "bg-background @container relative flex min-w-0 flex-1 flex-col overflow-hidden",
     isActive &&
       "after:bg-primary after:pointer-events-none after:absolute after:top-0 after:right-2 after:left-2 after:h-1 after:rounded-full",
   );
@@ -203,7 +203,7 @@ export function Pane({ paneId }: { paneId: PaneId }): React.JSX.Element {
         )}
       </div>
 
-      <div className="grid grid-cols-[minmax(0,1fr)_5.5rem_12rem] gap-4 border-b px-3 py-1">
+      <div className="grid grid-cols-1 gap-4 border-b px-3 py-1 @min-[240px]:grid-cols-[minmax(0,1fr)_5.5rem] @min-[440px]:grid-cols-[minmax(0,1fr)_5.5rem_12rem]">
         <SortHeader
           paneId={paneId}
           label="Name"
@@ -218,7 +218,7 @@ export function Pane({ paneId }: { paneId: PaneId }): React.JSX.Element {
           colKey="size"
           activeKey={pane.sortKey}
           dir={pane.sortDir}
-          className="justify-end"
+          className="hidden justify-end @min-[240px]:flex"
         />
         <SortHeader
           paneId={paneId}
@@ -226,7 +226,7 @@ export function Pane({ paneId }: { paneId: PaneId }): React.JSX.Element {
           colKey="mtime"
           activeKey={pane.sortKey}
           dir={pane.sortDir}
-          className="justify-end"
+          className="hidden justify-end @min-[440px]:flex"
         />
       </div>
 
