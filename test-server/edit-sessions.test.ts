@@ -13,7 +13,7 @@ import {
 import { Readable, Writable } from "node:stream";
 import { afterAll, afterEach, beforeAll, beforeEach, expect, mock, test } from "bun:test";
 import { dirname, join } from "node:path";
-import { existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { PART_SUFFIX } from "../src/shared/transfer/transfer.constants";
 import type { SessionManager } from "../src/main/services/sftp/session-manager";
 import { tmpdir } from "node:os";
@@ -108,10 +108,16 @@ let endpoint: FakeEndpoint;
 let events: EditEvent[];
 let editSessions: EditSessionsClass;
 let EditSessions: typeof EditSessionsClass;
+let onOpen: ((localPath: string) => void) | null;
 
 mock.module("electron", () => ({
   app: { getPath: () => tempRoot },
-  shell: { openPath: async () => "" },
+  shell: {
+    openPath: async (localPath: string) => {
+      onOpen?.(localPath);
+      return "";
+    },
+  },
 }));
 mock.module("../src/main/services/transfer/transfer-endpoint", () => ({
   makeEndpoint: () => endpoint,
@@ -137,6 +143,7 @@ beforeEach(() => {
   endpoint = new FakeEndpoint();
   endpoint.files.set(REMOTE, Buffer.from("original"));
   events = [];
+  onOpen = null;
   editSessions = new EditSessions({} as SessionManager, (event) => events.push(event), {
     saveDebounceMs: 250,
     pollIntervalMs: 20,
@@ -151,6 +158,40 @@ afterEach(async () => {
 afterAll(() => {
   rmSync(tempRoot, { recursive: true, force: true });
   mock.restore();
+});
+
+test("uploads saves made immediately as the external editor opens", async () => {
+  const count = 50;
+  onOpen = (localPath) => writeFileSync(localPath, "immediate edit");
+
+  for (let i = 0; i < count; i++) await editSessions.open(`s${i}`, REMOTE);
+
+  await waitFor(() => events.length === count);
+  expect(endpoint.uploads.map((data) => data.toString())).toEqual(Array<string>(count).fill("immediate edit"));
+  expect(events).toHaveLength(count);
+  expect(events.every((event) => event.kind === "uploaded")).toBe(true);
+});
+
+test("an unchanged file is not uploaded after opening", async () => {
+  await editSessions.open("s1", REMOTE);
+
+  await delay(400);
+  expect(endpoint.writeStarts).toBe(0);
+  expect(events).toEqual([]);
+});
+
+test("polling continues after an editor removes and replaces the local file", async () => {
+  const localPath = await editSessions.open("s1", REMOTE);
+  const replacement = `${localPath}.new`;
+  writeFileSync(replacement, "replacement content");
+  rmSync(localPath);
+  await delay(60);
+  renameSync(replacement, localPath);
+
+  await waitFor(() => events.some((event) => event.kind === "uploaded"));
+  expect(endpoint.files.get(REMOTE)?.toString()).toBe("replacement content");
+  expect(endpoint.uploads.map((data) => data.toString())).toEqual(["replacement content"]);
+  expect(events).toHaveLength(1);
 });
 
 test("waits for a slow in-place writer and uploads only the final content", async () => {

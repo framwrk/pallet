@@ -5,7 +5,7 @@
  */
 import { type TransferEndpoint, makeEndpoint } from "./transfer/transfer-endpoint";
 import { app, shell } from "electron";
-import { createReadStream, createWriteStream, promises as fs, unwatchFile, watchFile } from "fs";
+import { createReadStream, createWriteStream, promises as fs } from "fs";
 import { PART_SUFFIX } from "@shared/transfer/transfer.constants";
 import type { SessionManager } from "./sftp/session-manager";
 import { join } from "path";
@@ -41,9 +41,11 @@ interface EditSession {
   uploading: boolean;
   dirty: boolean;
   closed: boolean;
+  /** Serialized polling starts from the downloaded file's state. */
+  pollTimer: NodeJS.Timeout | null;
   /** Debounce timer for the next upload. */
   saveTimer: NodeJS.Timeout | null;
-  /** Last size/mtime observed by the watcher, to confirm the file settled. */
+  /** Last size/mtime observed by polling, to confirm the file settled. */
   pendingSize: number;
   pendingMtimeMs: number;
   /** Aborts an upload that stalls; also cleared on close. */
@@ -88,12 +90,14 @@ export class EditSessions {
 
     const endpoint = makeEndpoint(this.sessions, { kind: "sftp", sessionId });
     let stat;
+    let localStat;
     try {
       await fs.mkdir(tempDir, { recursive: true });
       stat = await endpoint.statOrNull(remotePath);
       if (!stat) throw new Error("Remote file not found");
       const src = await endpoint.createReadStream(remotePath);
       await pipeline(src, createWriteStream(localPath));
+      localStat = await fs.stat(localPath);
     } catch (err) {
       endpoint.dispose();
       await fs.rm(tempDir, { recursive: true, force: true });
@@ -110,18 +114,17 @@ export class EditSessions {
       uploading: false,
       dirty: false,
       closed: false,
+      pollTimer: null,
       saveTimer: null,
-      pendingSize: 0,
-      pendingMtimeMs: 0,
+      pendingSize: localStat.size,
+      pendingMtimeMs: localStat.mtimeMs,
       abort: null,
     };
     this.edits.set(localPath, edit);
 
-    // Polling survives editors that write via rename (most of them).
-    watchFile(localPath, { interval: this.pollIntervalMs }, (curr, prev) => {
-      const changed = curr.mtimeMs !== prev.mtimeMs || curr.size !== prev.size;
-      if (changed && curr.mtimeMs > 0) this.scheduleUpload(edit, curr.size, curr.mtimeMs);
-    });
+    // watchFile initializes its baseline asynchronously and can miss an immediate save.
+    // Polling from our own baseline also survives editors that write via rename.
+    edit.pollTimer = setTimeout(() => void this.poll(edit), this.pollIntervalMs);
 
     const openErr = await shell.openPath(localPath);
     if (openErr) {
@@ -129,6 +132,19 @@ export class EditSessions {
       throw new Error(openErr);
     }
     return localPath;
+  }
+
+  private async poll(edit: EditSession): Promise<void> {
+    if (edit.closed) return;
+    try {
+      const stat = await fs.stat(edit.localPath);
+      const changed = stat.mtimeMs !== edit.pendingMtimeMs || stat.size !== edit.pendingSize;
+      if (changed && stat.mtimeMs > 0) this.scheduleUpload(edit, stat.size, stat.mtimeMs);
+    } catch {
+      // An editor may temporarily remove the path while replacing the file.
+    } finally {
+      if (!edit.closed) edit.pollTimer = setTimeout(() => void this.poll(edit), this.pollIntervalMs);
+    }
   }
 
   /**
@@ -216,10 +232,10 @@ export class EditSessions {
 
   /** Stop watching, abort any upload, and remove the local temp copy. */
   async close(localPath: string): Promise<void> {
-    unwatchFile(localPath);
     const edit = this.edits.get(localPath);
     if (!edit) return;
     edit.closed = true;
+    if (edit.pollTimer) clearTimeout(edit.pollTimer);
     if (edit.saveTimer) {
       clearTimeout(edit.saveTimer);
       edit.saveTimer = null;

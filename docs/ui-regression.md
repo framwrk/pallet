@@ -76,6 +76,12 @@ seven days. Docker/native integration remains explicit; ordinary CI has no Docke
 requirement. A CI runner that cannot launch Electron fails the UI step rather than silently
 skipping coverage.
 
+The offline edit-session regressions include saves made immediately as the editor opens,
+unchanged files, and editors that remove and replace the local path. Edit sessions capture the
+downloaded file's size and modification time before opening the editor, then poll serially from
+that baseline. This avoids missing an early save during `fs.watchFile`'s asynchronous initial stat
+while retaining save debouncing, staged uploads, timeout recovery, and cleanup on close.
+
 ## Automated coverage
 
 | Suite | Scenarios and independent assertions |
