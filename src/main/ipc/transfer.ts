@@ -20,6 +20,7 @@ export const transferQueue = new TransferQueue(
   () => {
     const prefs = getPreferences();
     return {
+      verification: prefs.verifyCopiedFiles ? "sha256" : "metadata",
       stallTimeoutMs: prefs.transferTimeoutSeconds * 1000,
       maxChannelRetries: prefs.transferMaxRetries,
       speedStatsWindowMs: prefs.speedStatsWindowSeconds * 1000,

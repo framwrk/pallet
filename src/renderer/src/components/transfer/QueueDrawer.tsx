@@ -19,6 +19,7 @@ import type {
   TransferSpeedPoint,
   TransferSpeedStats,
   TransferState,
+  TransferVerificationProgress,
 } from "@shared/transfer/transfer.types";
 import { clearFinishedJobs, itemAction, jobAction, removeJob, setDrawerOpen, useTransfers } from "@/store/transfer.store";
 import { useEffect, useState } from "react";
@@ -141,6 +142,14 @@ function barTone(state: RowState): string {
   }
 }
 
+/** Read-back progress never contributes to copy totals or throughput. */
+function verificationText(files: TransferVerificationProgress[] | undefined): string | null {
+  if (!files?.length) return null;
+  const checked = files.reduce((sum, file) => sum + file.checkedBytes, 0);
+  const total = files.reduce((sum, file) => sum + file.totalBytes, 0);
+  return `Verifying… ${formatBytes(checked)} of ${formatBytes(total)} checked · ${files.map((file) => file.relPath).join(", ")}`;
+}
+
 /** Bytes and rate shown at the end of a job's title line. */
 function jobSummary(job: TransferJobSnapshot): string {
   const bytes = job.totalBytes > 0 ? `${formatBytes(job.doneBytes)} of ${formatBytes(job.totalBytes)}` : null;
@@ -150,7 +159,10 @@ function jobSummary(job: TransferJobSnapshot): string {
     case "waiting":
       return "On hold";
     case "running":
-      return [bytes, job.bytesPerSec > 0 ? formatSpeed(job.bytesPerSec) : null].filter(Boolean).join(" · ");
+      return (
+        verificationText(job.verifyingFiles) ??
+        [bytes, job.bytesPerSec > 0 ? formatSpeed(job.bytesPerSec) : null].filter(Boolean).join(" · ")
+      );
     case "paused":
       return job.autoPaused ? "Connection lost" : (bytes ?? "Paused");
     case "completed":
@@ -167,6 +179,8 @@ function jobDetail(job: TransferJobSnapshot): { text: string; full: string; dest
     const error = job.errors[0]?.message;
     return { text: error ?? "Transfer failed", full: error ?? "Transfer failed", destructive: true };
   }
+  const verifying = job.state === "running" ? verificationText(job.verifyingFiles) : null;
+  if (verifying) return { text: verifying, full: verifying, destructive: false };
   if (job.state === "running" && job.currentFiles.length > 0) {
     const [first, ...rest] = job.currentFiles;
     return {
@@ -219,7 +233,10 @@ function itemSummary(item: TransferItemSnapshot, state: RowState, job: TransferJ
   if (state === "queued") return "Queued";
   if (state === "waiting") return "On hold";
   if (state === "running") {
-    return [bytes, item.bytesPerSec > 0 ? formatSpeed(item.bytesPerSec) : null].filter(Boolean).join(" · ");
+    return (
+      verificationText(item.verifyingFiles) ??
+      [bytes, item.bytesPerSec > 0 ? formatSpeed(item.bytesPerSec) : null].filter(Boolean).join(" · ")
+    );
   }
   if (state === "paused") return !item.paused && job.autoPaused ? "Connection lost" : (bytes ?? "Paused");
   if (state === "completed") return item.doneBytes > 0 ? `${formatBytes(item.doneBytes)} moved` : "Completed";
@@ -238,6 +255,8 @@ function itemDetail(
     const error = job.errors.find((e) => e.relPath === "")?.message;
     return { text: error ?? "Transfer failed", full: error ?? "Transfer failed", destructive: true };
   }
+  const verifying = state === "running" ? verificationText(item.verifyingFiles) : null;
+  if (verifying) return { text: verifying, full: verifying, destructive: false };
   if (state === "running") {
     const current = job.currentFiles
       .filter((path) => path === item.name || path.startsWith(`${item.name}/`))
@@ -814,7 +833,9 @@ export function QueueDrawer(): React.JSX.Element | null {
     return a + Math.max(1, remaining);
   }, 0);
   const summary =
-    active.length > 0 ? `${activeItems} item${activeItems === 1 ? "" : "s"} · ${pct ?? 0}%` : `${jobs.length} finished`;
+    active.length > 0
+      ? `${activeItems} item${activeItems === 1 ? "" : "s"} · ${active.some((job) => job.verifyingFiles?.length) ? "Verifying…" : `${pct ?? 0}%`}`
+      : `${jobs.length} finished`;
 
   return (
     <section

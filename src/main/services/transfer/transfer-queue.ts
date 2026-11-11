@@ -21,6 +21,8 @@ import type {
   TransferSpeedPoint,
   TransferSpeedStats,
   TransferState,
+  TransferVerificationMode,
+  TransferVerificationProgress,
 } from "@shared/transfer/transfer.types";
 import {
   type EndpointStat,
@@ -37,6 +39,7 @@ import {
 } from "@shared/transfer/transfer.constants";
 import { type Readable, Transform } from "stream";
 import { type SpeedSample, ZERO_SPEED_STATS, downsampleSpeedHistory, speedStatsFromSamples } from "./transfer-speed";
+import { TransferIntegrityError, digestEndpoint } from "./transfer-verification";
 import type { SessionManager } from "../sftp/session-manager";
 import type { SessionStatusEvent } from "@shared/sftp/sftp.types";
 import { keepBothName } from "@shared/transfer/transfer.utils";
@@ -138,6 +141,7 @@ interface Conflict {
 }
 
 interface InFlight {
+  verification?: TransferVerificationProgress;
   relPath: string;
   /** Selected item this file belongs to, for item-level controls. */
   item: PlanItem;
@@ -158,6 +162,7 @@ export interface QueueHooks {
 }
 
 export interface TransferQueueOptions {
+  verification?: TransferVerificationMode;
   /** Abort a file transfer after this long without progress. */
   stallTimeoutMs?: number;
   /** Per-file retries after a dead channel. */
@@ -317,6 +322,9 @@ export class TransferQueue {
       bytesPerSec: this.bytesPerSecOfSamples(item.samples),
       speedStats: item.speedStats,
       speedHistory: item.speedHistory,
+      verifyingFiles: [...job.inFlight.values()]
+        .filter((flight) => flight.item === item && flight.verification)
+        .map((flight) => ({ ...flight.verification! })),
       startedAt: item.startedAt,
       finishedAt: item.finishedAt ?? (TERMINAL_TRANSFER_STATES.includes(job.state) ? job.finishedAt : undefined),
       error: item.errors[0],
@@ -337,6 +345,7 @@ export class TransferQueue {
   snapshot(job: Job): TransferJobSnapshot {
     return {
       id: job.id,
+      verification: job.request.verification,
       state: job.state,
       autoPaused: job.autoPaused,
       label: job.label,
@@ -352,6 +361,7 @@ export class TransferQueue {
       speedStats: job.speedStats,
       speedHistory: job.speedHistory,
       currentFiles: [...job.inFlight.keys()],
+      verifyingFiles: [...job.inFlight.values()].flatMap((flight) => (flight.verification ? [{ ...flight.verification }] : [])),
       errors: job.errors.slice(0, 20),
       items: job.items.map((item) => this.itemSnapshot(job, item)),
     };
@@ -470,7 +480,10 @@ export class TransferQueue {
   }
 
   enqueue(request: TransferRequest): string {
-    const job = new Job(`t${++this.seq}`, request);
+    const job = new Job(`t${++this.seq}`, {
+      ...request,
+      verification: request.verification ?? this.getOptions().verification ?? "metadata",
+    });
     this.jobs.set(job.id, job);
     this.order.push(job.id);
     job.settled = this.run(job);
@@ -973,10 +986,12 @@ export class TransferQueue {
         throw new Error(`Source changed during transfer: ${file.relPath}. Retry to copy the new version.`);
       }
     };
+    const verify = job.request.verification === "sha256";
     try {
-      await checkSource();
+      if (verify) armStall();
+      await Promise.race([checkSource(), aborted]);
       if (file.checkpoint > 0) {
-        const part = await job.to.statOrNull(partPath);
+        const part = await Promise.race([job.to.statOrNull(partPath), aborted]);
         // Never resume from the part file's size: a killed stream can leave
         // holes below its end (queued writes dropped at CLOSE), so only the
         // destination-acknowledged frontier is a safe resume point.
@@ -990,91 +1005,122 @@ export class TransferQueue {
       const offset = file.checkpoint;
       controller.signal.throwIfAborted();
       armStall();
-      const src = await Promise.race([
-        job.from
-          .createReadStream(sourcePath, {
-            // Bound every read to the enumerated size. A small non-checkpointed
-            // read otherwise runs to EOF, costing an extra probe round trip;
-            // a grown source is still caught by the post-copy checkSource.
-            ...(file.size > 0 ? { start: offset, end: file.size - 1 } : {}),
-            signal: controller.signal,
-          })
-          .then((stream) => {
-            stream.on("error", () => {});
-            if (controller.signal.aborted) stream.destroy();
-            return stream;
-          }),
-        aborted,
-      ]);
-      flight.src = src;
-      const dst = await Promise.race([
-        job.to
-          .createWriteStream(partPath, file.mode, {
-            start: offset,
-            signal: controller.signal,
-            // SFTP applies mode/mtime on the open handle at close, so the
-            // staged file is already finalized when the pipeline ends.
-            ...(job.to.writesMeta ? { meta: { mtimeMs: file.mtimeMs, mode: file.mode } } : {}),
-          })
-          .then((stream) => {
-            stream.on("error", () => {});
-            if (controller.signal.aborted) stream.destroy();
-            return stream;
-          }),
-        aborted,
-      ]);
-      flight.dst = dst;
-      let bytes = 0;
-      const counter = new Transform({
-        transform: (chunk: Buffer, _enc, cb) => {
-          armStall();
-          if (bytes + chunk.length > file.size - offset) {
-            cb(new Error(`Source grew during transfer: ${file.relPath}`));
-            return;
-          }
-          bytes += chunk.length;
-          credit(chunk.length);
-          if (checkpointed) confirm(dst.confirmedBytes?.() ?? offset);
-          const now = Date.now();
-          job.samples.push({ t: now, bytes: job.doneBytes });
-          if (job.samples.length > 200) job.samples.splice(0, 100);
-          item.samples.push({ t: now, bytes: item.doneBytes });
-          if (item.samples.length > 200) item.samples.splice(0, 100);
-          this.emit(job);
-          cb(null, chunk);
-        },
-      });
-      await Promise.race([pipeline(src, counter, dst), aborted]);
-      clearTimeout(timer);
-      controller.signal.throwIfAborted();
-      if (bytes !== file.size - offset) throw new Error(`Source ended early: ${file.relPath}`);
-      // The pipeline only finishes after every write and the final CLOSE were
-      // acknowledged, so the whole file is confirmed now. Files below the
-      // checkpoint threshold keep no resume offset: their retries start over.
-      if (checkpointed) confirm(file.size);
-      flight.src = null;
-      flight.dst = null;
+      let confirmedSize: number | undefined = offset === file.size && checkpointed ? file.size : undefined;
+      // A pause/drop during read-back can leave the entire staged file confirmed.
+      // Resume by hashing it again, without opening an invalid empty range.
+      if (offset < file.size || !checkpointed) {
+        const src = await Promise.race([
+          job.from
+            .createReadStream(sourcePath, {
+              // Bound every read to the enumerated size. A small non-checkpointed
+              // read otherwise runs to EOF, costing an extra probe round trip;
+              // a grown source is still caught by the post-copy checkSource.
+              ...(file.size > 0 ? { start: offset, end: file.size - 1 } : {}),
+              signal: controller.signal,
+            })
+            .then((stream) => {
+              stream.on("error", () => {});
+              if (controller.signal.aborted) stream.destroy();
+              return stream;
+            }),
+          aborted,
+        ]);
+        flight.src = src;
+        const dst = await Promise.race([
+          job.to
+            .createWriteStream(partPath, verify ? 0o600 : file.mode, {
+              start: offset,
+              signal: controller.signal,
+              // SFTP applies mode/mtime on the open handle at close, so the
+              // staged file is already finalized when the pipeline ends.
+              ...(job.to.writesMeta && !verify ? { meta: { mtimeMs: file.mtimeMs, mode: file.mode } } : {}),
+            })
+            .then((stream) => {
+              stream.on("error", () => {});
+              if (controller.signal.aborted) stream.destroy();
+              return stream;
+            }),
+          aborted,
+        ]);
+        flight.dst = dst;
+        let bytes = 0;
+        const counter = new Transform({
+          transform: (chunk: Buffer, _enc, cb) => {
+            armStall();
+            if (bytes + chunk.length > file.size - offset) {
+              cb(new Error(`Source grew during transfer: ${file.relPath}`));
+              return;
+            }
+            bytes += chunk.length;
+            credit(chunk.length);
+            if (checkpointed) confirm(dst.confirmedBytes?.() ?? offset);
+            const now = Date.now();
+            job.samples.push({ t: now, bytes: job.doneBytes });
+            if (job.samples.length > 200) job.samples.splice(0, 100);
+            item.samples.push({ t: now, bytes: item.doneBytes });
+            if (item.samples.length > 200) item.samples.splice(0, 100);
+            this.emit(job);
+            cb(null, chunk);
+          },
+        });
+        await Promise.race([pipeline(src, counter, dst), aborted]);
+        if (verify) armStall();
+        else clearTimeout(timer);
+        controller.signal.throwIfAborted();
+        if (bytes !== file.size - offset) throw new Error(`Source ended early: ${file.relPath}`);
+        // The pipeline only finishes after every write and the final CLOSE were
+        // acknowledged, so the whole file is confirmed now. Files below the
+        // checkpoint threshold keep no resume offset: their retries start over.
+        if (checkpointed) confirm(file.size);
+        flight.src = null;
+        flight.dst = null;
+        confirmedSize = dst.confirmedBytes?.();
+      }
 
-      await checkSource();
+      await Promise.race([checkSource(), aborted]);
       // A stream that confirmed the whole file needs no extra stat: SFTP write
       // acks, fs write callbacks, and ftp's 226 are the same contract the
       // resume checkpoints trust. Endpoints that cannot report stay verified
       // by stat/SIZE.
-      const confirmedSize = dst.confirmedBytes?.();
-      const writtenSize =
-        confirmedSize === file.size
-          ? file.size
-          : job.to.fileSize
-            ? await job.to.fileSize(partPath)
-            : (await job.to.statOrNull(partPath))?.size;
+      const writtenSize = await Promise.race([
+        (async () =>
+          confirmedSize === file.size
+            ? file.size
+            : job.to.fileSize
+              ? await job.to.fileSize(partPath)
+              : (await job.to.statOrNull(partPath))?.size)(),
+        aborted,
+      ]);
       if (writtenSize !== file.size) {
         throw new Error(`Size mismatch in staged file: ${file.relPath}`);
       }
       controller.signal.throwIfAborted();
+      if (verify) {
+        flight.verification = { relPath: file.relPath, checkedBytes: 0, totalBytes: file.size * 2 };
+        this.emit(job, true);
+        const progress = (bytes: number): void => {
+          flight.verification!.checkedBytes += bytes;
+          armStall();
+          this.emit(job);
+        };
+        const sourceDigest = await Promise.race([
+          digestEndpoint(job.from, sourcePath, file.size, controller.signal, progress),
+          aborted,
+        ]);
+        await Promise.race([checkSource(), aborted]);
+        const destinationDigest = await Promise.race([
+          digestEndpoint(job.to, partPath, file.size, controller.signal, progress),
+          aborted,
+        ]);
+        if (sourceDigest !== destinationDigest)
+          throw new TransferIntegrityError(`SHA-256 mismatch: ${file.relPath}. Retry to copy fresh content.`);
+        await Promise.race([checkSource(), aborted]);
+      }
+      controller.signal.throwIfAborted();
       // SFTP folds mode/mtime into close; other endpoints need a separate
       // metadata request after the stream is committed.
-      if (!job.to.writesMeta) {
-        await job.to.setMeta(partPath, { mtimeMs: file.mtimeMs, mode: file.mode });
+      if (!job.to.writesMeta || verify) {
+        await Promise.race([job.to.setMeta(partPath, { mtimeMs: file.mtimeMs, mode: file.mode }), aborted]);
         controller.signal.throwIfAborted();
       }
       // Do not retry an ambiguous rename: the server may already have committed it.
@@ -1099,7 +1145,7 @@ export class TransferQueue {
       job.samples = [];
       item.samples = [];
       let retry = false;
-      if (!job.canceled && !item.canceled && !committing) {
+      if (!job.canceled && !item.canceled && !committing && !(err instanceof TransferIntegrityError)) {
         if (this.sessionDown(job)) {
           this.setAutoPaused(job, true);
           retry = true;

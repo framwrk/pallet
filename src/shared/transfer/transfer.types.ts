@@ -2,7 +2,18 @@
 
 export type EndpointRef = { kind: "local" } | { kind: "sftp"; sessionId: string };
 
+export type TransferVerificationMode = "metadata" | "sha256";
+
+export interface TransferVerificationProgress {
+  relPath: string;
+  /** Source and staged-destination bytes read in this pass, separate from copied bytes. */
+  checkedBytes: number;
+  totalBytes: number;
+}
+
 export interface TransferRequest {
+  /** Resolved at enqueue time; retained when retrying this job. */
+  verification?: TransferVerificationMode;
   from: EndpointRef;
   to: EndpointRef;
   /** Directory containing the selected items. */
@@ -58,6 +69,7 @@ export interface TransferItemSnapshot {
   speedStats: TransferSpeedStats;
   /** Throughput over time, oldest first, for the expanded row's speed graph. */
   speedHistory: TransferSpeedPoint[];
+  verifyingFiles?: TransferVerificationProgress[];
   startedAt?: number;
   finishedAt?: number;
   /** First error for this item, if it failed. */
@@ -65,6 +77,7 @@ export interface TransferItemSnapshot {
 }
 
 export interface TransferJobSnapshot {
+  verification?: TransferVerificationMode;
   id: string;
   state: TransferState;
   /** True when paused by a connection drop rather than the user. */
@@ -84,6 +97,7 @@ export interface TransferJobSnapshot {
   speedStats: TransferSpeedStats;
   /** Throughput over time, oldest first, for the expanded row's speed graph. */
   speedHistory: TransferSpeedPoint[];
+  verifyingFiles?: TransferVerificationProgress[];
   /** Relative paths currently in flight. */
   currentFiles: string[];
   errors: TransferError[];

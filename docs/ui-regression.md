@@ -90,10 +90,11 @@ save debouncing, staged uploads, timeouts, and cleanup on close.
 | Local: operations | Hidden toggle; New Folder retains focused rename input; creation/rename verified on disk; collision preserves both files; dialog input isolates delete/copy/new-folder shortcuts |
 | Local: inspector | Empty, text, decoded PNG; filename width remains greater than 80px in an 820px viewport beside inspector |
 | Local: virtualization | 10,000 entries, fewer than 100 rendered rows before/after real wheel scrolling; click final row and Arrow Up selection |
-| Native | Hidden-file, folder-size, remote-size, appearance, and row-density settings persist across a full process restart; nested/empty folders total exactly 14 content bytes |
+| Native | Hidden-file, folder-size, remote-size, appearance, row-density, and SHA-256 verification settings persist across a full process restart; nested/empty folders total exactly 14 content bytes |
 | Integration: authentication | First-use SFTP reject then accept; wrong password followed by corrected retry; trust survives process restart; changed key reject then explicit trust update; private-key path input; owned SSH-agent auth; self-signed FTPS reject followed by explicit fixture-only verification override |
 | Integration: favorites | Create; native context-menu edit; password encrypted file exists with mode 0600; synthetic password absent from DB/WAL and blob; full restart and reconnect with saved password; delete removes secret and metadata, including after another restart |
 | Integration: sizing | Actual remote SFTP folder displays 14 bytes, excluding nested directory metadata |
+| Integration: SHA-256 | Verification enabled in Settings for all subsequent protocol transfers; delayed SFTP read-back shows Verifying and separate bytes checked while the original destination remains intact |
 | Integration: SFTP, FTP, FTPS | Upload and download hash equality; Skip/Replace/Keep Both preserve expected originals/duplicate bytes; 43-item UI batch (40 files, empty file, Unicode/space/quote file, nested folder), including nested empty directory; recursive download verification |
 | Integration: controls per protocol | Pause/resume; cancel/retry; real bytes staged before controls; old destination survives pause/cancel; eventual staging cleanup; permission-denied replacement then repair/retry; actual server stop/start and automatic recovery, ending with matching hashes |
 | Integration: additional transfers | Each protocol: paused-source mutation fails safely and UI retry copies complete new version; per-item pause permits another item to finish, resume verifies both hashes; per-item cancel leaves other item intact |
@@ -171,3 +172,27 @@ Other limits: no hardware/1Password agent
 approval, physical laptop sleep, malformed/encrypted private-key matrix, production certificates,
 or arbitrary lossy-network profiles are covered. Connection-handshake cancellation is disabled
 and remote moves are unsupported; this suite does not add either feature.
+
+
+### Optional transfer verification coverage
+
+Offline tests inject same-size staged corruption (accepted by metadata mode, rejected by SHA-256),
+source changes, truncated/oversized reads, read denial, digest stalls and acquisition stalls,
+connection resets, and corruption before a resumed checkpoint. They cover empty files, known
+digests, deferred restrictive permissions, pause/resume, item controls, shutdown, fresh staging on
+manual retry, and same-session concurrency-one copies. Verification reads do not increase copy
+counters. The native suite checks the switch survives a full process restart. Real-adapter
+`server:verify:transfers` enables application SHA-256 verification, including same-session copies.
+
+SHA-256 is opt-in: it rereads both files and can materially increase network traffic. Both source
+and staging need read permission; denied reads fail before replacement. Digest equality describes
+bytes read at verification time, not a snapshot or physical disk durability.
+
+
+Verification record for optional SHA-256 transfers (November 10, 2026): lint, all typechecks, build,
+and 150 offline tests passed (one intentional display-dependent skip). The built Electron app
+passed local 5/5, native 1/1, and integration 22/22. Actual-adapter queue tests passed SFTP/FTP/FTPS
+with read-only sources, full-file SHA-256 enabled, forced SSH disconnect/checkpoint resume, and
+same-session copies at concurrency one. Disposable Docker fixtures used the existing local
+`fix-q10-docker-loopback-ftps:latest` image; no images or tools were downloaded. Owned processes,
+containers, profiles, and temporary files were removed. Logs are in ignored `.agents/artifacts/sha256-*`.

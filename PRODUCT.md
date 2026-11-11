@@ -29,7 +29,7 @@ The workspace starts with local Mac files on the left and a remote server on the
 - SFTP supports password, private-key, and SSH-agent authentication. FTP and explicit FTPS use passwords.
 - FTPS validates server certificates by default; users may explicitly relax verification for a trusted private or test server.
 - It provides dual-pane browsing, local and remote file operations, saved connections, transfers with conflict handling, previews, permissions inspection, and external editing of remote files.
-- Transfers are enumerated, staged, checked for size and source changes, then renamed into place. Replacement is atomic locally and on SFTP servers supporting POSIX rename; other servers determine rename behavior. Verification does not use destination checksums.
+- Transfers are enumerated, staged, checked for size and source changes, then renamed into place. Replacement is atomic locally and on SFTP servers supporting POSIX rename; other servers determine rename behavior. Optional SHA-256 verification rereads the full source and staged destination before replacement; it is off by default and adds disk/network traffic.
 - Pallet ships for Apple silicon on macOS 13 or later, using Electron, React, and TypeScript.
 - Current beta omissions and release-specific limitations are documented in [FEATURES.md](FEATURES.md); they are not permanent product commitments.
 

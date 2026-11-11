@@ -212,6 +212,11 @@ export function settingsCases(root: string): Case[] {
             `(document.getElementById('${id}').checked===true || document.getElementById('${id}').getAttribute('aria-checked')==='true')`,
           );
         }
+        await ui.button("Transfers");
+        await ui.click(`document.querySelector('label[for="pref-verify-copied-files"]')`);
+        await ui.wait(
+          "document.getElementById('pref-verify-copied-files').checked===true || document.getElementById('pref-verify-copied-files').getAttribute('aria-checked')==='true'",
+        );
         await ui.button("Appearance");
         await ui.click("document.getElementById('pref-appearance')");
         await ui.click("[...document.querySelectorAll('[role=option]')].find(e=>e.innerText.trim()==='Dark')");
@@ -229,6 +234,13 @@ export function settingsCases(root: string): Case[] {
             ),
             true,
           );
+        await ui.button("Transfers");
+        assert.equal(
+          await ui.read(
+            "document.getElementById('pref-verify-copied-files').checked===true || document.getElementById('pref-verify-copied-files').getAttribute('aria-checked')==='true'",
+          ),
+          true,
+        );
         await ui.button("Appearance");
         assert.match(await ui.read<string>("document.getElementById('pref-appearance').innerText"), /Dark/);
         assert.match(await ui.read<string>("document.getElementById('pref-row-density').innerText"), /Comfortable/);
