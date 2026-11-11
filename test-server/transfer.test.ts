@@ -1,8 +1,8 @@
 import { Readable, Writable } from "node:stream";
+import { TransferQueue, type TransferQueueOptions } from "../src/main/services/transfer/transfer-queue";
 import type { SessionManager } from "../src/main/services/sftp/session-manager";
 import type { TransferEndpoint } from "../src/main/services/transfer/transfer-endpoint";
 import type { TransferJobSnapshot } from "../src/shared/transfer/transfer.types";
-import { TransferQueue } from "../src/main/services/transfer/transfer-queue";
 import assert from "node:assert/strict";
 import { promises as fs } from "node:fs";
 import { makeEndpoint } from "../src/main/services/transfer/transfer-endpoint";
@@ -79,6 +79,8 @@ function harness(
   action = "replace",
   onUpdate?: (s: TransferJobSnapshot, q: TransferQueue) => void,
   concurrency = 3,
+  verification: "metadata" | "sha256" = "metadata",
+  options: TransferQueueOptions = {},
 ): {
   queue: TransferQueue;
   run: (sourceBase: string, destDir: string, names: string[]) => Promise<TransferJobSnapshot>;
@@ -98,6 +100,7 @@ function harness(
     },
     concurrency,
     (_sessions, ref) => (ref.kind === "local" ? source : dest),
+    () => ({ verification, ...options }),
   );
   return {
     queue,
@@ -672,39 +675,42 @@ test("a worker starts the next file before the previous commit finishes", { time
   }
 });
 
-test("same-session copies do not deadlock the shared channel pool", { timeout: 5000 }, async () => {
-  const f = await fixture();
-  try {
-    await fs.writeFile(`${f.source}/a`, Buffer.alloc(4096, 1));
-    await fs.writeFile(`${f.source}/b`, Buffer.alloc(4096, 2));
-    // Pool fits exactly one file's read + write pair. Pipelining a second file
-    // would hold both reads and wait forever for the writes.
-    const pooled = withChannelPool(f.local, 2);
-    const waiters = new Map<string, (s: TransferJobSnapshot) => void>();
-    const queue = new TransferQueue(
-      { status: () => "connected", transferConcurrency: () => 1 } as unknown as SessionManager,
-      {
-        onUpdate: () => {},
-        onConflict: (p) => queue.resolveConflict(p.jobId, "replace", true),
-        record: (s) => waiters.get(s.id)?.(s),
-      },
-      1,
-      () => pooled,
-    );
-    const id = queue.enqueue({
-      from: { kind: "sftp", sessionId: "same" },
-      to: { kind: "sftp", sessionId: "same" },
-      sourceBase: f.source,
-      destDir: f.dest,
-      names: ["a", "b"],
-    });
-    const result = await new Promise<TransferJobSnapshot>((resolve) => waiters.set(id, resolve));
-    assert.equal(result.state, "completed", JSON.stringify(result.errors));
-    assert.deepEqual((await fs.readdir(f.dest)).sort(), ["a", "b"]);
-  } finally {
-    await f.cleanup();
-  }
-});
+for (const verification of ["metadata", "sha256"] as const) {
+  test(`${verification}: same-session copies do not deadlock the shared channel pool`, { timeout: 5000 }, async () => {
+    const f = await fixture();
+    try {
+      await fs.writeFile(`${f.source}/a`, Buffer.alloc(4096, 1));
+      await fs.writeFile(`${f.source}/b`, Buffer.alloc(4096, 2));
+      // Pool fits exactly one file's read + write pair. Pipelining a second file
+      // would hold both reads and wait forever for the writes.
+      const pooled = withChannelPool(f.local, 2);
+      const waiters = new Map<string, (s: TransferJobSnapshot) => void>();
+      const queue = new TransferQueue(
+        { status: () => "connected", transferConcurrency: () => 1 } as unknown as SessionManager,
+        {
+          onUpdate: () => {},
+          onConflict: (p) => queue.resolveConflict(p.jobId, "replace", true),
+          record: (s) => waiters.get(s.id)?.(s),
+        },
+        1,
+        () => pooled,
+      );
+      const id = queue.enqueue({
+        verification,
+        from: { kind: "sftp", sessionId: "same" },
+        to: { kind: "sftp", sessionId: "same" },
+        sourceBase: f.source,
+        destDir: f.dest,
+        names: ["a", "b"],
+      });
+      const result = await new Promise<TransferJobSnapshot>((resolve) => waiters.set(id, resolve));
+      assert.equal(result.state, "completed", JSON.stringify(result.errors));
+      assert.deepEqual((await fs.readdir(f.dest)).sort(), ["a", "b"]);
+    } finally {
+      await f.cleanup();
+    }
+  });
+}
 
 test("remote-to-remote transfers report live progress and complete", { timeout: 15000 }, async () => {
   const f = await fixture();
@@ -1250,6 +1256,352 @@ test("reports a separate snapshot with its own stats for each selected item", as
       result.totalBytes,
       "item totals add up to the job total",
     );
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test("SHA-256 rejects same-size corruption before replacement; metadata mode cannot detect it", async () => {
+  const f = await fixture();
+  try {
+    await fs.writeFile(`${f.source}/file`, "correct bytes");
+    await fs.writeFile(`${f.dest}/file`, "original");
+    const corrupt = wrap(f.local, {
+      createWriteStream: async (p, mode, options) => {
+        const dst = await f.local.createWriteStream(p, mode, options);
+        const write = dst._write.bind(dst);
+        dst._write = (chunk, encoding, cb) => write(Buffer.alloc(chunk.length, 120), encoding, cb);
+        return dst;
+      },
+    });
+    const legacy = await harness(f.local, corrupt).run(f.source, f.dest, ["file"]);
+    assert.equal(legacy.state, "completed");
+    assert.equal(await fs.readFile(`${f.dest}/file`, "utf8"), "xxxxxxxxxxxxx");
+    await fs.writeFile(`${f.dest}/file`, "original");
+    const result = await harness(f.local, corrupt, "replace", undefined, 1, "sha256").run(f.source, f.dest, ["file"]);
+    assert.equal(result.state, "failed");
+    assert.match(result.errors[0].message, /SHA-256 mismatch/);
+    assert.equal(result.doneFiles, 0);
+    assert.equal(await fs.readFile(`${f.dest}/file`, "utf8"), "original");
+    assert.deepEqual(await fs.readdir(f.dest), ["file"]);
+  } finally {
+    await f.cleanup();
+  }
+});
+
+for (const size of [0, 27, CHUNK * 2 + 17]) {
+  test(`SHA-256 verifies ${size} bytes with honest progress and deferred metadata`, async () => {
+    const f = await fixture();
+    try {
+      const data = Buffer.alloc(size, 37);
+      await fs.writeFile(`${f.source}/file`, data, { mode: 0o400 });
+      let readBack = false;
+      let metaAfterRead = false;
+      const dest = wrap(f.local, {
+        writesMeta: true,
+        createWriteStream: async (p, mode, options) => {
+          assert.equal(mode, 0o600, "staging remains readable before final metadata");
+          assert.equal(options?.meta, undefined);
+          return f.local.createWriteStream(p, mode, options);
+        },
+        createReadStream: async (p, options) => {
+          readBack = true;
+          return f.local.createReadStream(p, options);
+        },
+        setMeta: async (p, meta) => {
+          metaAfterRead = readBack;
+          await f.local.setMeta(p, meta);
+        },
+      });
+      let sawVerification = false;
+      const result = await harness(
+        f.local,
+        dest,
+        "replace",
+        (s) => {
+          if (s.verifyingFiles?.length) {
+            sawVerification = true;
+            assert.equal(s.state, "running");
+            assert.equal(s.doneFiles, 0);
+            assert.equal(s.items[0].doneFiles, 0);
+            assert.equal(s.doneBytes, size);
+            assert.equal(s.verifyingFiles[0].totalBytes, size * 2);
+            assert(s.verifyingFiles[0].checkedBytes <= size * 2);
+          }
+        },
+        1,
+        "sha256",
+      ).run(f.source, f.dest, ["file"]);
+      assert.equal(result.state, "completed", JSON.stringify(result.errors));
+      assert.equal(result.verification, "sha256");
+      assert.equal(result.doneBytes, size);
+      assert.equal(result.doneFiles, 1);
+      assert(sawVerification && metaAfterRead);
+      assert.deepEqual(await fs.readFile(`${f.dest}/file`), data);
+      assert.equal((await fs.stat(`${f.dest}/file`)).mode & 0o777, 0o400);
+    } finally {
+      await f.cleanup();
+    }
+  });
+}
+
+for (const fault of ["source-change", "read-denied", "short-read", "oversized-read", "read-error"] as const) {
+  test(`SHA-256 ${fault} preserves destination without fallback`, async () => {
+    const f = await fixture();
+    try {
+      await fs.writeFile(`${f.source}/file`, "correct bytes");
+      await fs.writeFile(`${f.dest}/file`, "original");
+      let sourceReads = 0;
+      const source = wrap(f.local, {
+        createReadStream: async (p, options) => {
+          if (++sourceReads === 2 && fault === "source-change") await fs.utimes(p, 1, 1);
+          return f.local.createReadStream(p, options);
+        },
+      });
+      const dest = wrap(f.local, {
+        createReadStream: async (p, options) => {
+          if (fault === "read-denied") throw Object.assign(new Error("Permission denied"), { code: "EACCES" });
+          if (fault === "short-read") return Readable.from([Buffer.alloc(12)]);
+          if (fault === "oversized-read") return Readable.from([Buffer.alloc(14)]);
+          if (fault === "read-error") throw new Error("Injected disk read error");
+          return f.local.createReadStream(p, options);
+        },
+      });
+      const result = await harness(source, dest, "replace", undefined, 1, "sha256").run(f.source, f.dest, ["file"]);
+      assert.equal(result.state, "failed", fault);
+      assert.equal(result.doneFiles, 0);
+      assert.equal(sourceReads, 2, "integrity/read failures must not automatically recopy");
+      assert.equal(await fs.readFile(`${f.dest}/file`, "utf8"), "original");
+      if (fault === "read-denied") assert.match(result.errors[0].message, /requires read permission/);
+      assert.deepEqual(await fs.readdir(f.dest), ["file"]);
+    } finally {
+      await f.cleanup();
+    }
+  });
+}
+
+for (const control of ["pause", "pauseItem", "cancel", "cancelItem", "shutdown"] as const) {
+  test(`SHA-256 ${control} during destination digest cannot commit and resume rehashes from zero`, async () => {
+    const f = await fixture();
+    try {
+      const data = Buffer.alloc(CHUNK * 2 + 17, 37);
+      await fs.writeFile(`${f.source}/file`, data);
+      await fs.writeFile(`${f.dest}/file`, "original");
+      let reads = 0;
+      let acted = false;
+      let released!: () => void;
+      const atRead = new Promise<void>((resolve) => (released = resolve));
+      const dest = wrap(f.local, {
+        createReadStream: async (p, options) => {
+          reads++;
+          assert.equal(options?.start, undefined, "every digest starts at byte zero");
+          if (reads > 1) return f.local.createReadStream(p, options);
+          const stream = new Readable({
+            read() {
+              /* Deliberately stalled for cancellation/timeout coverage. */
+            },
+          });
+          stream.push(data.subarray(0, 1024));
+          stream.once("close", released);
+          return stream;
+        },
+      });
+      const h = harness(
+        f.local,
+        dest,
+        "replace",
+        (s, q) => {
+          if (!acted && (s.verifyingFiles?.[0]?.checkedBytes ?? 0) > data.length) {
+            acted = true;
+            if (control === "shutdown") void q.shutdown();
+            else if (control === "pauseItem" || control === "cancelItem") q[control](s.id, "file");
+            else q[control](s.id);
+            if (control === "pause" || control === "pauseItem")
+              void (async () => {
+                await atRead;
+                assert.equal(await fs.readFile(`${f.dest}/file`, "utf8"), "original");
+                if (control === "pause") q.resume(s.id);
+                else q.resumeItem(s.id, "file");
+              })();
+          }
+        },
+        1,
+        "sha256",
+      );
+      const result = await h.run(f.source, f.dest, ["file"]);
+      assert(acted);
+      if (control === "pause" || control === "pauseItem") {
+        assert.equal(result.state, "completed", JSON.stringify(result.errors));
+        assert.equal(result.doneBytes, data.length);
+        assert.equal(reads, 2);
+        assert.deepEqual(await fs.readFile(`${f.dest}/file`), data);
+      } else {
+        assert.equal(result.state, "canceled");
+        assert.equal(result.doneFiles, 0);
+        assert.equal(await fs.readFile(`${f.dest}/file`, "utf8"), "original");
+      }
+      assert.deepEqual(await fs.readdir(f.dest), ["file"]);
+    } finally {
+      await f.cleanup();
+    }
+  });
+}
+
+test("SHA-256 retry retains enqueued mode and replaces corrupted staging with fresh content", async () => {
+  const f = await fixture();
+  try {
+    await fs.writeFile(`${f.source}/file`, "correct bytes");
+    await fs.writeFile(`${f.dest}/file`, "original");
+    let enabled = true;
+    let corrupt = true;
+    const requests: string[] = [];
+    let recorded!: (s: TransferJobSnapshot) => void;
+    const dest = wrap(f.local, {
+      createWriteStream: async (p, mode, options) => {
+        requests.push(p);
+        const stream = await f.local.createWriteStream(p, mode, options);
+        if (corrupt) {
+          const write = stream._write.bind(stream);
+          stream._write = (chunk, encoding, cb) => write(Buffer.alloc(chunk.length, 120), encoding, cb);
+        }
+        return stream;
+      },
+    });
+    const q = new TransferQueue(
+      sessions,
+      {
+        onUpdate: () => {},
+        onConflict: (p) => q.resolveConflict(p.jobId, "replace", true),
+        record: (s) => recorded(s),
+      },
+      1,
+      (_s, ref) => (ref.kind === "local" ? f.local : dest),
+      () => ({ verification: enabled ? "sha256" : "metadata" }),
+    );
+    const first = new Promise<TransferJobSnapshot>((resolve) => (recorded = resolve));
+    const id = q.enqueue({
+      from: { kind: "local" },
+      to: { kind: "sftp", sessionId: "test" },
+      sourceBase: f.source,
+      destDir: f.dest,
+      names: ["file"],
+    });
+    enabled = false;
+    assert.equal((await first).state, "failed");
+    corrupt = false;
+    const second = new Promise<TransferJobSnapshot>((resolve) => (recorded = resolve));
+    q.retry(id);
+    const result = await second;
+    assert.equal(result.state, "completed");
+    assert.equal(result.verification, "sha256");
+    assert.equal(requests.length, 2);
+    assert.notEqual(requests[0], requests[1]);
+    assert.equal(await fs.readFile(`${f.dest}/file`, "utf8"), "correct bytes");
+  } finally {
+    await f.cleanup();
+  }
+});
+
+for (const fault of ["stall", "acquire-stall", "connection-reset"] as const) {
+  test(`SHA-256 ${fault} during read-back is bounded and preserves old destination until success`, async () => {
+    const f = await fixture();
+    try {
+      await fs.writeFile(`${f.source}/file`, "correct bytes");
+      await fs.writeFile(`${f.dest}/file`, "original");
+      let reads = 0;
+      let closed = false;
+      const dest = wrap(f.local, {
+        createReadStream: async (p, options) => {
+          reads++;
+          assert.equal(await fs.readFile(`${f.dest}/file`, "utf8"), "original");
+          if (fault === "connection-reset") {
+            if (reads === 1) throw Object.assign(new Error("Injected connection reset"), { code: "ECONNRESET" });
+            return f.local.createReadStream(p, options);
+          }
+          if (fault === "acquire-stall") return new Promise(() => {});
+          const stream = new Readable({
+            read() {
+              /* Deliberately stalled for cancellation/timeout coverage. */
+            },
+          });
+          stream.once("close", () => (closed = true));
+          return stream;
+        },
+      });
+      const result = await harness(f.local, dest, "replace", undefined, 1, "sha256", {
+        stallTimeoutMs: 40,
+        maxChannelRetries: fault === "connection-reset" ? 1 : 0,
+      }).run(f.source, f.dest, ["file"]);
+      assert.equal(result.state, fault === "connection-reset" ? "completed" : "failed", JSON.stringify(result.errors));
+      if (fault === "connection-reset") assert.equal(reads, 2);
+      else {
+        assert.match(result.errors[0].message, /stalled/);
+        if (fault === "stall") assert(closed);
+        assert.equal(await fs.readFile(`${f.dest}/file`, "utf8"), "original");
+      }
+    } finally {
+      await f.cleanup();
+    }
+  });
+}
+
+test("SHA-256 hashes the complete resumed file and rejects corruption before its checkpoint", async () => {
+  const f = await fixture();
+  try {
+    const payload = Buffer.alloc(CHUNK * 2 + 17, 37);
+    await fs.writeFile(`${f.source}/file`, payload);
+    await fs.writeFile(`${f.dest}/file`, "original");
+    const starts: number[] = [];
+    const source = wrap(f.local, {
+      createReadStream: async (p, options) => {
+        if (options?.end == null) return f.local.createReadStream(p, options);
+        starts.push(options?.start ?? 0);
+        if (starts.length > 1) return f.local.createReadStream(p, options);
+        return Readable.from(
+          (async function* () {
+            yield payload.subarray(0, CHUNK);
+            await new Promise((resolve) => setTimeout(resolve, 40));
+            throw Object.assign(new Error("Injected reset"), { code: "ECONNRESET" });
+          })(),
+        );
+      },
+    });
+    const dest = wrap(f.local, {
+      createWriteStream: async (p, mode, options) => {
+        const dst = await f.local.createWriteStream(p, mode, options);
+        if (!options?.start) {
+          const write = dst._write.bind(dst);
+          dst._write = (chunk, encoding, cb) => write(Buffer.alloc(chunk.length, 120), encoding, cb);
+        }
+        return dst;
+      },
+    });
+    const result = await harness(source, dest, "replace", undefined, 1, "sha256").run(f.source, f.dest, ["file"]);
+    assert(starts.length > 1 && starts[1] > 0, `expected a confirmed resume offset: ${starts}`);
+    assert.equal(result.state, "failed");
+    assert.match(result.errors[0].message, /SHA-256 mismatch/);
+    assert.equal(await fs.readFile(`${f.dest}/file`, "utf8"), "original");
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test("metadata mode retains its existing post-copy wait without a verification stall deadline", async () => {
+  const f = await fixture();
+  try {
+    await fs.writeFile(`${f.source}/file`, "correct bytes");
+    const dest = wrap(f.local, {
+      setMeta: async (p, meta) => {
+        await new Promise((resolve) => setTimeout(resolve, 80));
+        await f.local.setMeta(p, meta);
+      },
+    });
+    const result = await harness(f.local, dest, "replace", undefined, 1, "metadata", {
+      stallTimeoutMs: 40,
+      maxChannelRetries: 0,
+    }).run(f.source, f.dest, ["file"]);
+    assert.equal(result.state, "completed", JSON.stringify(result.errors));
+    assert.equal(await fs.readFile(`${f.dest}/file`, "utf8"), "correct bytes");
   } finally {
     await f.cleanup();
   }

@@ -275,7 +275,11 @@ class SftpEndpoint implements TransferEndpoint {
   async createReadStream(p: string, options: ReadOptions = {}): Promise<Readable> {
     options.signal?.throwIfAborted();
     const lease = await this.sessions.acquireTransferChannel(this.sessionId);
+    // Abort even while OPEN is pending; a dead channel may never call it back.
+    const abortOpen = (): void => lease.release(true);
+    options.signal?.addEventListener("abort", abortOpen, { once: true });
     try {
+      options.signal?.throwIfAborted();
       const stream = await createPipelinedReadStream(lease.sftp, p, { start: options.start, end: options.end });
       let released = false;
       const finish = (broken: boolean): void => {
@@ -296,6 +300,8 @@ class SftpEndpoint implements TransferEndpoint {
     } catch (err) {
       lease.release(true);
       throw err;
+    } finally {
+      options.signal?.removeEventListener("abort", abortOpen);
     }
   }
 

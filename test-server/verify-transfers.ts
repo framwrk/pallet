@@ -34,7 +34,7 @@ const queue = new TransferQueue(
     if (ref.kind !== "local") return endpoint;
     const read = endpoint.createReadStream.bind(endpoint);
     endpoint.createReadStream = async (p, options) => {
-      if (!p.endsWith("/large.bin")) return read(p, options);
+      if (!p.endsWith("/large.bin") || options?.end == null) return read(p, options);
       starts.push(options?.start ?? 0);
       if (starts.length > 1) return read(p, options);
       // First attempt: stream real bytes, then cut the connection mid-file so
@@ -67,7 +67,7 @@ const queue = new TransferQueue(
 );
 function run(request: TransferRequest): Promise<TransferJobSnapshot> {
   return new Promise((resolve, reject) => {
-    const id = queue.enqueue(request);
+    const id = queue.enqueue({ ...request, verification: "sha256" });
     const timer = setTimeout(
       () => {
         queue.cancel(id);
@@ -79,7 +79,10 @@ function run(request: TransferRequest): Promise<TransferJobSnapshot> {
       clearTimeout(timer);
       records.delete(id);
       if (job.state !== "completed") reject(new Error(JSON.stringify(job)));
-      else resolve(job);
+      else {
+        assert.equal(job.verification, "sha256");
+        resolve(job);
+      }
     });
   });
 }
@@ -105,11 +108,12 @@ try {
     const download = `${root}/${profile.protocol}-download`;
     await fs.mkdir(`${source}/tree/empty`, { recursive: true });
     const count = Number(process.env.PALLET_TEST_FILE_COUNT ?? 12);
-    const expected = new Map<string, Buffer>();
+    const expected = new Map<string, Buffer>([["readonly.txt", Buffer.from("read-only source")]]);
     for (let i = 0; i < count; i++) expected.set(`file-${i}`, Buffer.alloc(i * 37, i % 256));
     if (profile.protocol === "sftp" && process.env.PALLET_TEST_LARGE_FILE !== "0")
       expected.set("large.bin", Buffer.alloc(CHUNK * 2 + 39001, 37));
     for (const [name, data] of expected) await fs.writeFile(`${source}/tree/${name}`, data);
+    await fs.chmod(`${source}/tree/readonly.txt`, 0o400);
     try {
       const request: TransferRequest = {
         from: { kind: "local" },

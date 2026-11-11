@@ -32,7 +32,9 @@ remote hosts.
   between the two remote panes with F5 or drag and drop.
 - **Real transfer totals:** Pallet enumerates every job before the first byte moves, so progress
   bars show actual totals. Files are written to staged temporary files, verified, and renamed into
-  place, so a failed transfer leaves the existing destination intact.
+  place, so a failed transfer leaves the existing destination intact. Enable **Verify copied files
+  with SHA-256** in Settings → Transfers for full source/staged-copy read-back before replacement.
+  It is off by default, adds disk/network traffic, and requires read permission on both files.
 - **Automatic recovery:** a dropped Wi-Fi connection or a sleeping laptop pauses the queue, and
   Pallet resumes it with backoff after the connection returns. Large SFTP transfers keep a deep
   request pipeline in flight — so throughput is not one round trip per chunk — and resume from the
@@ -255,7 +257,8 @@ Stop and remove the servers with `bun run server:stop`.
 ### End-to-end transfer verification
 
 With the local test servers running, `bun run server:verify:transfers` exercises the actual queue
-over SFTP, FTP, and FTPS and compares SHA-256 hashes after downloading. It also checks overwrites
+over SFTP, FTP, and FTPS with application SHA-256 verification enabled before replacement, and
+independently compares SHA-256 hashes after downloading. It also checks overwrites
 and same-session remote copies with concurrency set to one. Set `PALLET_TEST_DISCONNECT=1` to also
 force a real SSH disconnect in the SFTP test and check automatic recovery.
 

@@ -258,6 +258,11 @@ export function integrationCases(root: string, s: Servers): Case[] {
             `(document.getElementById('${id}').checked===true || document.getElementById('${id}').getAttribute('aria-checked')==='true')`,
           );
         }
+        await ui.button("Transfers");
+        await ui.click("document.querySelector('label[for=\"pref-verify-copied-files\"]')");
+        await ui.wait(
+          "document.getElementById('pref-verify-copied-files').checked===true || document.getElementById('pref-verify-copied-files').getAttribute('aria-checked')==='true'",
+        );
         await ui.key("Escape");
         await writeFile(join(source, "narrow.txt"), "narrow");
         await ui.go(source);
@@ -487,6 +492,36 @@ export function integrationCases(root: string, s: Servers): Case[] {
       },
     ]);
   }
+  cases.push([
+    "SHA-256 read-back progress stays active before replacement",
+    async (ui) => {
+      await connect(ui, s, "sftp");
+      const dir = join(root, "verification");
+      await mkdir(dir);
+      await large(join(dir, "verified.bin"));
+      await writeFile(join(s.path("sftp"), "verified.bin"), "original");
+      await ui.go(dir);
+      s.exec("sftp", ["tc", "qdisc", "replace", "dev", "eth0", "root", "netem", "delay", "40ms"]);
+      try {
+        await copy(ui, "verified.bin");
+        await conflict(ui, "Replace");
+        await ui.wait(
+          "document.querySelector('[aria-label=\"Transfer queue\"]').innerText.includes('Verifying…')",
+          "visible SHA-256 phase",
+          60000,
+        );
+        assert.equal(await readFile(join(s.path("sftp"), "verified.bin"), "utf8"), "original");
+        await ui.wait(
+          "document.querySelector('[aria-label=\"Transfer queue\"]').innerText.includes('checked')",
+          "separate bytes checked",
+        );
+        await terminal(ui);
+        assert.equal(await hash(join(dir, "verified.bin")), await hash(join(s.path("sftp"), "verified.bin")));
+      } finally {
+        s.exec("sftp", ["tc", "qdisc", "del", "dev", "eth0", "root"]);
+      }
+    },
+  ]);
   cases.push([
     "SFTP-to-FTP copy, Keep Both, cancellation, retry and pane restoration",
     async (ui) => {

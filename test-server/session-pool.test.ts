@@ -6,6 +6,7 @@ import { Socket } from "node:net";
 import { TLSSocket } from "node:tls";
 import assert from "node:assert/strict";
 import { createPipelinedWriteStream } from "../src/main/services/sftp/pipelined-streams";
+import { digestEndpoint } from "../src/main/services/transfer/transfer-verification";
 import { makeEndpoint } from "../src/main/services/transfer/transfer-endpoint";
 import { pipeline } from "node:stream/promises";
 import { test } from "node:test";
@@ -311,4 +312,24 @@ test("a synchronous SFTP write failure reports the original error", async () => 
   } as unknown as SFTPWrapper;
   const stream = await createPipelinedWriteStream(sftp, "/part", 0o644);
   await assert.rejects(pipeline(Readable.from(Buffer.from("data")), stream), (err) => err === failure);
+});
+
+test("canceling an SFTP verification while OPEN hangs discards its channel", async () => {
+  let opened!: () => void;
+  const opening = new Promise<void>((resolve) => (opened = resolve));
+  const releases: boolean[] = [];
+  const manager = {
+    protocol: () => "sftp",
+    acquireTransferChannel: async () => ({
+      sftp: { open: () => opened() },
+      release: (broken = false) => releases.push(broken),
+    }),
+  } as unknown as SessionManager;
+  const endpoint = makeEndpoint(manager, { kind: "sftp", sessionId: "test" });
+  const controller = new AbortController();
+  const pending = digestEndpoint(endpoint, "/file", 3, controller.signal, () => {});
+  await opening;
+  controller.abort(new Error("Canceled verification"));
+  await assert.rejects(pending, /Canceled verification/);
+  assert.deepEqual(releases, [true]);
 });

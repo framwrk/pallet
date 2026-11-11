@@ -686,7 +686,20 @@ function TransfersPanel({
       <Section title="Reliability">
         <Group>
           <Row
+            label="Verify copied files with SHA-256"
+            description="Rereads both source and staged copy before replacement. Adds disk and network traffic and requires read permission. Applies to new transfers."
+            htmlFor="pref-verify-copied-files"
+          >
+            <Switch
+              id="pref-verify-copied-files"
+              aria-describedby="pref-verify-copied-files-desc"
+              checked={prefs.verifyCopiedFiles}
+              onCheckedChange={(checked) => save({ verifyCopiedFiles: checked })}
+            />
+          </Row>
+          <Row
             label="Stall timeout"
+            separated
             description="A transfer with no progress for this long is abandoned and retried."
             htmlFor="pref-transfer-timeout"
           >

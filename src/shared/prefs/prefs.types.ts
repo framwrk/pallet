@@ -43,6 +43,8 @@ export interface Preferences {
 
   /** Abort a file transfer after this long without progress. */
   transferTimeoutSeconds: number;
+  /** Reread source and staged destination with SHA-256 before replacement. */
+  verifyCopiedFiles: boolean;
   /** Per-file retries after a dead channel before the file is reported failed. */
   transferMaxRetries: number;
   /** Trailing window for the drawer's recent average and median speed. */

@@ -49,6 +49,7 @@ function coerce(stored: Record<string, unknown>): Preferences {
     defaultKeepaliveSeconds,
     autoReconnect,
     transferTimeoutSeconds,
+    verifyCopiedFiles,
     transferMaxRetries,
     speedStatsWindowSeconds,
     editorSaveDebounceMs,
@@ -82,6 +83,7 @@ function coerce(stored: Record<string, unknown>): Preferences {
       MAX_KEEPALIVE_SECONDS,
     ),
     autoReconnect: bool(autoReconnect, DEFAULT_PREFERENCES.autoReconnect),
+    verifyCopiedFiles: bool(verifyCopiedFiles, DEFAULT_PREFERENCES.verifyCopiedFiles),
     transferTimeoutSeconds: bounded(
       transferTimeoutSeconds,
       DEFAULT_PREFERENCES.transferTimeoutSeconds,

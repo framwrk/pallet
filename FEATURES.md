@@ -284,7 +284,8 @@ Local moves run directly and support undo.
    `.pallet-<id>.pallet-part` file. Separate jobs cannot share partial files, and an existing
    destination stays intact while Pallet transfers its replacement.
 3. **Verified before replacement.** Pallet checks the staged size and confirms that the source size
-   and modification time have not changed, then stamps metadata and renames the file into place.
+   and modification time have not changed. Optional SHA-256 verification rereads the full source
+   and staged copy before Pallet stamps metadata and renames the file into place.
    Local copies and SFTP servers that support POSIX rename replace atomically. Other SFTP servers
    and FTP and FTPS use the server's rename behavior; if the server refuses the replacement, the
    job reports an error instead of deleting the original. Pallet reports a lost rename reply for
@@ -294,6 +295,25 @@ Folder scans reuse directory-entry metadata instead of requesting it again for e
 Transfers use the server's concurrency setting. Jobs sharing a server take turns, while jobs using
 different servers can run together. Pallet throttles progress updates to keep large batches
 responsive.
+
+### Optional SHA-256 verification
+
+Enable **Verify copied files with SHA-256** in **Settings → Transfers**. The default is off;
+Pallet captures the choice when a job is enqueued and retains it through pause, recovery, and retry.
+For each file, it rereads the entire source and staged destination sequentially, checks source
+size/modification time around those reads, and compares SHA-256 digests before replacement. This
+also verifies the full file after checkpoint resume. It supports local, SFTP, FTP, FTPS, and
+remote-to-remote copies without server shell access.
+
+Read-back adds disk and network traffic and requires read permission on both files. A mismatch,
+short read, or read-permission failure stops the file before replacement; verification never falls
+back silently. **Retry** copies fresh staged content after an integrity failure. The drawer shows
+**Verifying…** and bytes checked separately from copied bytes; the job stays active and files count
+as complete only after replacement. Pause/cancel, per-item controls, network recovery, and the stall
+timeout apply during hashing. Interrupted digest passes restart from byte zero.
+
+This compares bytes read at verification time. It is not a filesystem snapshot or proof of physical
+disk durability, and cannot prevent another writer changing a file after it was checked.
 
 ### Queue controls
 
@@ -346,8 +366,8 @@ scanning, directory creation, and copying until the session reconnects.
 
 Cancellation cleans up the job's temporary files when the destination is reachable. A crash or an
 unreachable server can leave identifiable partial files behind. Pallet keeps checkpoints in memory,
-so resuming across app restarts is not supported. Verification uses sizes and source modification
-times, not a full destination checksum or protection against remote disk failure.
+so resuming across app restarts is not supported. Default verification uses sizes and source
+modification times; enable SHA-256 for full-file read-back before replacement.
 
 ---
 
@@ -424,6 +444,7 @@ make while Pallet is running.
 | **Default concurrency**     | 4       | 1-7. Seeds the concurrency field in Quick Connect; existing connections are unchanged. |
 | **Default keepalive**       | 15 s    | 0-300. Seeds the keepalive field; 0 disables keepalive.                                |
 | **Reconnect automatically** | On      | Reconnect dropped sessions with backoff instead of disconnecting.                      |
+| **Verify copied files with SHA-256** | Off | Reread full source and staged destination before replacement; adds traffic and requires read permission. |
 | **Stall timeout**           | 60 s    | Abandon a file after this long without progress.                                       |
 | **Retries per file**        | 5       | Per-file retries after a dead channel before reporting failure.                        |
 | **Speed window**            | 30 s    | Trailing window for the transfer drawer's average and median speeds.                   |

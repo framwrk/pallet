@@ -57,6 +57,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   defaultKeepaliveSeconds: 15,
   autoReconnect: true,
   transferTimeoutSeconds: 60,
+  verifyCopiedFiles: false,
   transferMaxRetries: 5,
   speedStatsWindowSeconds: 30,
   editorSaveDebounceMs: 800,
