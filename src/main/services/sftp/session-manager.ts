@@ -242,6 +242,47 @@ export class SessionManager {
     };
   }
 
+  /**
+   * Dial a second, independent SSH connection for an interactive terminal.
+   * The returned client is not tracked here; TerminalSessions owns its
+   * lifetime. Credentials stay in the main process either way.
+   */
+  async openTerminalClient(sessionId: string): Promise<SshClient> {
+    const session = this.mustGet(sessionId);
+    if (protocolOf(session.profile) !== "sftp") {
+      const err: NodeJS.ErrnoException = new Error("Terminal is available for SFTP connections only");
+      err.code = "ENOTSSH";
+      throw err;
+    }
+    if (session.status !== "connected") {
+      const err: NodeJS.ErrnoException = new Error("Not connected");
+      err.code = "ENOTCONN";
+      throw err;
+    }
+    const config = await this.buildConnectConfig(session.profile);
+    const client = new SshClient();
+    await new Promise<void>((resolve, reject) => {
+      const onError = (err: Error): void => {
+        cleanup();
+        reject(connectionError(err));
+      };
+      const onReady = (): void => {
+        cleanup();
+        resolve();
+      };
+      const cleanup = (): void => {
+        client.removeListener("ready", onReady);
+        client.removeListener("error", onError);
+      };
+      client.once("ready", onReady);
+      client.once("error", onError);
+      client.connect(config);
+    });
+    // Post-handshake errors must not become uncaught exceptions.
+    client.on("error", () => {});
+    return client;
+  }
+
   /** Open the connection and the dedicated browse channel. */
   async connect(profile: ConnectProfile): Promise<ConnectResult> {
     const id = `s${++this.seq}`;

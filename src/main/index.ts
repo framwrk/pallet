@@ -1,4 +1,4 @@
-import { AppChannels, SettingsChannels, WindowChannels } from "@shared/ipc/ipc.constants";
+import { AppChannels, SettingsChannels, TerminalChannels, WindowChannels } from "@shared/ipc/ipc.constants";
 import { BrowserWindow, Menu, app, session, shell } from "electron";
 import { editSessions, sessionManager } from "./ipc/sftp";
 import { installCrashHandlers, log, logFilePath } from "./services/logger";
@@ -10,6 +10,7 @@ import { join } from "path";
 import { pathToFileURL } from "url";
 import { registerIpcHandlers } from "./ipc/register";
 import { startUpdateChecks } from "./services/update-checker";
+import { terminalSessions } from "./ipc/terminal";
 import { transferQueue } from "./ipc/transfer";
 
 /** Lock a window to its own document and keep external links to http(s). */
@@ -86,6 +87,16 @@ function buildMenu(): void {
     },
   };
 
+  const toggleTerminalItem: Electron.MenuItemConstructorOptions = {
+    label: "Toggle Terminal",
+    accelerator: "Ctrl+`",
+    click: () => {
+      const focused = BrowserWindow.getFocusedWindow();
+      if (!focused || focused !== mainWindow) return;
+      focused.webContents.send(TerminalChannels.toggleRequest);
+    },
+  };
+
   // ⌘W must NEVER close the window: the accelerator belongs to the renderer's
   // remote-pane disconnect (T3 Code has the same rule for tab close). The
   // main window's renderer disconnects the active remote pane or no-ops when
@@ -120,7 +131,7 @@ function buildMenu(): void {
     },
     {
       label: "File",
-      submenu: [closeItem],
+      submenu: [toggleTerminalItem, closeItem],
     },
     { role: "editMenu" },
     { role: "viewMenu" },
@@ -205,6 +216,7 @@ app.on("before-quit", (event) => {
   if (cleaningUp) return;
   if (!transferQueue.hasActiveTransfers()) {
     // Close SSH sessions cleanly; avoids half-open channels server-side.
+    terminalSessions.closeAll();
     sessionManager.disconnectAll();
     // Remove edit temp copies and stop pending re-uploads.
     void editSessions.closeAll();
@@ -219,6 +231,7 @@ app.on("before-quit", (event) => {
 
 setQuitCleanup(async () => {
   const result = await transferQueue.shutdown();
+  terminalSessions.closeAll();
   sessionManager.disconnectAll();
   // Remove edit temp copies and stop pending re-uploads.
   await editSessions.closeAll();

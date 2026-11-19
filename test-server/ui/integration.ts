@@ -218,7 +218,7 @@ export function integrationCases(root: string, s: Servers): Case[] {
         await disconnect(ui);
         await ui.key("k", 4);
         await form(ui, s, "sftp");
-        await ui.button("Add to Favorites");
+        await ui.click("document.querySelector('label[for=\"connect-add-favorite\"]')");
         await ui.button("Connect");
         await ui.wait(`document.body.innerText.includes('Unknown Host') || ${connected()}`, "trust or connection", 20000);
         if (await ui.read("document.body.innerText.includes('Unknown Host')")) await ui.button("Trust");
@@ -316,6 +316,9 @@ export function integrationCases(root: string, s: Servers): Case[] {
           await ui.click(`[...${dialog}.querySelectorAll('button')].find(e => e.innerText.trim() === 'Delete')`);
           await ui.wait(`!(${favorite(name)})`, `${name} deleted`);
         }
+        // Leave the modal closed so the next case's connect() is not blocked.
+        await ui.key("Escape");
+        await ui.wait("!document.querySelector('[role=dialog]')", "settings closed");
       },
     ],
     [
@@ -351,6 +354,58 @@ export function integrationCases(root: string, s: Servers): Case[] {
           );
         await ui.button("Close inspector");
         await ui.call("Emulation.clearDeviceMetricsOverride");
+      },
+    ],
+    [
+      "SFTP terminal toggles over the pane, survives hiding, rejects F5 and exits cleanly",
+      async (ui) => {
+        await connect(ui, s, "sftp");
+        await ui.button("Open Terminal", pane("right"));
+        await ui.wait(`!!${pane("right")}.querySelector('.xterm')`, "terminal surface");
+        await ui.wait(`${pane("right")}.querySelector('.xterm-rows')?.innerText.trim().length>0`, "shell prompt", 20000);
+        await ui.wait("document.activeElement?.classList.contains('xterm-helper-textarea')", "terminal focus");
+        await ui.call("Input.insertText", { text: "echo ui-ok" });
+        await ui.key("Enter");
+        await ui.wait(`${pane("right")}.querySelector('.xterm-rows')?.innerText.includes('ui-ok')`, "command output");
+
+        await ui.button("Show Files", pane("right"));
+        await ui.wait(`${pane("right")}.querySelector('[role=grid]').getBoundingClientRect().height>0`, "file list returns");
+        // ⌃` is a native File-menu accelerator; deliver it as a desktop keystroke.
+        ui.native('keystroke "`" using control down');
+        await ui.wait(
+          `!${pane("right")}.querySelector('[role=grid]').getBoundingClientRect().height && ${pane("right")}.querySelector('.xterm-rows')?.innerText.includes('ui-ok')`,
+          "terminal returns with scrollback",
+        );
+
+        // A terminal-view pane is not a transfer destination: F5 enqueues nothing.
+        await clear(ui);
+        const name = "terminal-f5.txt";
+        await writeFile(join(source, name), "no transfer");
+        await ui.go(source);
+        await ui.select(name);
+        await ui.key("F5");
+        const deadline = Date.now() + 750;
+        await until(
+          async () => {
+            assert.equal(
+              await ui.read<number>("document.querySelectorAll('#transfer-drawer-jobs > [role=listitem]').length"),
+              0,
+              "F5 enqueued a transfer into the terminal pane",
+            );
+            return Date.now() >= deadline;
+          },
+          "no transfer while the destination shows a terminal",
+          3000,
+        );
+
+        await ui.click(`${pane("right")}.querySelector('.xterm')`);
+        await ui.call("Input.insertText", { text: "exit" });
+        await ui.key("Enter");
+        await ui.wait("document.body.innerText.includes('Terminal session on 127.0.0.1 ended')", "ended toast", 15000);
+        await ui.wait(
+          `${pane("right")}.querySelector('[role=grid]').getBoundingClientRect().height>0`,
+          "files after shell exit",
+        );
       },
     ],
   ];

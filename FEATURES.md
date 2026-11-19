@@ -10,6 +10,7 @@ to send it to the other pane. The rest of this document covers the details.
 - [Selecting files](#selecting-files)
 - [Local file management](#local-file-management)
 - [Connecting to a server](#connecting-to-a-server)
+- [SSH terminal](#ssh-terminal)
 - [S3 connections](#s3-connections)
 - [Host key verification](#host-key-verification)
 - [Favorites](#favorites)
@@ -169,7 +170,7 @@ the selected pane when the right pane is already connected, and otherwise opens 
 
 | Field                               | Notes                                                                                                                               |
 | ----------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| **Protocol**                        | SFTP, FTP, explicit FTPS, or S3. SFTP is selected by default.                                                                       |
+| **Protocol**                        | SFTP (with an SSH terminal), FTP, explicit FTPS, or S3. SFTP is selected by default.                                                 |
 | **Server**                          | Hostname or IP.                                                                                                                     |
 | **Port**                            | Defaults to 22 for SFTP and 21 for FTP and FTPS; Pallet preserves custom ports when you switch protocols.                           |
 | **Username**                        |                                                                                                                                     |
@@ -207,6 +208,35 @@ configured transfer retry limit.
 
 Disconnect with the **×** on the server chip, or **⌘W** / **File → Close Remote Pane** for the active
 remote pane. The window stays open; the right pane shows Quick Connect, or the left returns to disk.
+
+---
+
+## SSH terminal
+
+Pallet's SFTP panes include an interactive terminal on the same server. Click the terminal button in
+the pane's server chip, or press **⌃&#96;** (Control-backtick), to swap that pane's file browser for a
+login shell. Click the button again (**Show Files**) or press **⌃&#96;** to return to the files.
+
+- The shell starts in your login home, exactly like `ssh user@host`. Pallet injects no commands or
+  environment.
+- It keeps running while the file browser is visible. Switching back and forth preserves the
+  scrollback and any running program.
+- It reuses the connection's host, port, user, and authentication (password, private key and
+  passphrase, or SSH agent) over a **second SSH connection of its own**. Credentials never reach the
+  renderer. Because it is a separate connection, servers with a per-user connection limit or
+  `MaxStartups` see one more while the terminal is open.
+- **⌘C**, **⌘V**, and **⌘A** work through the Edit menu; **⌘K** clears the terminal. Every other key,
+  including **Tab**, goes to the shell. **⌘W** still disconnects the active remote pane, ending its
+  shell.
+- If the shell exits or its SSH connection drops, the pane returns to the files and a toast reports
+  it. Pallet never reconnects the shell automatically; open a new one with the button or **⌃&#96;**.
+- While a pane shows its terminal it is not a copy source or destination. **F5**, **F6**, **⌘D**,
+  pasting into it, drag and drop, New Folder, Move to Trash, Refresh, and Back/Forward do nothing.
+  Transfers that were already queued or running continue.
+- A file-session reconnect does not interrupt the shell, because the terminal has its own
+  connection. Disconnecting the file session (the **×**, **⌘W**, or exhausted reconnect attempts)
+  closes the shell too. Quitting Pallet closes every shell.
+- FTP, explicit FTPS, and S3 panes show no terminal button.
 
 ---
 
@@ -638,6 +668,7 @@ intended for bug reports; review it for hostnames, file paths, or other sensitiv
 | `⌘I` / `Space` | Toggle inspector  |
 | `⌘K`           | Connect to server |
 | `⌘W`           | Disconnect active remote pane; keep window open |
+| `⌃&#96;`       | Toggle the terminal on the active SFTP pane     |
 | `⌘,`           | Settings          |
 
 ---

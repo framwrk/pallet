@@ -13,6 +13,7 @@ import { popupContextMenu } from "../services/context-menu";
 import { registerFavoriteHandlers } from "./favorite";
 import { registerPrefHandlers } from "./prefs";
 import { registerSftpHandlers } from "./sftp";
+import { registerTerminalHandlers } from "./terminal";
 import { registerTransferHandlers } from "./transfer";
 
 /**
@@ -64,6 +65,7 @@ export function registerIpcHandlers(): void {
   registerFavoriteHandlers();
   registerTransferHandlers();
   registerPrefHandlers();
+  registerTerminalHandlers();
 
   handle(AppChannels.version, () => app.getVersion());
   handle(AppChannels.info, () => ({

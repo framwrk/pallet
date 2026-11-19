@@ -27,6 +27,7 @@ The workspace starts with local Mac files on the left and a remote server on the
 ## Capabilities and Constraints
 
 - SFTP supports password, private-key, and SSH-agent authentication. FTP and explicit FTPS use passwords.
+- SFTP connections can open an interactive SSH terminal in the pane. It reuses the connection's stored credentials over a second SSH connection, starts in the login home, and stays usable while the file session reconnects.
 - S3 connections target one general-purpose bucket with an optional starting key prefix on AWS S3 or a custom http(s) endpoint such as MinIO, Cloudflare R2, or Wasabi. They use explicit static credentials with an optional session token, stored in the same Keychain-backed secret blob as other favorites. Bucket administration, multi-bucket panes, and advanced S3 features are out of scope.
 - FTPS validates server certificates by default; users may explicitly relax verification for a trusted private or test server. S3 HTTPS verification is always on.
 - It provides dual-pane browsing, local and remote file operations, saved connections, transfers with conflict handling, previews, permissions inspection, and external editing of remote files.

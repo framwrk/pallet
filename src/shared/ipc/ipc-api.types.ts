@@ -2,6 +2,7 @@ import type { ConflictAction, ConflictPrompt, TransferJobSnapshot, TransferReque
 import type { ConnectProfile, ConnectResult, HostKeyPrompt, SessionStatusEvent } from "../sftp/sftp.types";
 import type { DirListing, Entry, KnownFolders, PreviewData, VolumeInfo } from "../fs/fs.types";
 import type { Favorite, FavoriteInput, FavoriteSecret } from "../favorite/favorite.types";
+import type { TerminalDataEvent, TerminalExitEvent } from "../terminal/terminal.types";
 import type { UpdateDownloadState, UpdateInfo } from "../update/update.types";
 import type { AppInfo } from "../app/app.types";
 import type { ContextMenuItem } from "./ipc.types";
@@ -59,6 +60,18 @@ export interface PalletApi {
     /** Download to temp + open in default editor; re-uploads on save. */
     open(sessionId: string, remotePath: string): Promise<string>;
     onEvent(cb: (event: EditEventPayload) => void): () => void;
+  };
+  terminal: {
+    /** Dial a shell for the pane's file session; output arrives via onData. */
+    open(terminalId: string, sessionId: string, cols: number, rows: number): Promise<void>;
+    write(terminalId: string, data: string): void;
+    resize(terminalId: string, cols: number, rows: number): void;
+    /** Ends the shell; no exit event follows. */
+    close(terminalId: string): Promise<void>;
+    onData(cb: (event: TerminalDataEvent) => void): () => void;
+    onExit(cb: (event: TerminalExitEvent) => void): () => void;
+    /** File → Toggle Terminal (⌃`) for the active pane. */
+    onToggleRequest(cb: () => void): () => void;
   };
   transfer: {
     enqueue(request: TransferRequest): Promise<string>;

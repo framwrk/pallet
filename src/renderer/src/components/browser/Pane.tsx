@@ -1,4 +1,4 @@
-import { AlertTriangle, ChevronDown, ChevronRight, ChevronUp, CircleX, RefreshCw, Server } from "lucide-react";
+import { AlertTriangle, ChevronDown, ChevronRight, ChevronUp, CircleX, RefreshCw, Server, SquareTerminal } from "lucide-react";
 import {
   type PaneBackend,
   type PaneId,
@@ -14,8 +14,10 @@ import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { FileList } from "./FileList";
 import type { SortKey } from "@shared/fs/fs.types";
+import { TerminalView } from "./TerminalView";
 import { cn } from "@/lib/utils";
 import { formatBytes } from "@/lib/format.utils";
+import { toggleTerminal } from "@/store/terminal.store";
 import { visibleEntries } from "@/lib/entry.utils";
 
 /** Endpoint's host (including port), or the raw value when it cannot be parsed. */
@@ -164,12 +166,16 @@ export function Pane({ paneId }: { paneId: PaneId }): React.JSX.Element {
   );
 
   const statusLine = useMemo(() => {
+    const backend = pane.backend;
+    if (pane.view === "terminal" && backend.kind === "sftp") {
+      return `Terminal — ${backend.username}@${backend.host}`;
+    }
     const items = `${visible.length} item${visible.length === 1 ? "" : "s"}`;
     const sel = pane.selected.size;
     const selPart = sel > 0 ? `${sel} of ${visible.length} selected` : items;
     const avail = pane.availBytes != null ? `, ${formatBytes(pane.availBytes)} available` : "";
     return selPart + avail;
-  }, [visible.length, pane.selected.size, pane.availBytes]);
+  }, [visible.length, pane.selected.size, pane.availBytes, pane.view, pane.backend]);
 
   const shell = cn(
     "bg-background @container relative flex min-w-0 flex-1 flex-col overflow-hidden",
@@ -179,6 +185,7 @@ export function Pane({ paneId }: { paneId: PaneId }): React.JSX.Element {
 
   const failed = pane.error;
   const s3 = pane.backend.kind === "sftp" ? pane.backend.s3 : undefined;
+  const terminalView = pane.view === "terminal";
 
   return (
     <section
@@ -198,6 +205,18 @@ export function Pane({ paneId }: { paneId: PaneId }): React.JSX.Element {
           >
             <Server className="size-3" />
             {s3 ? `${s3.bucket}${s3.endpoint ? ` — ${endpointHost(s3.endpoint)}` : ""}` : pane.backend.host}
+            {pane.backend.protocol === "sftp" && !s3 && (
+              <button
+                className="hover:bg-primary/20 rounded-full p-0.5 disabled:pointer-events-none disabled:opacity-40"
+                aria-label={terminalView ? "Show Files" : "Open Terminal"}
+                title={terminalView ? "Show Files" : "Open Terminal"}
+                aria-pressed={terminalView}
+                disabled={pane.backend.status !== "connected" && !pane.terminalId}
+                onClick={() => toggleTerminal(paneId)}
+              >
+                <SquareTerminal className="size-3.5" />
+              </button>
+            )}
             <button
               className="hover:bg-primary/20 rounded-full p-0.5"
               aria-label="Disconnect"
@@ -207,44 +226,48 @@ export function Pane({ paneId }: { paneId: PaneId }): React.JSX.Element {
             </button>
           </span>
         )}
-        <Breadcrumbs
-          paneId={paneId}
-          cwd={pane.cwd}
-          backend={pane.backend}
-        />
+        {!terminalView && (
+          <Breadcrumbs
+            paneId={paneId}
+            cwd={pane.cwd}
+            backend={pane.backend}
+          />
+        )}
         {pane.loading && (
           <span className="border-muted-foreground/40 border-t-foreground size-3 shrink-0 animate-spin rounded-full border" />
         )}
       </div>
 
-      <div className="grid grid-cols-1 gap-4 border-b px-3 py-1 @min-[240px]:grid-cols-[minmax(0,1fr)_5.5rem] @min-[440px]:grid-cols-[minmax(0,1fr)_5.5rem_12rem]">
-        <SortHeader
-          paneId={paneId}
-          label="Name"
-          colKey="name"
-          activeKey={pane.sortKey}
-          dir={pane.sortDir}
-          className="justify-start"
-        />
-        <SortHeader
-          paneId={paneId}
-          label="Size"
-          colKey="size"
-          activeKey={pane.sortKey}
-          dir={pane.sortDir}
-          className="hidden justify-end @min-[240px]:flex"
-        />
-        <SortHeader
-          paneId={paneId}
-          label="Date Modified"
-          colKey="mtime"
-          activeKey={pane.sortKey}
-          dir={pane.sortDir}
-          className="hidden justify-end @min-[440px]:flex"
-        />
-      </div>
+      {!terminalView && (
+        <div className="grid grid-cols-1 gap-4 border-b px-3 py-1 @min-[240px]:grid-cols-[minmax(0,1fr)_5.5rem] @min-[440px]:grid-cols-[minmax(0,1fr)_5.5rem_12rem]">
+          <SortHeader
+            paneId={paneId}
+            label="Name"
+            colKey="name"
+            activeKey={pane.sortKey}
+            dir={pane.sortDir}
+            className="justify-start"
+          />
+          <SortHeader
+            paneId={paneId}
+            label="Size"
+            colKey="size"
+            activeKey={pane.sortKey}
+            dir={pane.sortDir}
+            className="hidden justify-end @min-[240px]:flex"
+          />
+          <SortHeader
+            paneId={paneId}
+            label="Date Modified"
+            colKey="mtime"
+            activeKey={pane.sortKey}
+            dir={pane.sortDir}
+            className="hidden justify-end @min-[440px]:flex"
+          />
+        </div>
+      )}
 
-      <div className="relative flex min-h-0 flex-1 flex-col">
+      <div className={cn("relative flex min-h-0 flex-1 flex-col", terminalView && "hidden")}>
         {failed && !pane.cwd ? (
           // No last-known listing to keep (e.g. first load failed): plain error state.
           <div className="flex flex-1 flex-col items-center justify-center gap-2 p-6 text-center">
@@ -276,7 +299,7 @@ export function Pane({ paneId }: { paneId: PaneId }): React.JSX.Element {
             />
           </>
         )}
-        {pane.backend.kind === "sftp" && pane.backend.status !== "connected" && (
+        {pane.backend.kind === "sftp" && pane.backend.status !== "connected" && !terminalView && (
           <div className="bg-background/70 absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 backdrop-blur-[1px]">
             {pane.backend.status === "disconnected" ? (
               <>
@@ -310,6 +333,17 @@ export function Pane({ paneId }: { paneId: PaneId }): React.JSX.Element {
           </div>
         )}
       </div>
+
+      {pane.backend.kind === "sftp" && pane.terminalId && (
+        <div className={cn("relative flex min-h-0 flex-1 flex-col", !terminalView && "hidden")}>
+          <TerminalView
+            paneId={paneId}
+            terminalId={pane.terminalId}
+            sessionId={pane.backend.sessionId}
+            visible={terminalView}
+          />
+        </div>
+      )}
 
       <div className="text-muted-foreground border-t px-3 py-1 text-center text-[11px]">{statusLine}</div>
     </section>
