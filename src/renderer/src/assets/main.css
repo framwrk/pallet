@@ -358,10 +358,6 @@
     .pallet-options-span {
       grid-column: auto;
     }
-
-    .pallet-add-favorite-prefix {
-      display: none;
-    }
   }
 }
 

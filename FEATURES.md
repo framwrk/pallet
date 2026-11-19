@@ -190,7 +190,8 @@ the selected pane when the right pane is already connected, and otherwise opens 
 - **Verify TLS certificate**: FTPS only, and enabled by default. Disable it only for a trusted
   private or test server that uses a self-signed certificate.
 
-Click **Connect** to connect once, or **Add to Favorites** to save the settings for next time.
+Click **Connect** to connect. Turn on **Add to Favorites** at the bottom of the form to save the
+settings once the connection succeeds.
 
 **SSH agent authentication** (SFTP only) signs with a key held by your SSH agent over `SSH_AUTH_SOCK`,
 including 1Password's SSH agent. Pallet never reads or stores the key. The agent must be running with
@@ -284,7 +285,7 @@ Saved connections live in the Favorites section of the sidebar, each with its co
 
 | Action   | How                                      |
 | -------- | ---------------------------------------- |
-| Save one | **Add to Favorites** in Quick Connect    |
+| Save one | Turn on **Add to Favorites** in Quick Connect, then connect |
 | Connect  | Click it in the sidebar or Quick Connect |
 | Edit     | Right-click → **Edit**                   |
 | Delete   | Right-click → **Delete**                 |

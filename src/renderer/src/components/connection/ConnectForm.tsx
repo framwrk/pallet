@@ -18,6 +18,7 @@ import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import { connectRemote } from "@/store/sftp.store";
 import { saveFavorite } from "@/store/favorite.store";
@@ -188,6 +189,7 @@ export function ConnectForm({
   const [compression, setCompression] = useState(false);
   const [tlsRejectUnauthorized, setTlsRejectUnauthorized] = useState(seed?.tlsRejectUnauthorized ?? true);
   const [concurrency, setConcurrency] = useState(String(defaultConcurrency));
+  const [addToFavorites, setAddToFavorites] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const connecting = useAppState().connecting;
@@ -335,13 +337,18 @@ export function ConnectForm({
     setError(null);
     try {
       await connectRemote(profile, targetPane === "right" ? localPathField.trim() || undefined : undefined, targetPane);
+      // Only persist a favorite once the server has accepted the connection.
+      if (addToFavorites) {
+        const saved = await saveFavorite(favoriteInput(), enteredSecret());
+        if (saved) pushToast(`Added “${saved.name}” to Favorites`, "info");
+      }
     } catch (err) {
       setBusy(false);
       setError((err as Error).message);
     }
   }
 
-  async function doSaveFavorite(close: boolean): Promise<void> {
+  async function doSaveFavorite(): Promise<void> {
     const invalid = validate();
     if (invalid) {
       setError(invalid);
@@ -349,8 +356,8 @@ export function ConnectForm({
     }
     const saved = await saveFavorite(favoriteInput(), enteredSecret());
     if (saved) {
-      pushToast(close ? "Favorite saved" : `Added “${saved.name}” to Favorites`, "info");
-      if (close) onClose?.();
+      pushToast("Favorite saved", "info");
+      onClose?.();
     }
   }
 
@@ -502,7 +509,7 @@ export function ConnectForm({
       className="pallet-connect-form flex flex-col gap-3"
       onSubmit={(e) => {
         e.preventDefault();
-        if (editing) void doSaveFavorite(true);
+        if (editing) void doSaveFavorite();
         else void doConnect();
       }}
     >
@@ -965,6 +972,33 @@ export function ConnectForm({
       )}
 
       <div className="border-border/70 mt-0.5 flex items-center justify-end gap-2 border-t pt-3">
+        {isPane && (
+          <div className="mr-auto flex items-center gap-2">
+            <Switch
+              id="connect-add-favorite"
+              aria-label="Add to Favorites"
+              aria-describedby="connect-add-favorite-hint"
+              checked={addToFavorites}
+              disabled={busy}
+              onCheckedChange={setAddToFavorites}
+            />
+            <div className="flex flex-col">
+              <label
+                htmlFor="connect-add-favorite"
+                className="text-foreground flex items-center gap-1.5 text-xs font-medium"
+              >
+                <Star className="text-muted-foreground size-3.5" />
+                Add to Favorites
+              </label>
+              <span
+                id="connect-add-favorite-hint"
+                className="text-muted-foreground text-[11px]"
+              >
+                After a successful connection
+              </span>
+            </div>
+          </div>
+        )}
         {onClose && (
           <Button
             type="button"
@@ -974,22 +1008,6 @@ export function ConnectForm({
             onClick={onClose}
           >
             Cancel
-          </Button>
-        )}
-        {isPane && (
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="h-9"
-            disabled={busy}
-            aria-label="Add to Favorites"
-            onClick={() => void doSaveFavorite(false)}
-          >
-            <Star data-icon="inline-start" />
-            <span>
-              <span className="pallet-add-favorite-prefix">Add to </span>Favorites
-            </span>
           </Button>
         )}
         <Button

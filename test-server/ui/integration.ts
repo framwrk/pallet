@@ -219,9 +219,12 @@ export function integrationCases(root: string, s: Servers): Case[] {
         await ui.key("k", 4);
         await form(ui, s, "sftp");
         await ui.button("Add to Favorites");
+        await ui.button("Connect");
+        await ui.wait(`document.body.innerText.includes('Unknown Host') || ${connected()}`, "trust or connection", 20000);
+        if (await ui.read("document.body.innerText.includes('Unknown Host')")) await ui.button("Trust");
+        await finishConnect(ui);
         const initial = "pallet@127.0.0.1";
         await ui.wait(`!!(${favorite(initial)})`);
-        await ui.key("Escape");
         await nativeFavorite(ui, initial, "Edit…");
         await ui.fill(field("Name"), "Owned UI favorite");
         await ui.button("Save");
