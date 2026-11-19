@@ -4,6 +4,7 @@ import {
   Eye,
   EyeOff,
   Fingerprint,
+  Info,
   KeyRound,
   LoaderCircle,
   LockKeyhole,
@@ -17,6 +18,7 @@ import type { ColorLabel, Favorite, FavoriteInput, FavoriteSecret } from "@share
 import type { ConnectProfile, ConnectionProtocol } from "@shared/sftp/sftp.types";
 import { type PaneId, getState, pushToast, useAppState } from "@/store/pane.store";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -39,10 +41,16 @@ function defaultPort(protocol: ConnectionProtocol): number {
   return 21;
 }
 
+/** Absolute endpoint URL, assuming HTTPS when the user left the scheme off. */
+function normalizeS3Endpoint(endpoint: string): string {
+  if (!endpoint) return "";
+  return /^[a-z][a-z0-9+.-]*:\/\//i.test(endpoint) ? endpoint : `https://${endpoint}`;
+}
+
 /** Host (including port) of an absolute endpoint URL, or null when unparsable. */
 function endpointHost(endpoint: string): string | null {
   try {
-    const url = new URL(endpoint);
+    const url = new URL(normalizeS3Endpoint(endpoint));
     return url.host || null;
   } catch {
     return null;
@@ -53,9 +61,9 @@ function validateS3Endpoint(endpoint: string): string | null {
   if (!endpoint) return null;
   let url: URL;
   try {
-    url = new URL(endpoint);
+    url = new URL(normalizeS3Endpoint(endpoint));
   } catch {
-    return "Endpoint must be a full http(s) URL";
+    return "Endpoint must be a valid URL like s3.example.com";
   }
   if (url.protocol !== "http:" && url.protocol !== "https:") return "Endpoint must start with http:// or https://";
   if (url.username || url.password) return "Endpoint can’t include credentials";
@@ -112,11 +120,14 @@ function ProtocolSelect({
 
 function Row({
   label,
+  hint,
   children,
   layout = "aligned",
   className,
 }: {
   label: string;
+  /** Help text shown from an info icon beside the label. */
+  hint?: string;
   children: React.ReactNode;
   layout?: "aligned" | "stacked";
   className?: string;
@@ -124,11 +135,36 @@ function Row({
   return (
     <label
       className={cn(
-        layout === "stacked" ? "flex min-w-0 flex-col gap-1.5" : "grid grid-cols-[7rem_1fr] items-center gap-3",
+        layout === "stacked" ? "flex min-w-0 flex-col gap-1.5" : "grid grid-cols-[7.5rem_1fr] items-center gap-3",
         className,
       )}
     >
-      <span className={cn("text-muted-foreground text-[11px] font-medium", layout === "aligned" && "text-right")}>{label}</span>
+      <span
+        className={cn(
+          "text-muted-foreground flex items-center gap-1 text-[11px] font-medium",
+          layout === "aligned" && "justify-end text-right",
+        )}
+      >
+        {label}
+        {hint && (
+          <Tooltip>
+            <TooltipTrigger
+              type="button"
+              delay={200}
+              aria-label={`About ${label}`}
+              className="text-muted-foreground hover:text-foreground focus-visible:ring-ring/50 inline-flex size-3.5 shrink-0 items-center justify-center rounded-full outline-none focus-visible:ring-2"
+            >
+              <Info className="size-3" />
+            </TooltipTrigger>
+            <TooltipContent
+              side="top"
+              className="max-w-64 text-left leading-relaxed"
+            >
+              {hint}
+            </TooltipContent>
+          </Tooltip>
+        )}
+      </span>
       {children}
     </label>
   );
@@ -204,6 +240,9 @@ export function ConnectForm({
     seed?.secretStored && !editing ? "Stored password" : editing?.secretStored ? "Leave blank to keep saved" : "";
   const s3SecretPlaceholder = seedS3?.secretStored ? "Leave blank to keep saved" : "";
   const s3EndpointValue = s3Endpoint.trim();
+  const s3RegionValue = s3Region.trim();
+  /** Custom endpoints default the signing region so non-AWS users can leave it blank. */
+  const s3RegionResolved = s3RegionValue || (s3EndpointValue ? "us-east-1" : "");
 
   function changeProtocol(nextProtocol: ConnectionProtocol): void {
     const currentDefault = defaultPort(protocol);
@@ -226,7 +265,7 @@ export function ConnectForm({
 
   function validate(): string | null {
     if (protocol === "s3") {
-      if (!s3Region.trim()) return "Region is required";
+      if (!s3RegionResolved) return "Region is required";
       if (!s3Bucket.trim()) return "Bucket is required";
       if (!username.trim()) return "Access key ID is required";
       if (!secretAccessKey && !(editing && seedS3?.secretStored)) return "Secret access key is required";
@@ -243,7 +282,7 @@ export function ConnectForm({
 
   /** S3's display host: the endpoint's host, or the AWS regional endpoint. */
   function s3Host(): string {
-    return endpointHost(s3EndpointValue) ?? `s3.${s3Region.trim()}.amazonaws.com`;
+    return endpointHost(s3EndpointValue) ?? `s3.${s3RegionResolved}.amazonaws.com`;
   }
 
   function favoriteInput(): FavoriteInput {
@@ -257,8 +296,8 @@ export function ConnectForm({
         port: 443,
         username: username.trim(),
         authMethod: "s3",
-        ...(s3EndpointValue ? { s3Endpoint: s3EndpointValue } : {}),
-        s3Region: s3Region.trim(),
+        ...(s3EndpointValue ? { s3Endpoint: normalizeS3Endpoint(s3EndpointValue) } : {}),
+        s3Region: s3RegionResolved,
         s3Bucket: s3Bucket.trim(),
         s3ForcePathStyle,
         ...(remotePathField.trim() ? { remotePath: remotePathField.trim() } : {}),
@@ -318,8 +357,8 @@ export function ConnectForm({
             username: username.trim(),
             auth: { method: "s3", secretAccessKey, ...(sessionToken ? { sessionToken } : {}) },
             s3: {
-              ...(s3EndpointValue ? { endpoint: s3EndpointValue } : {}),
-              region: s3Region.trim(),
+              ...(s3EndpointValue ? { endpoint: normalizeS3Endpoint(s3EndpointValue) } : {}),
+              region: s3RegionResolved,
               bucket: s3Bucket.trim(),
               forcePathStyle: s3ForcePathStyle,
             },
@@ -441,6 +480,7 @@ export function ConnectForm({
     <>
       <Row
         label="Endpoint"
+        hint="Hostname of your S3-compatible provider, e.g. s3.example.com. Leave blank for AWS S3."
         layout={fieldLayout}
       >
         <div className="flex flex-col gap-1">
@@ -448,8 +488,11 @@ export function ConnectForm({
             className={fieldInputCls}
             value={s3Endpoint}
             onChange={(e) => {
-              setS3Endpoint(e.target.value);
-              if (!pathStyleTouched.current) setS3ForcePathStyle(e.target.value.trim() !== "");
+              const value = e.target.value;
+              setS3Endpoint(value);
+              // Custom endpoints nearly always need path-style addressing; AWS does not.
+              if (value.trim()) setS3ForcePathStyle(true);
+              else if (!pathStyleTouched.current) setS3ForcePathStyle(false);
             }}
             placeholder="AWS S3"
             spellCheck={false}
@@ -467,6 +510,7 @@ export function ConnectForm({
       </Row>
       <Row
         label="Region"
+        hint="Required for AWS S3. With a custom endpoint you can leave this blank. us-east-1 is used by default."
         layout={fieldLayout}
       >
         <Input
@@ -479,6 +523,7 @@ export function ConnectForm({
       </Row>
       <Row
         label="Bucket"
+        hint="Name of the existing bucket."
         layout={fieldLayout}
       >
         <Input
@@ -491,6 +536,7 @@ export function ConnectForm({
       </Row>
       <Row
         label="Access Key ID"
+        hint="Access key ID from your S3 credentials. AWS keys usually start with AKIA."
         layout={fieldLayout}
       >
         <Input
@@ -504,6 +550,7 @@ export function ConnectForm({
       </Row>
       <Row
         label="Secret Access Key"
+        hint="Secret access key that pairs with the access key ID."
         layout={fieldLayout}
       >
         <Input
@@ -517,6 +564,7 @@ export function ConnectForm({
       </Row>
       <Row
         label="Session Token"
+        hint="Optional token for temporary credentials. Leave blank when using long-lived access keys."
         layout={fieldLayout}
       >
         <Input
@@ -846,6 +894,11 @@ export function ConnectForm({
         >
           <Row
             label={protocol === "s3" ? "Prefix" : "Remote Path"}
+            hint={
+              protocol === "s3"
+                ? "Optional key prefix to open as the pane's root. Leave blank to start at the bucket root."
+                : undefined
+            }
             layout={fieldLayout}
             className={cn(isPane && "pallet-options-span col-span-2")}
           >
@@ -860,6 +913,7 @@ export function ConnectForm({
           {protocol === "s3" && (
             <Row
               label="Addressing"
+              hint="Path-style puts the bucket in the URL path instead of the hostname. Most custom endpoints need this; AWS S3 works either way."
               layout={fieldLayout}
               className={cn(isPane && "pallet-options-span col-span-2")}
             >

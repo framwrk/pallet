@@ -8,21 +8,22 @@ S3-compatible services use the same configuration, but are not separately verifi
 
 ## Setup fields
 
-| Field                     | Notes                                                                                                                                              |
-| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Protocol**              | S3.                                                                                                                                                |
-| **Endpoint**              | Optional absolute `http://` or `https://` origin for MinIO, Cloudflare R2, Wasabi, and similar. Blank uses the AWS regional endpoint.              |
-| **Region**                | Required, including with a custom endpoint; it is part of request signing.                                                                         |
-| **Bucket**                | One existing general-purpose bucket. Pallet does not list your buckets, create them, or delete them.                                               |
-| **Starting Prefix**       | Optional key prefix, stored in the favorite's **Remote Path** and shown as **Prefix**. The pane's `/` is this prefix; blank means the bucket root. |
-| **Access Key ID**         | Stored in the favorite's nonsecret username field.                                                                                                 |
-| **Secret Access Key**     | Stored in the encrypted secret blob.                                                                                                               |
-| **Session Token**         | Optional, for temporary credentials. Stored in the same encrypted blob.                                                                            |
-| **Path-style addressing** | Defaults on for custom endpoints and off for AWS. Enable or disable it per connection.                                                             |
+| Field                     | Notes                                                                                                                                                                                        |
+| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Protocol**              | S3.                                                                                                                                                                                          |
+| **Endpoint**              | Optional `http://` or `https://` origin for MinIO, Cloudflare R2, Wasabi, and similar. The scheme may be omitted, in which case `https://` is assumed. Blank uses the AWS regional endpoint. |
+| **Region**                | Required for AWS. Optional with a custom endpoint, where blank defaults to `us-east-1`; it is always sent as the request-signing region.                                                     |
+| **Bucket**                | One existing general-purpose bucket. Pallet does not list your buckets, create them, or delete them.                                                                                         |
+| **Starting Prefix**       | Optional key prefix, stored in the favorite's **Remote Path** and shown as **Prefix**. The pane's `/` is this prefix; blank means the bucket root.                                           |
+| **Access Key ID**         | Stored in the favorite's nonsecret username field.                                                                                                                                           |
+| **Secret Access Key**     | Stored in the encrypted secret blob.                                                                                                                                                         |
+| **Session Token**         | Optional, for temporary credentials. Stored in the same encrypted blob.                                                                                                                      |
+| **Path-style addressing** | Defaults on for custom endpoints and off for AWS. Enable or disable it per connection.                                                                                                       |
 
 The endpoint must be an origin: no credentials, query, fragment, or base path. HTTPS uses the
-platform trust store with verification always on; there is no insecure-verification switch. Plain
-`http` is accepted when the endpoint is specified with that scheme.
+platform trust store with verification always on; there is no insecure-verification switch. When the
+scheme is omitted, `https://` is assumed; plain `http` is accepted when the endpoint is specified
+with that scheme.
 
 ## Required IAM permissions
 
