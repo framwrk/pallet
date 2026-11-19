@@ -55,6 +55,7 @@ const pallet: PalletApi = {
     homeDir: (): Promise<string> => invoke(FsChannels.homeDir),
     knownFolders: (): Promise<KnownFolders> => invoke(FsChannels.knownFolders),
     volumes: (): Promise<VolumeInfo[]> => invoke(FsChannels.volumes),
+    eject: (p: string): Promise<void> => invoke(FsChannels.eject, p),
     mkdirUnique: (parentDir: string): Promise<string> => invoke(FsChannels.mkdirUnique, parentDir),
     mkdir: (p: string): Promise<void> => invoke(FsChannels.mkdir, p),
     rename: (from: string, to: string): Promise<void> => invoke(FsChannels.rename, from, to),

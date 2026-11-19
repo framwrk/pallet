@@ -20,6 +20,8 @@ export interface PalletApi {
     homeDir(): Promise<string>;
     knownFolders(): Promise<KnownFolders>;
     volumes(): Promise<VolumeInfo[]>;
+    /** Eject a mounted volume; rejects for the boot volume and unknown paths. */
+    eject(path: string): Promise<void>;
     /** Create "untitled folder" (auto-numbered) in parentDir; returns its path. */
     mkdirUnique(parentDir: string): Promise<string>;
     mkdir(p: string): Promise<void>;

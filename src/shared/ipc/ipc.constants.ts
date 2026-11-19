@@ -6,6 +6,7 @@ export const FsChannels = {
   homeDir: "fs:homeDir",
   knownFolders: "fs:knownFolders",
   volumes: "fs:volumes",
+  eject: "fs:eject",
   mkdir: "fs:mkdir",
   mkdirUnique: "fs:mkdirUnique",
   readPreview: "fs:readPreview",

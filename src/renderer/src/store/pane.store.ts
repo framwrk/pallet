@@ -628,3 +628,24 @@ export async function initApp(): Promise<void> {
 export function loadVolumes(): void {
   void window.pallet.fs.volumes().then((vols) => setApp({ volumes: vols }));
 }
+
+/** Eject a volume, refresh the sidebar, and move any pane inside it back Home. */
+export async function ejectVolume(volume: VolumeInfo): Promise<void> {
+  try {
+    await window.pallet.fs.eject(volume.path);
+  } catch (err) {
+    pushToast((err as Error).message);
+    loadVolumes();
+    return;
+  }
+  pushToast(`Ejected “${volume.name}”`, "success");
+  // The listing belongs to a filesystem that no longer exists, so leave it.
+  for (const id of ["left", "right"] as const) {
+    const pane = state.panes[id];
+    if (pane.backend.kind !== "local") continue;
+    if (pane.cwd !== volume.path && !pane.cwd.startsWith(`${volume.path}/`)) continue;
+    const home = state.knownFolders?.home;
+    if (home) void navigate(id, home, "replace");
+  }
+  loadVolumes();
+}

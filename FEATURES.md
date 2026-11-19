@@ -36,7 +36,7 @@ left pane with a second server for [remote-to-remote transfers](#transferring-fi
 | Region           | What it is                                                                                                                                     |
 | ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Toolbar**      | Back, Forward, Replace Local Pane with Remote / Restore Local Pane, Refresh, New Folder, Move to Trash, Get Info. Acts on the **active pane**. |
-| **Sidebar**      | `Connect to Server`, then Devices (mounted volumes), Folders (Home, Desktop, Documents, Downloads, Movies, Music, Pictures), and Favorites.    |
+| **Sidebar**      | `Connect to Server`, then Devices (mounted volumes; right-click one to eject it), Folders (Home, Desktop, Documents, Downloads, Movies, Music, Pictures), and Favorites.    |
 | **Panes**        | Either pane can show the local disk or a server, each with its own breadcrumb bar and status line.                                             |
 | **Queue drawer** | Collapsible transfer queue along the bottom. Appears when you start a transfer.                                                                |
 | **Inspector**    | Right-hand info panel. Toggle with **⌘I** or **Space**.                                                                                        |

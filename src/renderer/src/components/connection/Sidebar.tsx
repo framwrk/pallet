@@ -12,11 +12,12 @@ import {
   Server,
   Usb,
 } from "lucide-react";
+import { ejectVolume, localPaneId, openLocal, openQuickConnect, setEditingFavorite, useAppState } from "@/store/pane.store";
 import { favoriteContextMenu, reorderFavorites, requestFavoriteConnection } from "@/store/favorite.store";
-import { localPaneId, openLocal, openQuickConnect, setEditingFavorite, useAppState } from "@/store/pane.store";
 import { useRef, useState } from "react";
 import type { Favorite } from "@shared/favorite/favorite.types";
 import { LABEL_COLOR_CLASSES } from "@shared/favorite/favorite.constants";
+import type { VolumeInfo } from "@shared/fs/fs.types";
 import { cn } from "@/lib/utils";
 
 function SectionTitle({ children }: { children: React.ReactNode }): React.JSX.Element {
@@ -29,12 +30,15 @@ function SidebarItem({
   path,
   currentPath,
   disabled = false,
+  onContextMenu,
 }: {
   icon: React.ComponentType<{ className?: string }>;
   label: string;
   path: string;
   currentPath: string;
   disabled?: boolean;
+  /** Right-click handler for rows that own a context menu (volumes). */
+  onContextMenu?: (event: React.MouseEvent) => void;
 }): React.JSX.Element {
   const isCurrent = currentPath === path;
 
@@ -51,6 +55,7 @@ function SidebarItem({
         isCurrent && "bg-sidebar-accent text-sidebar-accent-foreground shadow-[inset_0_0_0_1px_var(--sidebar-border)]",
       )}
       onClick={() => openLocal(path)}
+      onContextMenu={onContextMenu}
     >
       <Icon
         className={cn(
@@ -70,6 +75,11 @@ function endpointHost(endpoint: string): string {
   } catch {
     return endpoint;
   }
+}
+
+async function volumeContextMenu(volume: VolumeInfo): Promise<void> {
+  const choice = await window.pallet.ui.contextMenu([{ id: "eject", label: "Eject" }]);
+  if (choice === "eject") await ejectVolume(volume);
 }
 
 function favoriteTooltip(favorite: Favorite): string {
@@ -249,6 +259,14 @@ export function Sidebar(): React.JSX.Element {
                 label={v.name}
                 path={v.path}
                 {...common}
+                onContextMenu={
+                  v.isRoot
+                    ? undefined
+                    : (e) => {
+                        e.preventDefault();
+                        void volumeContextMenu(v);
+                      }
+                }
               />
             ))}
           </div>

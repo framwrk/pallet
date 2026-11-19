@@ -1,7 +1,9 @@
 import { basename, dirname, extname, join } from "path";
+import { execFile } from "node:child_process";
 import { promises as fs } from "fs";
 import { rename } from "./local-rename";
 import { shell } from "electron";
+import { volumes } from "./local-fs";
 
 export { rename };
 
@@ -115,4 +117,38 @@ export function revealInFinder(p: string): void {
 export async function openWithDefault(p: string): Promise<void> {
   const err = await shell.openPath(p);
   if (err) throw new Error(err);
+}
+
+function diskutil(...args: string[]): Promise<void> {
+  return new Promise((resolve, reject) => {
+    execFile("/usr/sbin/diskutil", args, (error, _stdout, stderr) => {
+      if (error) reject(new Error(stderr.trim() || error.message));
+      else resolve();
+    });
+  });
+}
+
+/**
+ * Eject a mounted volume. The renderer supplies the path, so it must match a
+ * currently mounted, non-boot volume; "/" and arbitrary paths never reach
+ * diskutil.
+ */
+export async function ejectVolume(mountPath: string): Promise<void> {
+  const volume = (await volumes()).find((v) => v.path === mountPath);
+  if (!volume || volume.isRoot) {
+    const err: NodeJS.ErrnoException = new Error("Only mounted volumes can be ejected");
+    err.code = "EINVAL";
+    throw err;
+  }
+  try {
+    await diskutil("eject", mountPath);
+  } catch (err) {
+    try {
+      // Network shares and disk images have no ejectable device; unmounting is
+      // the Finder equivalent for them. Busy volumes fail both ways.
+      await diskutil("unmount", mountPath);
+    } catch {
+      throw new Error(`Could not eject "${volume.name}": ${(err as Error).message}`);
+    }
+  }
 }

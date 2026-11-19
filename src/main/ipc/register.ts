@@ -41,6 +41,7 @@ export function registerIpcHandlers(): void {
   handle(FsChannels.homeDir, localFs.homeDir);
   handle(FsChannels.knownFolders, localFs.knownFolders);
   handle(FsChannels.volumes, localFs.volumes);
+  handle(FsChannels.eject, localOps.ejectVolume);
   handle(FsChannels.mkdir, localOps.mkdir);
   handle(FsChannels.mkdirUnique, localOps.mkdirUnique);
   handle(FsChannels.rename, localOps.rename);
