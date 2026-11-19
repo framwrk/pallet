@@ -1,5 +1,7 @@
 import type { Appearance, Preferences, RowDensity } from "@shared/prefs/prefs.types";
 import {
+  ArrowDown,
+  ArrowUp,
   ArrowUpDown,
   ArrowUpRight,
   ChevronDown,
@@ -8,9 +10,15 @@ import {
   Cog,
   Contrast,
   Info,
+  LoaderCircle,
+  Pencil,
+  Plus,
   RefreshCw,
   Search,
+  Server,
   Settings2,
+  Star,
+  Trash2,
   XIcon,
 } from "lucide-react";
 import {
@@ -34,24 +42,28 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@renderer/components/ui/select";
 import type { SortDir, SortKey } from "@shared/fs/fs.types";
 import type { UpdateDownloadState, UpdateInfo } from "@shared/update/update.types";
-import { setSettingsOpen, useAppState } from "@/store/pane.store";
+import { formatBytes, formatModified } from "@renderer/lib/format.utils";
+import { removeFavorite, reorderFavorites, requestFavoriteConnection } from "@/store/favorite.store";
+import { setAddingFavorite, setEditingFavorite, setSettingsOpen, useAppState } from "@/store/pane.store";
 import { useEffect, useRef, useState } from "react";
 import type { AppInfo } from "@shared/app/app.types";
 import { Button } from "@renderer/components/ui/button";
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
+import type { Favorite } from "@shared/favorite/favorite.types";
 import { Input } from "@renderer/components/ui/input";
+import { LABEL_COLOR_CLASSES } from "@shared/favorite/favorite.constants";
 import type { LucideIcon } from "lucide-react";
 import { Switch } from "@renderer/components/ui/switch";
 import appIcon from "@renderer/assets/pallet-icon.png";
 import { cn } from "@renderer/lib/utils";
-import { formatBytes } from "@renderer/lib/format.utils";
 
-type TabId = "general" | "appearance" | "transfers" | "updates" | "advanced" | "about";
+type TabId = "general" | "appearance" | "transfers" | "favorites" | "updates" | "advanced" | "about";
 
 const TABS: { id: TabId; label: string; icon: LucideIcon }[] = [
   { id: "general", label: "General", icon: Settings2 },
   { id: "appearance", label: "Appearance", icon: Contrast },
   { id: "transfers", label: "Transfers", icon: ArrowUpDown },
+  { id: "favorites", label: "Favorites", icon: Star },
   { id: "updates", label: "Updates", icon: RefreshCw },
   { id: "advanced", label: "Advanced", icon: Cog },
   { id: "about", label: "About", icon: Info },
@@ -63,7 +75,7 @@ const TABS: { id: TabId; label: string; icon: LucideIcon }[] = [
  * by space alone.
  */
 const SETTINGS_NAV_GROUPS: { heading: string | null; tabs: TabId[] }[] = [
-  { heading: null, tabs: ["general", "appearance", "transfers"] },
+  { heading: null, tabs: ["general", "appearance", "favorites", "transfers"] },
   { heading: "Maintenance", tabs: ["updates", "advanced"] },
   { heading: null, tabs: ["about"] },
 ];
@@ -599,6 +611,247 @@ function AppearancePanel({
             </Select>
           </Row>
         </Group>
+      </Section>
+    </div>
+  );
+}
+
+const PROTOCOL_LABELS: Record<Favorite["protocol"], string> = {
+  sftp: "SFTP",
+  ftp: "FTP",
+  ftps: "FTPS",
+  s3: "S3",
+};
+
+/** The identity line under a favorite: what the row would connect to. */
+function favoriteEndpoint(favorite: Favorite): string {
+  if (favorite.protocol === "s3") {
+    const bucket = favorite.s3Bucket ?? favorite.host;
+    return favorite.s3Region ? `${bucket} · ${favorite.s3Region}` : bucket;
+  }
+  return `${favorite.username}@${favorite.host}:${favorite.port}`;
+}
+
+function FavoriteRow({
+  favorite,
+  index,
+  total,
+  connecting,
+  confirming,
+  onConnect,
+  onEdit,
+  onMove,
+  onAskDelete,
+  onCancelDelete,
+  onDelete,
+}: {
+  favorite: Favorite;
+  index: number;
+  total: number;
+  /** This favorite is the connection currently opening. */
+  connecting: boolean;
+  confirming: boolean;
+  onConnect: () => void;
+  onEdit: () => void;
+  onMove: (delta: number) => void;
+  onAskDelete: () => void;
+  onCancelDelete: () => void;
+  onDelete: () => void;
+}): React.JSX.Element {
+  return (
+    <div className="flex items-center gap-3 px-3 py-2.5 sm:px-4">
+      <Server className="text-muted-foreground size-4 shrink-0" />
+      <div className="min-w-0 flex-1 space-y-0.5">
+        <div className="flex items-center gap-1.5">
+          <span className="text-foreground truncate text-sm font-medium">{favorite.name}</span>
+          {favorite.colorLabel !== "none" && (
+            <span
+              role="img"
+              aria-label={`Label ${favorite.colorLabel}`}
+              className={cn(
+                "size-2.5 shrink-0 rounded-full shadow-[inset_0_0_0_1px_rgba(0,0,0,0.18)]",
+                LABEL_COLOR_CLASSES[favorite.colorLabel],
+              )}
+            />
+          )}
+        </div>
+        {confirming ? (
+          <p className="text-destructive text-xs leading-normal">
+            Delete this favorite{favorite.secretStored ? " and its saved credentials" : ""}? This can’t be undone.
+          </p>
+        ) : (
+          <>
+            <p className="text-muted-foreground flex min-w-0 items-center gap-1.5 text-xs">
+              <span className="bg-foreground/[0.06] shrink-0 rounded px-1 py-px text-[10px] font-medium">
+                {PROTOCOL_LABELS[favorite.protocol]}
+              </span>
+              <span className="truncate font-mono text-[11px]">{favoriteEndpoint(favorite)}</span>
+            </p>
+            {favorite.lastUsedAt !== undefined && (
+              <p className="text-muted-foreground text-[11px]">Last used {formatModified(favorite.lastUsedAt)}</p>
+            )}
+          </>
+        )}
+      </div>
+      {confirming ? (
+        <div className="flex shrink-0 items-center gap-1">
+          <Button
+            size="xs"
+            variant="ghost"
+            onClick={onCancelDelete}
+          >
+            Cancel
+          </Button>
+          <Button
+            size="xs"
+            variant="destructive"
+            onClick={onDelete}
+          >
+            Delete
+          </Button>
+        </div>
+      ) : (
+        <div className="flex shrink-0 items-center gap-1">
+          <Button
+            size="xs"
+            variant="outline"
+            disabled={connecting}
+            aria-label={`Connect to ${favorite.name}`}
+            onClick={onConnect}
+          >
+            {connecting && <LoaderCircle className="animate-spin" />}
+            {connecting ? "Connecting…" : "Connect"}
+          </Button>
+          <Button
+            size="icon-xs"
+            variant="ghost"
+            aria-label={`Edit ${favorite.name}`}
+            onClick={onEdit}
+          >
+            <Pencil />
+          </Button>
+          <Button
+            size="icon-xs"
+            variant="ghost"
+            aria-label={`Move ${favorite.name} up`}
+            disabled={index === 0}
+            onClick={() => onMove(-1)}
+          >
+            <ArrowUp />
+          </Button>
+          <Button
+            size="icon-xs"
+            variant="ghost"
+            aria-label={`Move ${favorite.name} down`}
+            disabled={index === total - 1}
+            onClick={() => onMove(1)}
+          >
+            <ArrowDown />
+          </Button>
+          <Button
+            size="icon-xs"
+            variant="ghost"
+            aria-label={`Delete ${favorite.name}`}
+            onClick={onAskDelete}
+          >
+            <Trash2 />
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Manage saved connections without leaving Settings: add, connect, edit,
+ * reorder, and delete. A new favorite is tested by the main process before it
+ * is written, so a bad host or secret never lands in the list.
+ */
+function FavoritesPanel(): React.JSX.Element {
+  const { favorites, connecting } = useAppState();
+  const [confirmingId, setConfirmingId] = useState<string | null>(null);
+
+  function addFavorite(): void {
+    // The add dialog sits below the Settings modal, so step out first.
+    setSettingsOpen(false);
+    setAddingFavorite(true);
+  }
+
+  function connectFavorite(favorite: Favorite): void {
+    setSettingsOpen(false);
+    void requestFavoriteConnection(favorite.id);
+  }
+
+  function editFavorite(favorite: Favorite): void {
+    // The edit dialog sits below the Settings modal, so step out first.
+    setSettingsOpen(false);
+    setEditingFavorite(favorite);
+  }
+
+  function moveFavorite(index: number, delta: number): void {
+    const target = index + delta;
+    if (target < 0 || target >= favorites.length) return;
+    const ids = favorites.map((f) => f.id);
+    const [moved] = ids.splice(index, 1);
+    ids.splice(target, 0, moved);
+    void reorderFavorites(ids);
+  }
+
+  function deleteFavorite(favorite: Favorite): void {
+    void removeFavorite(favorite.id).then(() => setConfirmingId(null));
+  }
+
+  return (
+    <div className="flex flex-col gap-6">
+      <Section title="Saved connections">
+        {favorites.length === 0 ? (
+          <div className="flex flex-col items-center gap-1.5 px-4 py-10 text-center">
+            <Star
+              className="text-muted-foreground size-6"
+              strokeWidth={1.5}
+            />
+            <p className="text-foreground mt-1 text-sm font-medium">No saved connections</p>
+            <p className="text-muted-foreground max-w-sm text-xs leading-normal text-balance">
+              Add a server here and Pallet tests the connection before saving it.
+            </p>
+            <Button
+              size="xs"
+              variant="outline"
+              className="mt-2"
+              onClick={addFavorite}
+            >
+              <Plus />
+              Add Favorite…
+            </Button>
+          </div>
+        ) : (
+          <>
+            {favorites.map((favorite, index) => (
+              <FavoriteRow
+                key={favorite.id}
+                favorite={favorite}
+                index={index}
+                total={favorites.length}
+                connecting={connecting?.favoriteId === favorite.id}
+                confirming={confirmingId === favorite.id}
+                onConnect={() => connectFavorite(favorite)}
+                onEdit={() => editFavorite(favorite)}
+                onMove={(delta) => moveFavorite(index, delta)}
+                onAskDelete={() => setConfirmingId(favorite.id)}
+                onCancelDelete={() => setConfirmingId(null)}
+                onDelete={() => deleteFavorite(favorite)}
+              />
+            ))}
+            <button
+              type="button"
+              className="text-primary hover:bg-foreground/4 focus-visible:outline-ring flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm font-medium outline-none focus-visible:outline-2 focus-visible:-outline-offset-2 sm:px-4"
+              onClick={addFavorite}
+            >
+              <Plus className="size-4" />
+              Add Favorite…
+            </button>
+          </>
+        )}
       </Section>
     </div>
   );
@@ -1572,6 +1825,8 @@ export function SettingsDialog(): React.JSX.Element {
                       prefs={prefs}
                       save={save}
                     />
+                  ) : tab === "favorites" ? (
+                    <FavoritesPanel />
                   ) : tab === "transfers" ? (
                     <TransfersPanel
                       prefs={prefs}

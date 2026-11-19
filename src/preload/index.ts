@@ -109,6 +109,7 @@ const pallet: PalletApi = {
     remove: (id: string): Promise<void> => invoke(FavoriteChannels.remove, id),
     reorder: (ids: string[]): Promise<void> => invoke(FavoriteChannels.reorder, ids),
     connect: (id: string): Promise<ConnectResult & { favorite: Favorite }> => invoke(FavoriteChannels.connect, id),
+    test: (profile: ConnectProfile): Promise<void> => invoke(FavoriteChannels.test, profile),
   },
   hostKeys: {
     onVerify: (cb: (prompt: HostKeyPrompt) => void): (() => void) => subscribe(HostKeyChannels.verify, cb),

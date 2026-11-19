@@ -83,6 +83,8 @@ export interface PalletApi {
     reorder(ids: string[]): Promise<void>;
     /** Connects main-side with the stored secret; ENOSECRET if none. */
     connect(id: string): Promise<ConnectResult & { favorite: Favorite }>;
+    /** Dial once and disconnect, so a new favorite can be validated before saving. */
+    test(profile: ConnectProfile): Promise<void>;
   };
   hostKeys: {
     /** Subscribe to TOFU verification prompts; returns unsubscribe. */

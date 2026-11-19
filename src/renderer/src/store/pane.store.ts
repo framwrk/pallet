@@ -117,6 +117,8 @@ export interface AppState {
   connecting: ConnectionAttempt | null;
   /** Favorite being edited; the dialog switches to edit mode. */
   editingFavorite: Favorite | null;
+  /** Create-favorite form is open; the dialog switches to add mode. */
+  addingFavorite: boolean;
   favorites: Favorite[];
   hostKeyPrompts: HostKeyPrompt[];
   toasts: Toast[];
@@ -172,6 +174,7 @@ let state: AppState = {
   quickConnectPrefill: null,
   connecting: null,
   editingFavorite: null,
+  addingFavorite: false,
   favorites: [],
   hostKeyPrompts: [],
   toasts: [],
@@ -334,6 +337,7 @@ export function isModalOpen(): boolean {
     s.quickConnectOpen ||
     s.settingsOpen ||
     s.editingFavorite !== null ||
+    s.addingFavorite ||
     s.hostKeyPrompts.length > 0 ||
     s.confirmDelete !== null ||
     s.conflictPrompts > 0
@@ -438,6 +442,10 @@ export function closeQuickConnect(): void {
 
 export function setEditingFavorite(favorite: Favorite | null): void {
   setApp({ editingFavorite: favorite });
+}
+
+export function setAddingFavorite(open: boolean): void {
+  setApp({ addingFavorite: open });
 }
 
 export function setFavorites(favorites: Favorite[]): void {

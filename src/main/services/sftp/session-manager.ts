@@ -147,6 +147,18 @@ export function fingerprintOf(keyBlob: Buffer): string {
   return "SHA256:" + createHash("sha256").update(keyBlob).digest("base64").replace(/=+$/, "");
 }
 
+/**
+ * ssh2 reports exhausted credentials as "All configured authentication
+ * methods failed", which reads like an internal fault rather than a failed
+ * connection attempt. Keep the error code, replace the wording.
+ */
+function connectionError(err: Error): Error {
+  if (!err.message.includes("All configured authentication methods failed")) return err;
+  return Object.assign(new Error("The connection isn't reachable"), {
+    code: (err as NodeJS.ErrnoException).code,
+  });
+}
+
 /** Resolve SSH_AUTH_SOCK up front so agent failures reach the form as clear errors. */
 async function resolveSshAgent(): Promise<BaseAgent> {
   const socketPath = process.env.SSH_AUTH_SOCK;
@@ -284,7 +296,7 @@ export class SessionManager {
     await new Promise<void>((resolve, reject) => {
       const onError = (err: Error): void => {
         cleanup();
-        reject(err);
+        reject(connectionError(err));
       };
       const onReady = (): void => {
         cleanup();

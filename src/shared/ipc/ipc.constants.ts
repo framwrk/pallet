@@ -90,6 +90,8 @@ export const FavoriteChannels = {
   reorder: "favorites:reorder",
   /** Connect using the stored secret; the secret never crosses to the renderer. */
   connect: "favorites:connect",
+  /** Dial the profile once and disconnect, to validate it before saving. */
+  test: "favorites:test",
 } as const;
 
 export const TransferChannels = {

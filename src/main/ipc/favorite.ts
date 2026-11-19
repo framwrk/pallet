@@ -119,10 +119,21 @@ async function connectFavorite(id: string): Promise<ConnectResult & { favorite: 
   return { ...result, favorite: store.getFavorite(id) ?? favorite };
 }
 
+/**
+ * Validate connection details before a favorite is saved: dial once, then
+ * close the session. Host-key verification still prompts through the normal
+ * TOFU flow, so a first contact is the only extra interaction.
+ */
+async function testConnection(profile: ConnectProfile): Promise<void> {
+  const { sessionId } = await sessionManager.connect(profile);
+  sessionManager.disconnect(sessionId);
+}
+
 export function registerFavoriteHandlers(): void {
   handle(FavoriteChannels.list, () => store.listFavorites());
   handle(FavoriteChannels.save, (input: FavoriteInput, secret?: FavoriteSecret | null) => store.saveFavorite(input, secret));
   handle(FavoriteChannels.remove, (id: string) => store.removeFavorite(id));
   handle(FavoriteChannels.reorder, (ids: string[]) => store.reorderFavorites(ids));
   handle(FavoriteChannels.connect, connectFavorite);
+  handle(FavoriteChannels.test, testConnection);
 }

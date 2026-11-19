@@ -251,6 +251,74 @@ export function integrationCases(root: string, s: Servers): Case[] {
       },
     ],
     [
+      "Settings favorites: test connection before saving, reject bad credentials",
+      async (ui) => {
+        const dialog = "document.querySelector('[role=dialog]')";
+        async function openAdd(): Promise<void> {
+          await ui.button("Add Favorite…", dialog);
+          await ui.wait(`${dialog}.innerText.includes('Add Favorite') && !!(${field("Server")})`, "add favorite form");
+        }
+        async function submit(name: string, password: string): Promise<void> {
+          await ui.fill(field("Name"), name);
+          await ui.fill(field("Server"), "127.0.0.1");
+          await ui.fill(field("Port"), String(s.ports.get("sftp")));
+          await ui.fill(field("Username"), "pallet");
+          await ui.fill(field("Password"), password);
+          await ui.button("Save", dialog);
+        }
+        await ui.settings();
+        await ui.button("Favorites", dialog);
+        await ui.wait(`${dialog}.innerText.includes('Add Favorite…')`, "favorites tab");
+
+        await openAdd();
+        await submit("Settings Favorite", s.password);
+        await ui.wait(
+          `document.body.innerText.includes('Unknown Host') || ${dialog}.innerText.includes('Saved connections')`,
+          "trust or save",
+          20000,
+        );
+        if (await ui.read("document.body.innerText.includes('Unknown Host')")) await ui.button("Trust");
+        await ui.wait(
+          `${dialog}.innerText.includes('Saved connections') && ${dialog}.innerText.includes('Settings Favorite')`,
+          "favorite saved into the tab",
+        );
+        assert.equal(await ui.read(connected()), false, "saving did not connect a pane");
+
+        await openAdd();
+        await submit("Rejected Favorite", "incorrect synthetic password");
+        await ui.wait(
+          `document.querySelectorAll('[role=dialog] [role=alert]').length > 0`,
+          "authentication rejected before save",
+          20000,
+        );
+        assert.match(
+          await ui.read<string>(`[...document.querySelectorAll('[role=dialog] [role=alert]')].at(-1)?.innerText`),
+          /The connection isn't reachable/,
+        );
+        assert.equal(await ui.read(`!!(${favorite("Rejected Favorite")})`), false, "failed test did not save");
+        await ui.wait(`!!(${button("Save Anyway", dialog)})`, "save anyway offered");
+
+        // Changing the credentials invalidates the failure, so Save retests.
+        await ui.fill(field("Password"), "another incorrect synthetic password");
+        await ui.wait(`!!(${button("Save", dialog)}) && !(${button("Save Anyway", dialog)})`, "save retests after an edit");
+        await ui.button("Save", dialog);
+        await ui.wait(`!!(${button("Save Anyway", dialog)})`, "edited values retested and rejected", 20000);
+        assert.equal(await ui.read(`!!(${favorite("Rejected Favorite")})`), false, "retest did not save");
+
+        await ui.button("Save Anyway", dialog);
+        await ui.wait(
+          `${dialog}.innerText.includes('Saved connections') && ${dialog}.innerText.includes('Rejected Favorite')`,
+          "save anyway persisted the favorite",
+        );
+
+        for (const name of ["Settings Favorite", "Rejected Favorite"]) {
+          await ui.button(`Delete ${name}`, dialog);
+          await ui.click(`[...${dialog}.querySelectorAll('button')].find(e => e.innerText.trim() === 'Delete')`);
+          await ui.wait(`!(${favorite(name)})`, `${name} deleted`);
+        }
+      },
+    ],
+    [
       "remote recursive sizes exclude directory metadata",
       async (ui) => {
         await connect(ui, s, "sftp");

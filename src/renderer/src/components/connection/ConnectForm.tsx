@@ -19,7 +19,7 @@ import type { ConnectProfile, ConnectionProtocol } from "@shared/sftp/sftp.types
 import { type PaneId, getState, pushToast, useAppState } from "@/store/pane.store";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -178,6 +178,7 @@ const inputCls = "h-8 text-[13px]";
  */
 export function ConnectForm({
   editing,
+  creating = false,
   prefill,
   defaultConcurrency,
   defaultKeepaliveSeconds,
@@ -186,6 +187,8 @@ export function ConnectForm({
   targetPane = "right",
 }: {
   editing: Favorite | null;
+  /** New-favorite mode: test the connection, then save without connecting a pane. */
+  creating?: boolean;
   prefill: Favorite | null;
   defaultConcurrency: number;
   defaultKeepaliveSeconds: number;
@@ -232,6 +235,16 @@ export function ConnectForm({
   const [addToFavorites, setAddToFavorites] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** Profile of the failed test; unchanged values may be saved without retesting. */
+  const [failedProfileKey, setFailedProfileKey] = useState<string | null>(null);
+  // Closing the dialog while a test dials must not save behind the user's back.
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
   const connecting = useAppState().connecting;
   /** A different connection is opening, so this form's Connect action waits. */
   const connectionBlocked = !editing && connecting !== null && !busy;
@@ -277,6 +290,8 @@ export function ConnectForm({
     if (!server.trim() || !username.trim()) return "Server and username are required";
     if (!Number.isInteger(portNum) || portNum < 1 || portNum > 65535) return "Port must be 1–65535";
     if (authMethod === "key" && !keyPath.trim()) return "Choose a private key file";
+    // A saved favorite cannot ask for the password later, so require one now.
+    if (creating && authMethod === "password" && !password) return "Password is required";
     return null;
   }
 
@@ -336,6 +351,45 @@ export function ConnectForm({
     return secret.length > 0 ? secret : undefined;
   }
 
+  /** Current form values as the profile the session manager dials. */
+  function buildProfile(): ConnectProfile {
+    const keepaliveSeconds = Number.parseInt(keepalive, 10);
+    return protocol === "s3"
+      ? {
+          protocol: "s3",
+          host: s3Host(),
+          port: 443,
+          username: username.trim(),
+          auth: { method: "s3", secretAccessKey, ...(sessionToken ? { sessionToken } : {}) },
+          s3: {
+            ...(s3EndpointValue ? { endpoint: normalizeS3Endpoint(s3EndpointValue) } : {}),
+            region: s3RegionResolved,
+            bucket: s3Bucket.trim(),
+            forcePathStyle: s3ForcePathStyle,
+          },
+          ...(remotePathField.trim() ? { remotePath: remotePathField.trim() } : {}),
+          concurrency: Number.parseInt(concurrency, 10) || defaultConcurrency,
+        }
+      : {
+          protocol,
+          host: server.trim(),
+          port: Number.parseInt(port, 10),
+          username: username.trim(),
+          auth:
+            authMethod === "password"
+              ? { method: "password", password }
+              : authMethod === "key"
+                ? { method: "key", keyPath: keyPath.trim(), ...(passphrase ? { passphrase } : {}) }
+                : { method: "agent" },
+          ...(remotePathField.trim() ? { remotePath: remotePathField.trim() } : {}),
+          keepaliveIntervalMs:
+            Math.max(0, Number.isFinite(keepaliveSeconds) ? keepaliveSeconds : defaultKeepaliveSeconds) * 1000,
+          compression,
+          ...(protocol === "ftps" ? { tlsRejectUnauthorized } : {}),
+          concurrency: Number.parseInt(concurrency, 10) || defaultConcurrency,
+        };
+  }
+
   async function doConnect(): Promise<void> {
     const pending = getState().connecting;
     if (pending) {
@@ -347,46 +401,10 @@ export function ConnectForm({
       setError(invalid);
       return;
     }
-    const keepaliveSeconds = Number.parseInt(keepalive, 10);
-    const profile: ConnectProfile =
-      protocol === "s3"
-        ? {
-            protocol: "s3",
-            host: s3Host(),
-            port: 443,
-            username: username.trim(),
-            auth: { method: "s3", secretAccessKey, ...(sessionToken ? { sessionToken } : {}) },
-            s3: {
-              ...(s3EndpointValue ? { endpoint: normalizeS3Endpoint(s3EndpointValue) } : {}),
-              region: s3RegionResolved,
-              bucket: s3Bucket.trim(),
-              forcePathStyle: s3ForcePathStyle,
-            },
-            ...(remotePathField.trim() ? { remotePath: remotePathField.trim() } : {}),
-            concurrency: Number.parseInt(concurrency, 10) || defaultConcurrency,
-          }
-        : {
-            protocol,
-            host: server.trim(),
-            port: Number.parseInt(port, 10),
-            username: username.trim(),
-            auth:
-              authMethod === "password"
-                ? { method: "password", password }
-                : authMethod === "key"
-                  ? { method: "key", keyPath: keyPath.trim(), ...(passphrase ? { passphrase } : {}) }
-                  : { method: "agent" },
-            ...(remotePathField.trim() ? { remotePath: remotePathField.trim() } : {}),
-            keepaliveIntervalMs:
-              Math.max(0, Number.isFinite(keepaliveSeconds) ? keepaliveSeconds : defaultKeepaliveSeconds) * 1000,
-            compression,
-            ...(protocol === "ftps" ? { tlsRejectUnauthorized } : {}),
-            concurrency: Number.parseInt(concurrency, 10) || defaultConcurrency,
-          };
     setBusy(true);
     setError(null);
     try {
-      await connectRemote(profile, targetPane === "right" ? localPathField.trim() || undefined : undefined, targetPane);
+      await connectRemote(buildProfile(), targetPane === "right" ? localPathField.trim() || undefined : undefined, targetPane);
       // Only persist a favorite once the server has accepted the connection.
       if (addToFavorites) {
         const saved = await saveFavorite(favoriteInput(), enteredSecret());
@@ -404,14 +422,43 @@ export function ConnectForm({
       setError(invalid);
       return;
     }
-    const saved = await saveFavorite(favoriteInput(), enteredSecret());
-    if (saved) {
-      pushToast("Favorite saved", "info");
-      onClose?.();
+    const profileKey = creating ? JSON.stringify(buildProfile()) : null;
+    // A failure belongs to the values that produced it: saving again unchanged
+    // is the user's explicit "save anyway", while edited values retest first.
+    const testing = creating && profileKey !== failedProfileKey;
+    setBusy(true);
+    setError(null);
+    try {
+      if (testing) {
+        try {
+          await window.pallet.favorites.test(buildProfile());
+        } catch (err) {
+          if (!mounted.current) return;
+          setBusy(false);
+          setFailedProfileKey(profileKey);
+          setError((err as Error).message);
+          return;
+        }
+        if (!mounted.current) return;
+        setFailedProfileKey(null);
+      }
+      const saved = await saveFavorite(favoriteInput(), enteredSecret());
+      if (!mounted.current) return;
+      if (saved) {
+        pushToast(creating ? `Added “${saved.name}” to Favorites` : "Favorite saved", "info");
+        onClose?.();
+      } else {
+        setBusy(false);
+      }
+    } catch (err) {
+      if (!mounted.current) return;
+      setBusy(false);
+      setError((err as Error).message);
     }
   }
 
-  const isPane = editing === null;
+  const isPane = editing === null && !creating;
+  const saveAnyway = creating && failedProfileKey !== null && failedProfileKey === JSON.stringify(buildProfile());
   const fieldLayout = isPane ? "stacked" : "aligned";
   const fieldInputCls = inputCls;
   const authPicker = (
@@ -583,7 +630,7 @@ export function ConnectForm({
       className="pallet-connect-form flex flex-col gap-3"
       onSubmit={(e) => {
         e.preventDefault();
-        if (editing) void doSaveFavorite();
+        if (editing || creating) void doSaveFavorite();
         else void doConnect();
       }}
     >
@@ -1114,6 +1161,7 @@ export function ConnectForm({
           size="sm"
           className={cn("h-8 text-[13px]", isPane && "min-w-[84px]")}
           disabled={busy || connectionBlocked}
+          aria-busy={busy}
           title={connectionBlocked ? "A connection is already opening" : undefined}
         >
           {(busy || connectionBlocked) && (
@@ -1122,7 +1170,17 @@ export function ConnectForm({
               data-icon="inline-start"
             />
           )}
-          {editing ? "Save" : busy || connectionBlocked ? "Connecting…" : "Connect"}
+          {editing
+            ? busy
+              ? "Saving…"
+              : "Save"
+            : creating
+              ? saveAnyway
+                ? "Save Anyway"
+                : "Save"
+              : busy || connectionBlocked
+                ? "Connecting…"
+                : "Connect"}
         </Button>
       </div>
     </form>

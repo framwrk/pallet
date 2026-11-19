@@ -285,11 +285,14 @@ Saved connections live in the Favorites section of the sidebar, each with its co
 
 | Action   | How                                      |
 | -------- | ---------------------------------------- |
-| Save one | Turn on **Add to Favorites** in Quick Connect, then connect |
+| Save one | Turn on **Add to Favorites** in Quick Connect, then connect; or add one directly in **Settings → Favorites** |
 | Connect  | Click it in the sidebar                  |
 | Edit     | Right-click → **Edit**                   |
 | Delete   | Right-click → **Delete**                 |
 | Reorder  | Drag it up or down the list              |
+
+**Settings → Favorites** lists every saved connection in one place to connect, edit, reorder, or
+delete it. See [Settings](#settings).
 
 Favorites are stored in SQLite on your machine, alongside your settings. Pallet encrypts passwords,
 key passphrases, and S3 credentials through macOS Keychain with Electron's `safeStorage`; the
@@ -474,7 +477,7 @@ removes the temporary copy. Closing the editor alone does not end monitoring.
 
 ## Settings
 
-Press **⌘,** or choose **Pallet → Settings**. An in-app modal opens with six sidebar sections.
+Press **⌘,** or choose **Pallet → Settings**. An in-app modal opens with seven sidebar sections.
 Use **⌘F** or **/** to focus its section search when not editing a field.
 
 ### General
@@ -494,6 +497,22 @@ Use **⌘F** or **/** to focus its section search when not editing a field.
 make while Pallet is running.
 
 **Row density**: Compact or Comfortable. Compact matches Finder's default row height.
+
+### Favorites
+
+The **Favorites** tab manages every saved connection in one list. Each row shows its color label,
+protocol, endpoint, and when it was last used.
+
+| Action   | How                                                                                    |
+| -------- | -------------------------------------------------------------------------------------- |
+| Add      | **Add Favorite…** opens the connection form. **Save** shows a spinner while Pallet connects once and disconnects to test the details. If the test fails, the message stays in the form and **Save Anyway** persists the favorite; editing the connection details makes the next save test again. |
+| Connect  | **Connect** closes Settings and connects the pane the sidebar would use.                |
+| Edit     | The pencil button opens the same Edit Favorite form as the sidebar's context menu.      |
+| Reorder  | The up and down arrows move the favorite; the sidebar follows the new order.            |
+| Delete   | The trash button asks for confirmation, then removes the favorite and its saved secret. |
+
+Favorites can still be saved from **Add to Favorites** in Connect to Server; the tab adds them
+without connecting a pane.
 
 ### Transfers
 
