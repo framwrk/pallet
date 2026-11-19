@@ -27,7 +27,11 @@ import {
   useAppState,
 } from "@/store/pane.store";
 import { disconnectPane, initSftpEvents } from "@/store/sftp.store";
+import { getKeybindingLookup, getKeybindings, initKeybindings, isKeybindingRecorderOpen } from "@/store/keybinding.store";
+import { initTerminalEvents, toggleTerminal } from "@/store/terminal.store";
 import { useEffect, useState } from "react";
+import { COMMAND_BY_ID } from "@shared/keybindings/keybinding.constants";
+import type { CommandId } from "@shared/keybindings/keybinding.types";
 import { ConfirmDeleteDialog } from "@/components/browser/ConfirmDeleteDialog";
 import { ConflictDialog } from "@/components/transfer/ConflictDialog";
 import { ConnectDialog } from "@/components/connection/QuickConnect";
@@ -42,7 +46,7 @@ import { Sidebar } from "@/components/connection/Sidebar";
 import { Toasts } from "@/components/feedback/Toasts";
 import { Toolbar } from "@/components/browser/Toolbar";
 import { UpdateToast } from "@/components/feedback/UpdateToast";
-import { initTerminalEvents } from "@/store/terminal.store";
+import { eventToKey } from "@shared/keybindings/keybinding.utils";
 import { initTransferEvents } from "@/store/transfer.store";
 import { loadFavorites } from "@/store/favorite.store";
 import { visibleEntries } from "@/lib/entry.utils";
@@ -54,25 +58,63 @@ function isEditableTarget(target: EventTarget | null): boolean {
 
 /**
  * True when the key event belongs to the file lists (the window handler's
- * jurisdiction). Plain keys yield to whatever widget is focused — buttons,
- * menus, checkboxes keep their own Enter/Space/arrows — while ⌘-combos stay
- * available: they never collide with widget activation (Finder keeps ⌘C
- * working with a toolbar button focused). Dialogs and text fields were
- * already excluded by the caller.
+ * jurisdiction). Plain and ⇧-only keys yield to whatever widget is focused —
+ * buttons, menus, checkboxes keep their own Enter/Space/arrows — while a
+ * binding with ⌘, ⌃, or ⌥ fires from a focused widget too: they never collide
+ * with widget activation (Finder keeps ⌘C working with a toolbar button
+ * focused). Dialogs and text fields were already excluded by the caller.
  */
-function isFileContext(e: KeyboardEvent): boolean {
-  if (e.altKey || e.ctrlKey) return false;
+function isFileContext(e: KeyboardEvent, key: string): boolean {
   const t = e.target;
   if (!(t instanceof Element)) return false;
   if (isEditableTarget(t)) return false;
-  if (!e.metaKey && t.closest("button, a, select, [role='menu'], [role='dialog'], [role='menuitem'], [role='checkbox']")) {
+  const hasCommandModifier = key
+    .split("+")
+    .slice(0, -1)
+    .some((modifier) => modifier === "cmd" || modifier === "ctrl" || modifier === "alt");
+  if (
+    !hasCommandModifier &&
+    t.closest("button, a, select, [role='menu'], [role='dialog'], [role='menuitem'], [role='checkbox']")
+  ) {
     return false;
   }
   return true;
 }
 
+/** The same handler each menu item reaches, for a command's extra bindings. */
+function runMenuCommand(command: CommandId): void {
+  const state = getState();
+  if (command === "panels.settings") {
+    setSettingsOpen(true);
+    return;
+  }
+  if (command === "panels.closeRemotePane") {
+    if (state.panes[state.active].backend.kind === "sftp") void disconnectPane(state.active);
+    return;
+  }
+  if (command === "panels.toggleTerminal") {
+    if (!isModalOpen()) toggleTerminal(state.active);
+  }
+}
+
 function handleKeyDown(e: KeyboardEvent): void {
-  if (e.defaultPrevented) return;
+  if (e.defaultPrevented || e.isComposing) return;
+  const key = eventToKey(e);
+  if (key === null) return;
+
+  const command = getKeybindingLookup().get(key);
+  const spec = command ? COMMAND_BY_ID.get(command) : undefined;
+
+  // Menu extras act like the menu itself: before the editable/modal guards.
+  // The first binding is the Electron accelerator, which main already owns.
+  if (command && spec?.scope === "menu") {
+    if (isKeybindingRecorderOpen()) return;
+    if (getKeybindings().effective[command][0] === key) return;
+    e.preventDefault();
+    runMenuCommand(command);
+    return;
+  }
+
   if (isEditableTarget(e.target)) return;
   if (isModalOpen()) return;
 
@@ -80,19 +122,16 @@ function handleKeyDown(e: KeyboardEvent): void {
   // dialogs and text fields. With a single pane (disconnected) it falls
   // through so native traversal can move focus — previously it was swallowed
   // here and switchPane() also no-op'd, leaving focus stuck on the document.
-  const focused = e.target instanceof Element && !e.target.closest("[role='dialog'], input, textarea, [contenteditable]");
-  if (
-    e.key === "Tab" &&
-    focused &&
-    getState().panes.right.backend.kind !== "none" &&
-    getState().connecting?.paneId !== "right"
-  ) {
-    e.preventDefault();
-    switchPane();
+  if (command && spec?.scope === "pane-switch") {
+    const focused = e.target instanceof Element && !e.target.closest("[role='dialog'], input, textarea, [contenteditable]");
+    if (focused && getState().panes.right.backend.kind !== "none" && getState().connecting?.paneId !== "right") {
+      e.preventDefault();
+      switchPane();
+    }
     return;
   }
 
-  if (!isFileContext(e)) return;
+  if (!isFileContext(e, key)) return;
 
   const state = getState();
   const id = state.active;
@@ -101,117 +140,90 @@ function handleKeyDown(e: KeyboardEvent): void {
   // file-list shortcuts must not act on a pane that shows no listing.
   if (pane.view === "terminal") return;
   const visible = visibleEntries(pane.entries, pane.sortKey, pane.sortDir, state.showHidden, state.foldersFirst);
-  const meta = e.metaKey;
-  const shift = e.shiftKey;
 
-  switch (e.key) {
-    case "Enter":
+  // Locked selection movement keeps its original code path.
+  if (key === "up" || key === "down" || key === "shift+up" || key === "shift+down") {
+    const extend = key.startsWith("shift+");
+    e.preventDefault();
+    if (key === "up" || key === "shift+up") moveFocus(id, -1, extend, visible);
+    else moveFocus(id, 1, extend, visible);
+    return;
+  }
+
+  if (!command || spec?.scope !== "files") return;
+
+  switch (command) {
+    case "navigation.open":
+      e.preventDefault();
+      openSelection(id);
+      return;
+    case "navigation.goUp":
+      e.preventDefault();
+      goUp(id);
+      return;
+    case "navigation.goToFolder":
+      e.preventDefault();
+      setGoToOpen(true);
+      return;
+    case "navigation.refresh":
+      e.preventDefault();
+      refresh(id);
+      return;
+    case "navigation.selectAll":
+      e.preventDefault();
+      selectAll(id, visible);
+      return;
+    case "navigation.clearSelection":
+      // Escape stays un-prevented, as before, so surrounding controls keep
+      // their own Escape handling when the selection is already clear.
+      clearSelection(id);
+      return;
+    case "navigation.toggleHidden":
+      e.preventDefault();
+      setShowHidden(!state.showHidden);
+      return;
+    case "files.rename":
       // Finder convention: Enter renames (plan §9.3); ⌘↓/⌘O opens.
-      if (!meta && pane.selected.size === 1) {
+      if (!key.split("+").includes("cmd") && pane.selected.size === 1) {
         e.preventDefault();
         beginRename(id);
       }
       return;
-    case "F5":
+    case "files.newFolder":
+      e.preventDefault();
+      void newFolder(id);
+      return;
+    case "files.trash":
+      e.preventDefault();
+      void trashSelection(id);
+      return;
+    case "files.undo":
+      e.preventDefault();
+      void undo();
+      return;
+    case "transfers.copyToOther":
       e.preventDefault();
       void copyToOther(id);
       return;
-    case "F6":
+    case "transfers.moveToOther":
       e.preventDefault();
       void moveToOther(id);
       return;
-    case "Backspace":
-      if (meta) {
-        e.preventDefault();
-        void trashSelection(id);
-      }
-      return;
-    case "ArrowUp":
-      if (meta) {
-        e.preventDefault();
-        goUp(id);
-      } else {
-        e.preventDefault();
-        moveFocus(id, -1, shift, visible);
-      }
-      return;
-    case "ArrowDown":
-      e.preventDefault();
-      if (meta) {
-        openSelection(id);
-      } else {
-        moveFocus(id, 1, shift, visible);
-      }
-      return;
-    case "Escape":
-      clearSelection(id);
-      return;
-    case " ":
-      // Space = preview (§4): the inspector hosts the preview.
-      e.preventDefault();
-      setInspectorOpen(!state.inspectorOpen);
-      return;
-  }
-
-  if (!meta) return;
-
-  // Matched on e.code, not e.key: with Shift held this key reports ">".
-  if (shift && e.code === "Period") {
-    e.preventDefault();
-    setShowHidden(!state.showHidden);
-    return;
-  }
-
-  switch (e.key.toLowerCase()) {
-    case "r":
-      e.preventDefault();
-      refresh(id);
-      return;
-    case "a":
-      e.preventDefault();
-      selectAll(id, visible);
-      return;
-    case "g":
-      if (shift) {
-        e.preventDefault();
-        setGoToOpen(true);
-      }
-      return;
-    case "k":
-      e.preventDefault();
-      openQuickConnect();
-      return;
-    case "i":
-      e.preventDefault();
-      setInspectorOpen(!state.inspectorOpen);
-      return;
-    case "o":
-      e.preventDefault();
-      openSelection(id);
-      return;
-    case "c":
+    case "transfers.copy":
       e.preventDefault();
       copySelection(id);
       return;
-    case "v":
+    case "transfers.paste":
       e.preventDefault();
       void paste(id);
       return;
-    case "d":
+    case "panels.toggleInspector":
       e.preventDefault();
-      void copyToOther(id);
+      setInspectorOpen(!state.inspectorOpen);
       return;
-    case "n":
-      if (shift) {
-        e.preventDefault();
-        void newFolder(id);
-      }
-      return;
-    case "z":
-      if (!shift) {
-        e.preventDefault();
-        void undo();
-      }
+    case "panels.connect":
+      e.preventDefault();
+      openQuickConnect();
       return;
   }
 }
@@ -257,6 +269,7 @@ function App(): React.JSX.Element {
     initSftpEvents();
     initTransferEvents();
     initTerminalEvents();
+    initKeybindings();
     void initApp();
     void loadFavorites();
   }, []);
