@@ -58,6 +58,10 @@ export interface PaneState {
   renaming: string | null;
   history: string[];
   historyIndex: number;
+  /** Files view, or the pane's interactive SSH shell. */
+  view: "files" | "terminal";
+  /** Identity of the pane's shell; survives hiding the terminal. */
+  terminalId: string | null;
 }
 
 export interface Toast {
@@ -148,6 +152,8 @@ function initialPane(backend: PaneBackend): PaneState {
     renaming: null,
     history: [],
     historyIndex: -1,
+    view: "files",
+    terminalId: null,
   };
 }
 
@@ -275,7 +281,7 @@ export async function navigate(id: PaneId, path: string, mode: NavigateMode = "p
 
 /** True while a listing is present and not pending/failed: ops target exactly what's shown. */
 export function isUsable(pane: PaneState): boolean {
-  return pane.backend.kind !== "none" && pane.cwd !== "" && !pane.loading && pane.error === null;
+  return pane.view !== "terminal" && pane.backend.kind !== "none" && pane.cwd !== "" && !pane.loading && pane.error === null;
 }
 
 export function refresh(id: PaneId): void {
@@ -465,7 +471,7 @@ export function setConflictPromptCount(count: number): void {
   if (state.conflictPrompts !== count) setApp({ conflictPrompts: count });
 }
 
-/** Swap a pane's backend; the listing and history belong to the old one. */
+/** Swap a pane's backend; the listing, history, and shell belong to the old one. */
 export function setBackend(id: PaneId, backend: PaneBackend): void {
   generation[id]++;
   setPane(id, {
@@ -481,7 +487,14 @@ export function setBackend(id: PaneId, backend: PaneBackend): void {
     anchor: null,
     renaming: null,
     error: null,
+    view: "files",
+    terminalId: null,
   });
+}
+
+/** Which view the pane shows, and the shell it owns (set by terminal.store). */
+export function setPaneTerminal(id: PaneId, patch: Partial<Pick<PaneState, "view" | "terminalId">>): void {
+  setPane(id, patch);
 }
 
 export function updateSessionStatus(sessionId: string, status: SessionStatus, detail?: string): void {
@@ -490,6 +503,9 @@ export function updateSessionStatus(sessionId: string, status: SessionStatus, de
     if (backend.kind === "sftp" && backend.sessionId === sessionId) {
       setPane(id, { backend: { ...backend, status, statusDetail: detail } });
       if (status === "connected") refresh(id);
+      // Main closes the shell with the session; show the (dead) listing again
+      // so the reconnect overlay and its controls are reachable.
+      if (status === "disconnected") setPane(id, { view: "files", terminalId: null });
     }
   }
 }

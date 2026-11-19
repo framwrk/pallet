@@ -218,6 +218,8 @@ export async function copyToOther(id: PaneId): Promise<void> {
 
 export async function moveToOther(id: PaneId): Promise<void> {
   if (!requireUsable(id)) return;
+  // Silent no-op: the destination pane currently shows a shell, not a listing.
+  if (getState().panes[otherPane(id)].view === "terminal") return;
   if (getState().panes[id].backend.kind !== "local" || getState().panes[otherPane(id)].backend.kind !== "local") {
     pushToast("Remote moves are copy-only in the beta — use F5, then delete", "info");
     return;

@@ -49,8 +49,10 @@ export function Toolbar(): React.JSX.Element {
   const pane = app.panes[app.active];
   const leftIsLocal = app.panes.left.backend.kind === "local";
   const connecting = app.connecting;
-  const folderTitle =
-    pane.cwd === "/"
+  const terminalView = pane.view === "terminal";
+  const folderTitle = terminalView
+    ? `Terminal — ${pane.backend.kind === "sftp" ? pane.backend.host : ""}`
+    : pane.cwd === "/"
       ? pane.backend.kind === "sftp"
         ? pane.backend.host
         : "Macintosh HD"
@@ -63,13 +65,13 @@ export function Toolbar(): React.JSX.Element {
           icon={ArrowLeft}
           label="Back"
           onClick={() => goBack(app.active)}
-          disabled={pane.historyIndex <= 0}
+          disabled={terminalView || pane.historyIndex <= 0}
         />
         <ToolButton
           icon={ArrowRight}
           label="Forward"
           onClick={() => goForward(app.active)}
-          disabled={pane.historyIndex >= pane.history.length - 1}
+          disabled={terminalView || pane.historyIndex >= pane.history.length - 1}
         />
       </ToolButtonGroup>
       <div className="flex-1 truncate text-[13px] font-semibold">{folderTitle}</div>
@@ -93,6 +95,7 @@ export function Toolbar(): React.JSX.Element {
           icon={RotateCw}
           label="Refresh"
           onClick={() => refresh(app.active)}
+          disabled={terminalView}
         />
         <ToolButton
           icon={FolderPlus}

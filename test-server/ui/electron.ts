@@ -251,7 +251,11 @@ export class ElectronUI {
   }
   async settings(): Promise<void> {
     this.native('keystroke "," using command down');
-    await this.wait("!!document.getElementById('pref-show-hidden')", "native Settings menu (requires Accessibility)");
+    await this.wait("!!document.querySelector('[role=dialog]')", "native Settings menu (requires Accessibility)");
+    // The dialog is mounted for the app's lifetime and remembers its tab, so a
+    // reopened Settings can land somewhere other than General.
+    await this.button("General");
+    await this.wait("!!document.getElementById('pref-show-hidden')", "General settings panel");
   }
   async close(): Promise<void> {
     this.socket?.close();

@@ -43,6 +43,7 @@ import { Sidebar } from "@/components/connection/Sidebar";
 import { Toasts } from "@/components/feedback/Toasts";
 import { Toolbar } from "@/components/browser/Toolbar";
 import { UpdateToast } from "@/components/feedback/UpdateToast";
+import { initTerminalEvents } from "@/store/terminal.store";
 import { initTransferEvents } from "@/store/transfer.store";
 import { loadFavorites } from "@/store/favorite.store";
 import { visibleEntries } from "@/lib/entry.utils";
@@ -97,6 +98,9 @@ function handleKeyDown(e: KeyboardEvent): void {
   const state = getState();
   const id = state.active;
   const pane = state.panes[id];
+  // The terminal owns every key it receives. Even when focus sits on a button,
+  // file-list shortcuts must not act on a pane that shows no listing.
+  if (pane.view === "terminal") return;
   const visible = visibleEntries(pane.entries, pane.sortKey, pane.sortDir, state.showHidden, state.foldersFirst);
   const meta = e.metaKey;
   const shift = e.shiftKey;
@@ -253,6 +257,7 @@ function App(): React.JSX.Element {
   useEffect(() => {
     initSftpEvents();
     initTransferEvents();
+    initTerminalEvents();
     void initApp();
     void loadFavorites();
   }, []);

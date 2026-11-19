@@ -190,12 +190,14 @@ export function Inspector(): React.JSX.Element | null {
   const app = useAppState();
   const pane = app.panes[app.active];
   const entry = useMemo(() => {
+    // A terminal-view pane has no listing selection to inspect.
+    if (pane.view === "terminal") return null;
     if (pane.selected.size === 1) {
       const name = [...pane.selected][0];
       return pane.entries.find((e) => e.name === name) ?? null;
     }
     return null;
-  }, [pane.selected, pane.entries]);
+  }, [pane.selected, pane.entries, pane.view]);
 
   const isS3 = pane.backend.kind === "sftp" && pane.backend.protocol === "s3";
   const editable = pane.backend.kind === "sftp" && !isS3 && entry !== null;

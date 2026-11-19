@@ -111,6 +111,9 @@ export async function enqueuePaneCopy(
 ): Promise<void> {
   const panes = getState().panes;
   if (names.length === 0) return;
+  // A terminal-view pane isn't a transfer destination. Silent, like other
+  // unusable targets.
+  if (panes[toPane].view === "terminal") return;
   if (panes[fromPane].backend.kind === "none" || panes[toPane].backend.kind === "none") {
     pushToast("Connect to a server first", "info");
     return;

@@ -8,6 +8,7 @@ import {
   PrefChannels,
   SettingsChannels,
   SftpChannels,
+  TerminalChannels,
   TransferChannels,
   UiChannels,
   WindowChannels,
@@ -17,6 +18,7 @@ import type { ConnectProfile, ConnectResult, HostKeyPrompt, SessionStatusEvent }
 import type { ContextMenuItem, IpcResult } from "@shared/ipc/ipc.types";
 import type { DirListing, Entry, KnownFolders, PreviewData, SizeTarget, VolumeInfo } from "@shared/fs/fs.types";
 import type { Favorite, FavoriteInput, FavoriteSecret } from "@shared/favorite/favorite.types";
+import type { TerminalDataEvent, TerminalExitEvent } from "@shared/terminal/terminal.types";
 import type { UpdateDownloadState, UpdateInfo } from "@shared/update/update.types";
 import { contextBridge, ipcRenderer } from "electron";
 import type { AppInfo } from "@shared/app/app.types";
@@ -85,6 +87,20 @@ const pallet: PalletApi = {
   edit: {
     open: (sessionId: string, remotePath: string): Promise<string> => invoke(EditChannels.open, sessionId, remotePath),
     onEvent: (cb: (event: EditEventPayload) => void): (() => void) => subscribe(EditChannels.event, cb),
+  },
+  terminal: {
+    open: (terminalId: string, sessionId: string, cols: number, rows: number): Promise<void> =>
+      invoke(TerminalChannels.open, terminalId, sessionId, cols, rows),
+    write: (terminalId: string, data: string): void => {
+      ipcRenderer.send(TerminalChannels.write, terminalId, data);
+    },
+    resize: (terminalId: string, cols: number, rows: number): void => {
+      ipcRenderer.send(TerminalChannels.resize, terminalId, cols, rows);
+    },
+    close: (terminalId: string): Promise<void> => invoke(TerminalChannels.close, terminalId),
+    onData: (cb: (event: TerminalDataEvent) => void): (() => void) => subscribe(TerminalChannels.data, cb),
+    onExit: (cb: (event: TerminalExitEvent) => void): (() => void) => subscribe(TerminalChannels.exit, cb),
+    onToggleRequest: (cb: () => void): (() => void) => subscribe(TerminalChannels.toggleRequest, cb),
   },
   transfer: {
     enqueue: (request: TransferRequest): Promise<string> => invoke(TransferChannels.enqueue, request),

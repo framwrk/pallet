@@ -28,6 +28,9 @@ remote hosts.
 - **SFTP, FTP, and explicit FTPS:** password or private-key authentication, plus SSH agent
   authentication for SFTP (including 1Password's agent), per-connection keepalive, concurrency, and
   compression options, and SSH trust-on-first-use host key verification.
+- **SFTP + SSH terminal:** open an interactive login shell in either SFTP pane with the pane's
+  terminal button or **⌃&#96;**. The shell reuses the connection's credentials over a second SSH
+  connection, keeps running while you browse files, and closes with the file session.
 - **S3-compatible storage:** connect to one bucket with an optional starting prefix on AWS S3 or a
   custom http(s) origin such as MinIO, Cloudflare R2, or Wasabi, using a static access key and optional
   session token. See [S3 connections](docs/s3-connections.md) for fields, IAM permissions, and

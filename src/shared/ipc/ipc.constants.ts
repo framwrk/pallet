@@ -83,6 +83,19 @@ export const EditChannels = {
   event: "edit:event",
 } as const;
 
+export const TerminalChannels = {
+  open: "terminal:open",
+  write: "terminal:write",
+  resize: "terminal:resize",
+  close: "terminal:close",
+  /** main → renderer terminal output. */
+  data: "terminal:data",
+  /** main → renderer: the shell exited or its connection dropped. */
+  exit: "terminal:exit",
+  /** main → renderer: File → Toggle Terminal toggles the active pane. */
+  toggleRequest: "terminal:toggleRequest",
+} as const;
+
 export const FavoriteChannels = {
   list: "favorites:list",
   save: "favorites:save",
