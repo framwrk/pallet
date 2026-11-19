@@ -1,17 +1,30 @@
 import { AppChannels, SettingsChannels, TerminalChannels, WindowChannels } from "@shared/ipc/ipc.constants";
 import { BrowserWindow, Menu, app, session, shell } from "electron";
 import { editSessions, sessionManager } from "./ipc/sftp";
+import {
+  getKeybindingsState,
+  isKeybindingRecording,
+  loadKeybindings,
+  onKeybindingRecordingChange,
+  onKeybindingsChange,
+  setKeybindingRecording,
+  stopWatchingKeybindings,
+  watchKeybindings,
+} from "./services/keybindings-store";
 import { installCrashHandlers, log, logFilePath } from "./services/logger";
-import { is, optimizer } from "@electron-toolkit/utils";
 import { isAllowedExternalUrl, isAllowedNavigation } from "./utils/navigation-policy";
 import { quitAfterTransfers, setQuitCleanup } from "./services/quit";
 import { restoreWindowState, trackWindowState } from "./services/window-state";
+import type { CommandId } from "@shared/keybindings/keybinding.types";
+import { is } from "@electron-toolkit/utils";
 import { join } from "path";
 import { pathToFileURL } from "url";
 import { registerIpcHandlers } from "./ipc/register";
 import { startUpdateChecks } from "./services/update-checker";
 import { terminalSessions } from "./ipc/terminal";
+import { toAccelerator } from "@shared/keybindings/keybinding.utils";
 import { transferQueue } from "./ipc/transfer";
+import { watchDevShortcuts } from "./services/dev-shortcuts";
 
 /** Lock a window to its own document and keep external links to http(s). */
 function guardWindowNavigation(win: BrowserWindow, entryFile: string): void {
@@ -56,6 +69,11 @@ function createWindow(): void {
 
   trackWindowState(win);
 
+  // A recorder owns no menu accelerator while it is open. Leaving the window
+  // or reloading ends that suspension so the menu never stays dead.
+  win.on("blur", () => setKeybindingRecording(false));
+  win.webContents.on("did-start-loading", () => setKeybindingRecording(false));
+
   win.on("ready-to-show", () => {
     if (restored.maximized) win.maximize();
     win.show();
@@ -74,13 +92,22 @@ function createWindow(): void {
   }
 }
 
+/** First effective binding for a menu command, as an Electron accelerator. */
+function menuAccelerator(id: CommandId): string | undefined {
+  // While the Settings recorder is open, ⌘W, ⌘, and ⌃` must reach the
+  // recorder instead of disconnecting, reopening, or toggling a pane.
+  if (isKeybindingRecording()) return undefined;
+  const key = getKeybindingsState().effective[id]?.[0];
+  return key ? toAccelerator(key) : undefined;
+}
+
 function buildMenu(): void {
   // ⌘, lives on a menu item rather than a renderer key handler: menu
   // accelerators fire from any window and any focus, and it now opens the
   // in-app Settings modal over the main window.
   const settingsItem: Electron.MenuItemConstructorOptions = {
     label: "Settings…",
-    accelerator: "Cmd+,",
+    accelerator: menuAccelerator("panels.settings"),
     click: () => {
       // Open-only: a retrigger while the modal is open is a no-op (T3 Code).
       mainWindow?.webContents.send(SettingsChannels.openRequest);
@@ -89,7 +116,7 @@ function buildMenu(): void {
 
   const toggleTerminalItem: Electron.MenuItemConstructorOptions = {
     label: "Toggle Terminal",
-    accelerator: "Ctrl+`",
+    accelerator: menuAccelerator("panels.toggleTerminal"),
     click: () => {
       const focused = BrowserWindow.getFocusedWindow();
       if (!focused || focused !== mainWindow) return;
@@ -104,13 +131,20 @@ function buildMenu(): void {
   // close, so the item is spelled out here.
   const closeItem: Electron.MenuItemConstructorOptions = {
     label: "Close Remote Pane",
-    accelerator: "Cmd+W",
+    accelerator: menuAccelerator("panels.closeRemotePane"),
     click: () => {
       const focused = BrowserWindow.getFocusedWindow();
       if (!focused || focused !== mainWindow) return;
       focused.webContents.send(WindowChannels.closeRequest);
     },
   };
+
+  // No stock viewMenu role: its Reload (⌘R) and zoom accelerators would swallow
+  // Pallet's own bindings. Production keeps only Toggle Full Screen; the dev
+  // reload and DevTools items ride above it.
+  const devViewItems: Electron.MenuItemConstructorOptions[] = is.dev
+    ? [{ role: "forceReload" }, { role: "toggleDevTools" }, { type: "separator" }]
+    : [];
 
   const template: Electron.MenuItemConstructorOptions[] = [
     {
@@ -134,7 +168,10 @@ function buildMenu(): void {
       submenu: [toggleTerminalItem, closeItem],
     },
     { role: "editMenu" },
-    { role: "viewMenu" },
+    {
+      label: "View",
+      submenu: [...devViewItems, { role: "togglefullscreen" }],
+    },
     {
       label: "Window",
       // "Close Window" without an accelerator: ⌘W belongs to the remote-pane
@@ -186,11 +223,15 @@ app.whenReady().then(() => {
   });
 
   app.on("browser-window-created", (_, window) => {
-    optimizer.watchWindowShortcuts(window);
+    watchDevShortcuts(window);
   });
 
+  loadKeybindings();
   registerIpcHandlers();
+  onKeybindingsChange(() => buildMenu());
+  onKeybindingRecordingChange(() => buildMenu());
   buildMenu();
+  watchKeybindings();
   createWindow();
 
   startUpdateChecks((info) => {
@@ -213,6 +254,7 @@ app.on("window-all-closed", () => {});
 let cleaningUp = false;
 
 app.on("before-quit", (event) => {
+  stopWatchingKeybindings();
   if (cleaningUp) return;
   if (!transferQueue.hasActiveTransfers()) {
     // Close SSH sessions cleanly; avoids half-open channels server-side.
