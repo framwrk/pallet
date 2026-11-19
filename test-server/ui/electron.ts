@@ -75,9 +75,15 @@ export class ElectronUI {
     delete env.ELECTRON_RUN_AS_NODE;
     delete env.ELECTRON_RENDERER_URL;
     this.log = "";
+    const binary = process.env.PALLET_ELECTRON_BINARY;
     this.child = spawn(
-      "node_modules/electron/dist/Electron.app/Contents/MacOS/Electron",
-      [".", `--user-data-dir=${this.profile}`, "--remote-debugging-address=127.0.0.1", "--remote-debugging-port=0"],
+      binary ?? "node_modules/electron/dist/Electron.app/Contents/MacOS/Electron",
+      [
+        ...(binary ? [] : ["."]),
+        `--user-data-dir=${this.profile}`,
+        "--remote-debugging-address=127.0.0.1",
+        "--remote-debugging-port=0",
+      ],
       { env, stdio: ["ignore", "pipe", "pipe"] },
     );
     let error: Error | undefined;

@@ -4,8 +4,8 @@
 
 **A free and open-source dual-pane file manager for macOS.**
 
-Connect to servers over SFTP, FTP, or explicit FTPS, and move files between your Mac and remote
-servers.
+Connect to servers over SFTP, FTP, or explicit FTPS, or to S3-compatible object storage, and move
+files between your Mac and remote locations.
 
 [![Release](https://img.shields.io/github/v/release/framwrk/pallet?sort=semver&label=release)](https://github.com/framwrk/pallet/releases)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
@@ -28,6 +28,10 @@ remote hosts.
 - **SFTP, FTP, and explicit FTPS:** password or private-key authentication, plus SSH agent
   authentication for SFTP (including 1Password's agent), per-connection keepalive, concurrency, and
   compression options, and SSH trust-on-first-use host key verification.
+- **S3-compatible storage:** connect to one bucket with an optional starting prefix on AWS S3 or a
+  custom http(s) origin such as MinIO, Cloudflare R2, or Wasabi, using a static access key and optional
+  session token. See [S3 connections](docs/s3-connections.md) for fields, IAM permissions, and
+  limitations.
 - **Remote to remote:** replace the local pane with a second server from the toolbar, then copy
   between the two remote panes with F5 or drag and drop.
 - **Real transfer totals:** Pallet enumerates every job before the first byte moves, so progress
@@ -43,8 +47,8 @@ remote hosts.
   to move files to the Trash, and ⌘⇧. for hidden files. The full list, including the known
   limitations, is in [FEATURES.md](FEATURES.md).
 - **Favorites with encrypted secrets:** connections are saved in SQLite on your machine. Pallet
-  encrypts passwords and key passphrases through macOS Keychain and stores no secrets in the
-  database. SSH agent favorites store neither a key nor a secret.
+  encrypts passwords, key passphrases, and S3 credentials through macOS Keychain and stores no secrets
+  in the database. SSH agent favorites store neither a key nor a secret.
 - **Built for large directories:** virtualized file lists render 10,000-entry folders without
   loading every row, and optional folder-size calculation walks only the rows on screen.
 - **Inspector:** a permissions matrix with octal and symbolic views (editable on remote files),

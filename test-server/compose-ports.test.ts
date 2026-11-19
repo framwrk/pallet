@@ -22,7 +22,7 @@ function publishedPorts(): string[] {
 
 test("test servers publish every host port on loopback", () => {
   const ports = publishedPorts();
-  expect(ports).toHaveLength(5);
+  expect(ports).toHaveLength(6);
   for (const mapping of ports) {
     expect(mapping.split(":")[0]).toBe("127.0.0.1");
   }

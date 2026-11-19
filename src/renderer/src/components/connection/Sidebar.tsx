@@ -63,6 +63,30 @@ function SidebarItem({
   );
 }
 
+/** Endpoint's host (including port), or the raw value when it cannot be parsed. */
+function endpointHost(endpoint: string): string {
+  try {
+    return new URL(endpoint).host || endpoint;
+  } catch {
+    return endpoint;
+  }
+}
+
+function favoriteTooltip(favorite: Favorite): string {
+  if (favorite.protocol === "s3") {
+    const parts = [
+      "S3",
+      favorite.s3Bucket ?? favorite.host,
+      favorite.s3Endpoint ? endpointHost(favorite.s3Endpoint) : "AWS",
+      favorite.s3Region ?? "",
+    ].filter(Boolean);
+    if (favorite.remotePath) parts.push(favorite.remotePath);
+    if (favorite.note) parts.push(favorite.note);
+    return parts.join(" — ");
+  }
+  return `${favorite.protocol.toUpperCase()} — ${favorite.username}@${favorite.host}:${favorite.port}${favorite.note ? ` — ${favorite.note}` : ""}`;
+}
+
 function FavoriteItem({
   favorite,
   onDragStart,
@@ -116,7 +140,7 @@ function FavoriteItem({
           ? `Connecting to ${favorite.name}…`
           : disabled
             ? "A connection is already opening"
-            : `${favorite.protocol.toUpperCase()} — ${favorite.username}@${favorite.host}:${favorite.port}${favorite.note ? ` — ${favorite.note}` : ""}`
+            : favoriteTooltip(favorite)
       }
     >
       {connecting ? (

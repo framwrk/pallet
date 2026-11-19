@@ -117,6 +117,8 @@ interface PlanFile {
   mode: number;
   checkpoint: number;
   versionCaptured?: boolean;
+  /** Opaque version token from fileVersion (S3 ETag), compared for stability. */
+  versionToken?: string;
   target?: { finalPath: string; partPath: string };
   /** Committed to the destination; a retry may keep it instead of copying again. */
   completed?: boolean;
@@ -976,12 +978,20 @@ export class TransferQueue {
       if (job.from.fileVersion && current && !file.versionCaptured) {
         file.mtimeMs = current.mtimeMs;
         file.versionCaptured = true;
+        if ("etag" in current && current.etag) file.versionToken = current.etag;
       }
+      const tokenChanged =
+        file.versionToken !== undefined &&
+        current !== null &&
+        "etag" in current &&
+        current.etag !== undefined &&
+        current.etag !== file.versionToken;
       if (
         !current ||
         ("isDir" in current && (current.isDir || ("isSymlink" in current && current.isSymlink))) ||
         current.size !== file.size ||
-        current.mtimeMs !== file.mtimeMs
+        current.mtimeMs !== file.mtimeMs ||
+        tokenChanged
       ) {
         throw new Error(`Source changed during transfer: ${file.relPath}. Retry to copy the new version.`);
       }

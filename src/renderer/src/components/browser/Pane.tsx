@@ -18,6 +18,15 @@ import { cn } from "@/lib/utils";
 import { formatBytes } from "@/lib/format.utils";
 import { visibleEntries } from "@/lib/entry.utils";
 
+/** Endpoint's host (including port), or the raw value when it cannot be parsed. */
+function endpointHost(endpoint: string): string {
+  try {
+    return new URL(endpoint).host || endpoint;
+  } catch {
+    return endpoint;
+  }
+}
+
 function SortHeader({
   paneId,
   label,
@@ -169,6 +178,7 @@ export function Pane({ paneId }: { paneId: PaneId }): React.JSX.Element {
   );
 
   const failed = pane.error;
+  const s3 = pane.backend.kind === "sftp" ? pane.backend.s3 : undefined;
 
   return (
     <section
@@ -180,10 +190,14 @@ export function Pane({ paneId }: { paneId: PaneId }): React.JSX.Element {
         {pane.backend.kind === "sftp" && (
           <span
             className="bg-primary/10 text-primary flex shrink-0 items-center gap-1 rounded-full py-0.5 pr-0.5 pl-2 text-[11px] font-medium"
-            title={`${pane.backend.protocol.toUpperCase()} — ${pane.backend.username}@${pane.backend.host} — click × to ${paneId === "left" ? "return to the local disk" : "disconnect"}`}
+            title={
+              s3
+                ? `S3 — ${s3.bucket} — ${s3.endpoint ? endpointHost(s3.endpoint) : "AWS"} — ${s3.region}${s3.prefix ? ` — ${s3.prefix}` : ""} — click × to ${paneId === "left" ? "return to the local disk" : "disconnect"}`
+                : `${pane.backend.protocol.toUpperCase()} — ${pane.backend.username}@${pane.backend.host} — click × to ${paneId === "left" ? "return to the local disk" : "disconnect"}`
+            }
           >
             <Server className="size-3" />
-            {pane.backend.host}
+            {s3 ? `${s3.bucket}${s3.endpoint ? ` — ${endpointHost(s3.endpoint)}` : ""}` : pane.backend.host}
             <button
               className="hover:bg-primary/20 rounded-full p-0.5"
               aria-label="Disconnect"

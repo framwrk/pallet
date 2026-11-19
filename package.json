@@ -1,7 +1,7 @@
 {
   "name": "pallet",
   "version": "0.6.8",
-  "description": "A free and open-source macOS SFTP, FTP, and FTPS file manager",
+  "description": "A free and open-source macOS SFTP, FTP, FTPS, and S3 file manager",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
@@ -26,6 +26,7 @@
     "server:verify": "bun run test-server/verify.ts",
     "server:verify:app": "bun run test-server/verify-app.ts",
     "test:offline": "bun test test-server",
+    "test:s3": "bun run test-s3/run.ts",
     "test:transfers": "bun test test-server/transfer.test.ts test-server/session-pool.test.ts test-server/transfer-speed.test.ts test-server/broadcast.test.ts",
     "test:ui:local": "bun run test-server/ui/run.ts local",
     "test:ui:integration": "bun run test-server/ui/run.ts integration",
@@ -48,6 +49,8 @@
     "esbuild"
   ],
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1172.0",
+    "@aws-sdk/lib-storage": "^3.1172.0",
     "@electron-toolkit/preload": "^3.0.2",
     "@electron-toolkit/utils": "^4.0.0",
     "@fontsource/ibm-plex-mono": "^5.3.0",

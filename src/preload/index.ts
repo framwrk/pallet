@@ -16,7 +16,7 @@ import type { ConflictAction, ConflictPrompt, TransferJobSnapshot, TransferReque
 import type { ConnectProfile, ConnectResult, HostKeyPrompt, SessionStatusEvent } from "@shared/sftp/sftp.types";
 import type { ContextMenuItem, IpcResult } from "@shared/ipc/ipc.types";
 import type { DirListing, Entry, KnownFolders, PreviewData, SizeTarget, VolumeInfo } from "@shared/fs/fs.types";
-import type { Favorite, FavoriteInput } from "@shared/favorite/favorite.types";
+import type { Favorite, FavoriteInput, FavoriteSecret } from "@shared/favorite/favorite.types";
 import type { UpdateDownloadState, UpdateInfo } from "@shared/update/update.types";
 import { contextBridge, ipcRenderer } from "electron";
 import type { AppInfo } from "@shared/app/app.types";
@@ -103,7 +103,8 @@ const pallet: PalletApi = {
   },
   favorites: {
     list: (): Promise<Favorite[]> => invoke(FavoriteChannels.list),
-    save: (input: FavoriteInput, secret?: string | null): Promise<Favorite> => invoke(FavoriteChannels.save, input, secret),
+    save: (input: FavoriteInput, secret?: FavoriteSecret | null): Promise<Favorite> =>
+      invoke(FavoriteChannels.save, input, secret),
     remove: (id: string): Promise<void> => invoke(FavoriteChannels.remove, id),
     reorder: (ids: string[]): Promise<void> => invoke(FavoriteChannels.reorder, ids),
     connect: (id: string): Promise<ConnectResult & { favorite: Favorite }> => invoke(FavoriteChannels.connect, id),

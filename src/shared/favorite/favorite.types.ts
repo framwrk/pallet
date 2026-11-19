@@ -15,12 +15,18 @@ export interface Favorite {
   host: string;
   port: number;
   username: string;
-  authMethod: "password" | "key" | "agent";
+  authMethod: "password" | "key" | "agent" | "s3";
   /** True when an encrypted secret exists for this favorite (never the secret itself). */
   secretStored: boolean;
   privateKeyPath?: string;
   /** Whether FTPS rejects untrusted TLS certificates. Defaults to true. */
   tlsRejectUnauthorized?: boolean;
+  /** S3 only: custom endpoint origin, region, bucket, and addressing style. */
+  s3Endpoint?: string;
+  s3Region?: string;
+  s3Bucket?: string;
+  s3ForcePathStyle?: boolean;
+  /** Initial remote directory; for S3 the starting key prefix. */
   remotePath?: string;
   localPath?: string;
   note?: string;
@@ -30,6 +36,15 @@ export interface Favorite {
   lastUsedAt?: number;
 }
 
+/** S3 secret payload: both values stay in the single encrypted blob. */
+export interface S3FavoriteSecret {
+  secretAccessKey: string;
+  sessionToken?: string;
+}
+
+/** undefined = keep, null = clear, string = password/passphrase, object = S3. */
+export type FavoriteSecret = string | S3FavoriteSecret;
+
 /** Renderer → main favorite payload; id absent means create. */
 export interface FavoriteInput {
   id?: string;
@@ -38,9 +53,13 @@ export interface FavoriteInput {
   host: string;
   port: number;
   username: string;
-  authMethod: "password" | "key" | "agent";
+  authMethod: "password" | "key" | "agent" | "s3";
   privateKeyPath?: string;
   tlsRejectUnauthorized?: boolean;
+  s3Endpoint?: string;
+  s3Region?: string;
+  s3Bucket?: string;
+  s3ForcePathStyle?: boolean;
   remotePath?: string;
   localPath?: string;
   note?: string;

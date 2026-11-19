@@ -10,6 +10,7 @@ to send it to the other pane. The rest of this document covers the details.
 - [Selecting files](#selecting-files)
 - [Local file management](#local-file-management)
 - [Connecting to a server](#connecting-to-a-server)
+- [S3 connections](#s3-connections)
 - [Host key verification](#host-key-verification)
 - [Favorites](#favorites)
 - [Remote file management](#remote-file-management)
@@ -96,8 +97,8 @@ differs by location:
   walks run at a time.
 - **Remotely:** sizing a tree is the most expensive operation Pallet runs on a server, so it needs
   a second switch: **Include remote folders**. SFTP sizing walks the tree with one round trip per
-  directory. Only one remote sizing job runs per session at a time to limit competition with
-  transfers. Results are cached.
+  directory. S3 sizing lists the prefix and sums object sizes without a delimiter. Only one remote
+  sizing job runs per session at a time to limit competition with transfers. Results are cached.
 
 Totals are _apparent size_ (the sum of the file sizes inside, excluding directory metadata), not
 disk usage. Symlinks count at their own size, and Pallet does not follow them, so a link to `/`
@@ -168,7 +169,7 @@ the selected pane when the right pane is already connected, and otherwise opens 
 
 | Field                               | Notes                                                                                                                               |
 | ----------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| **Protocol**                        | SFTP, FTP, or explicit FTPS. SFTP is selected by default.                                                                           |
+| **Protocol**                        | SFTP, FTP, explicit FTPS, or S3. SFTP is selected by default.                                                                       |
 | **Server**                          | Hostname or IP.                                                                                                                     |
 | **Port**                            | Defaults to 22 for SFTP and 21 for FTP and FTPS; Pallet preserves custom ports when you switch protocols.                           |
 | **Username**                        |                                                                                                                                     |
@@ -208,6 +209,59 @@ remote pane. The window stays open; the right pane shows Quick Connect, or the l
 
 ---
 
+## S3 connections
+
+Choose **S3** in Quick Connect to browse one bucket with an optional starting key prefix. Each
+connection is scoped to that bucket and prefix; Pallet does not list your buckets or create them.
+AWS S3 and MinIO are verified. Other S3-compatible services use the same settings but are not separately
+verified. See [S3 connections](docs/s3-connections.md) for required IAM permissions and complete
+behavior.
+
+| Field                       | Notes                                                                                                  |
+| --------------------------- | ------------------------------------------------------------------------------------------------------ |
+| **Endpoint**                | Optional `http(s)` origin for MinIO, Cloudflare R2, Wasabi, or another compatible service. Blank uses AWS. It must be an origin, without credentials or a path prefix. |
+| **Region**                  | Required for request signing, including with a custom endpoint.                                        |
+| **Bucket**                  | One existing general-purpose bucket.                                                                   |
+| **Starting Prefix**         | Optional key prefix. The pane's `/` is this prefix; blank means the bucket root. Shown as **Prefix** and stored as **Remote Path**. |
+| **Access Key ID / Secret**  | Static credentials. A **Session Token** is optional for temporary credentials.                         |
+| **Path-style addressing**   | On by default for custom endpoints, off for AWS. Can be overridden per connection.                     |
+
+Pane paths are POSIX-like, and `/` is the configured prefix. A folder is a key prefix. If an object
+and a folder share a visible name, Pallet reports the ambiguity instead of merging them. The
+connection root cannot be renamed or deleted. HTTPS certificates are always verified; there is no
+insecure switch.
+
+**Credential storage.** Each favorite keeps one encrypted, Keychain-backed secret blob containing a
+versioned JSON payload with the secret access key and optional session token. For S3, the database
+stores only the endpoint, region, bucket, addressing style, prefix, and access key ID. The renderer
+never receives the secret. When editing, a blank secret keeps the existing one; replacing the access key without a
+session token stores long-term credentials; replacing only the session token requires re-entering the
+access key and secret.
+
+**Rename and delete.** A file rename copies then deletes the source, and refuses to overwrite an
+existing destination. A folder rename snapshots and preflights every key, copies all objects, and only
+then deletes the sources. It is **not atomic**: a copy failure leaves the sources intact, reports
+how many objects were copied, and leaves any copies already made at the destination. A partial delete
+reports the affected keys. Folder deletes are recursive and permanent, batched in groups of 1000.
+
+**Transfers and cost.** Uploads stage as `.pallet-<id>.pallet-part`, then copy server-side to the
+final key, so an existing object survives a failed replacement. Interrupted files involving S3 restart
+from byte zero; Pallet does not resume multipart uploads. Objects over 5 GB use multipart server-side
+copy. Crashing or losing the endpoint can leave staging objects and incomplete multipart uploads
+behind, which may cost storage; Pallet never changes bucket lifecycle rules, so expire the `.pallet-`
+prefix yourself if needed.
+
+**Limits.** S3 has no POSIX permissions, source modification time, symlinks, or free-space value.
+Permissions are read-only, entries show synthetic modes, and ETags are opaque version tokens rather
+than content hashes. Only connectivity failures pause and reconnect; access, signature, token, bucket,
+and endpoint errors fail directly, and an expired token requires re-entering credentials. Credentials
+never come from environment variables, shared AWS config, IAM roles, or SSO. Bucket administration,
+access points, S3 Express, anonymous access, custom CAs, Requester Pays, SSE-C, ACL/policy/CORS
+editing, version browsing, Object Lock, and Glacier are not supported.
+S3 verification checks are opt-in and are not part of default CI.
+
+---
+
 ## Host key verification
 
 Pallet uses _trust-on-first-use_, the same model as ForkLift and Transmit.
@@ -236,10 +290,11 @@ Saved connections live in the Favorites section of the sidebar, each with its co
 | Delete   | Right-click → **Delete**                 |
 | Reorder  | Drag it up or down the list              |
 
-Favorites are stored in SQLite on your machine, alongside your settings. Pallet encrypts passwords
-and key passphrases through macOS Keychain with Electron's `safeStorage`; the database stores only
-the chosen authentication method and whether a secret exists. SSH agent favorites store neither a
-key nor a secret and reconnect through whatever key is loaded in your agent.
+Favorites are stored in SQLite on your machine, alongside your settings. Pallet encrypts passwords,
+key passphrases, and S3 credentials through macOS Keychain with Electron's `safeStorage`; the
+database stores only nonsecret settings such as the authentication method, endpoint, region, bucket,
+and whether a secret exists. SSH agent favorites store neither a key nor a secret and reconnect
+through whatever key is loaded in your agent.
 
 Favorites also record when you last used them.
 
@@ -288,8 +343,9 @@ Local moves run directly and support undo.
    and staged copy before Pallet stamps metadata and renames the file into place.
    Local copies and SFTP servers that support POSIX rename replace atomically. Other SFTP servers
    and FTP and FTPS use the server's rename behavior; if the server refuses the replacement, the
-   job reports an error instead of deleting the original. Pallet reports a lost rename reply for
-   inspection instead of retrying it silently.
+   job reports an error instead of deleting the original. S3 copies the staged object server-side to
+   the final key, so the existing object survives a failed replacement. Pallet reports a lost rename
+   reply for inspection instead of retrying it silently.
 
 Folder scans reuse directory-entry metadata instead of requesting it again for every child.
 Transfers use the server's concurrency setting. Jobs sharing a server take turns, while jobs using
@@ -302,7 +358,7 @@ Enable **Verify copied files with SHA-256** in **Settings → Transfers**. The d
 Pallet captures the choice when a job is enqueued and retains it through pause, recovery, and retry.
 For each file, it rereads the entire source and staged destination sequentially, checks source
 size/modification time around those reads, and compares SHA-256 digests before replacement. This
-also verifies the full file after checkpoint resume. It supports local, SFTP, FTP, FTPS, and
+also verifies the full file after checkpoint resume. It supports local, SFTP, FTP, FTPS, S3, and
 remote-to-remote copies without server shell access.
 
 Read-back adds disk and network traffic and requires read permission on both files. A mismatch,
@@ -354,7 +410,7 @@ automatically. You cannot resume it manually; it waits for the network.
 
 **If a transfer is interrupted,** local and SFTP transfers of at least 16 MiB resume from the last
 destination-confirmed byte during the same job. Only bytes beyond that checkpoint are repeated.
-Small files and transfers involving FTP/FTPS restart the affected file. Completed files stay complete
+Small files and transfers involving FTP, FTPS, or S3 restart the affected file. Completed files stay complete
 through pauses and automatic recovery. The **Retry** button re-scans and copies again: files the
 canceled or failed attempt already completed stay in place when the source is unchanged, and only
 the remaining files are copied. Conflicts are checked again for the rest.
@@ -399,7 +455,8 @@ Press **⌘I** or **Space** to toggle it. The inspector shows details for a sing
 - **Inline preview** for supported images and text files up to the configured limit (1 MB by default)
 
 **On a remote file, the permissions are editable.** Select checkboxes or enter an octal value to
-change permissions on the server. Local permissions are read-only.
+change permissions on the server. S3 objects have no POSIX permissions, so their permissions are
+read-only. Local permissions are read-only.
 
 ---
 
@@ -571,13 +628,17 @@ Deliberate omissions in the beta, not bugs:
 
 - **Moves involving remote panes**: copy, verify, then delete.
 - **Symlink transfers**: links are skipped, not copied or followed.
-- **Resume across app restarts or FTP and FTPS checkpoints**: checkpoint resume covers only large
-  local and SFTP files within a running job.
+- **Resume across app restarts or FTP, FTPS, and S3 checkpoints**: checkpoint resume covers only
+  large local and SFTP files within a running job.
 - **Undo for transfers or deletes**: undo covers local rename and move only.
 - **Search**: a good remote search needs server-side `find` with cancellation; a weak one is worse
   than none.
 - **Directory tree sidebar, grid and column views, tabs, Finder tags**
-- **S3 and SMB**: additional remote-storage protocols are not in this release.
+- **S3 administration**: one bucket per connection, with no bucket creation or listing, access
+  points, version browsing, Object Lock, Glacier, or ACL, policy, and CORS editing.
+- **Atomic S3 folder rename**: folders are renamed by copying and then deleting, so a partial
+  failure can leave copies behind.
+- **SMB**: additional remote-storage protocols are not in this release.
 - **Folder sync and mirroring**
 - **Archive preview**
 - **Custom themes**: light and dark, following the system or pinned in Settings.

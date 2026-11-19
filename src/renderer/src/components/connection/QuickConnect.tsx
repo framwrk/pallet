@@ -34,7 +34,7 @@ export function ConnectDialog(): React.JSX.Element {
             </div>
             <div className="min-w-0">
               <DialogTitle className="text-sm font-semibold tracking-[-0.01em]">Connect to a server</DialogTitle>
-              <DialogDescription className="mt-0.5 text-[11px]">FTP, FTPS, or SFTP</DialogDescription>
+              <DialogDescription className="mt-0.5 text-[11px]">FTP, FTPS, SFTP, or S3</DialogDescription>
             </div>
           </div>
         </DialogHeader>
@@ -69,7 +69,9 @@ export function ConnectDialog(): React.JSX.Element {
                     <Server className="text-muted-foreground size-4 shrink-0" />
                     <span className="min-w-0 flex-1 truncate">{favorite.name}</span>
                     <span className="text-muted-foreground max-w-[55%] truncate font-mono text-[10px]">
-                      {favorite.username}@{favorite.host}
+                      {favorite.protocol === "s3"
+                        ? (favorite.s3Bucket ?? favorite.host)
+                        : `${favorite.username}@${favorite.host}`}
                     </span>
                     {isConnecting && <LoaderCircle className="size-3.5 shrink-0 animate-spin" />}
                   </button>

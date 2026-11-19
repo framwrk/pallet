@@ -1,7 +1,14 @@
-import type { ColorLabel, Favorite, FavoriteInput } from "@shared/favorite/favorite.types";
+import type { ColorLabel, Favorite, FavoriteInput, FavoriteSecret } from "@shared/favorite/favorite.types";
 import { deleteSecret, storeSecret } from "./secrets";
 import { getDb } from "./database";
 import { randomUUID } from "crypto";
+import { serializeS3Secret } from "./s3/s3-secret";
+
+function invalid(message: string): NodeJS.ErrnoException {
+  const err: NodeJS.ErrnoException = new Error(message);
+  err.code = "EINVAL";
+  return err;
+}
 
 interface Row {
   id: string;
@@ -21,10 +28,22 @@ interface Row {
   sort_order: number;
   created_at: number;
   last_used_at: number | null;
+  s3_endpoint: string | null;
+  s3_region: string | null;
+  s3_bucket: string | null;
+  s3_force_path_style: number;
 }
 
 function fromRow(row: Row): Favorite {
-  const protocol = row.protocol === "ftp" || row.protocol === "ftps" ? row.protocol : "sftp";
+  const protocol = row.protocol === "ftp" || row.protocol === "ftps" || row.protocol === "s3" ? row.protocol : "sftp";
+  const authMethod =
+    protocol === "s3"
+      ? "s3"
+      : protocol === "sftp" && row.auth_method === "agent"
+        ? "agent"
+        : row.auth_method === "key"
+          ? "key"
+          : "password";
   return {
     id: row.id,
     name: row.name,
@@ -32,10 +51,14 @@ function fromRow(row: Row): Favorite {
     host: row.host,
     port: row.port,
     username: row.username,
-    authMethod: protocol === "sftp" && row.auth_method === "agent" ? "agent" : row.auth_method === "key" ? "key" : "password",
+    authMethod,
     secretStored: row.secret_stored === 1,
     ...(row.private_key_path ? { privateKeyPath: row.private_key_path } : {}),
     tlsRejectUnauthorized: row.tls_reject_unauthorized !== 0,
+    ...(row.s3_endpoint ? { s3Endpoint: row.s3_endpoint } : {}),
+    ...(row.s3_region ? { s3Region: row.s3_region } : {}),
+    ...(row.s3_bucket ? { s3Bucket: row.s3_bucket } : {}),
+    ...(protocol === "s3" ? { s3ForcePathStyle: row.s3_force_path_style !== 0 } : {}),
     ...(row.remote_path ? { remotePath: row.remote_path } : {}),
     ...(row.local_path ? { localPath: row.local_path } : {}),
     ...(row.note ? { note: row.note } : {}),
@@ -67,21 +90,50 @@ export function getFavorite(id: string): Favorite | null {
 
 /**
  * Create or update. `secret` semantics: undefined = keep existing,
- * null = clear, string = replace.
+ * null = clear, string = password/passphrase, object = S3 credential.
  */
-export function saveFavorite(input: FavoriteInput, secret?: string | null): Favorite {
+export function saveFavorite(input: FavoriteInput, secret?: FavoriteSecret | null): Favorite {
   const db = getDb();
   const existing = input.id ? getFavorite(input.id) : null;
   const id = existing?.id ?? randomUUID();
-  const protocol = input.protocol === "ftp" || input.protocol === "ftps" ? input.protocol : "sftp";
-  const authMethod =
-    protocol === "sftp" && (input.authMethod === "key" || input.authMethod === "agent") ? input.authMethod : "password";
+  const protocol = input.protocol === "ftp" || input.protocol === "ftps" || input.protocol === "s3" ? input.protocol : "sftp";
+  const isS3 = protocol === "s3";
+  const hasS3Fields =
+    input.s3Endpoint !== undefined ||
+    input.s3Region !== undefined ||
+    input.s3Bucket !== undefined ||
+    input.s3ForcePathStyle !== undefined;
+
+  if (isS3) {
+    if (input.authMethod !== "s3") throw invalid("S3 favorites require S3 authentication");
+    if (!input.username.trim()) throw invalid("S3 access key ID is required");
+    if (!input.s3Region?.trim() || !input.s3Bucket?.trim()) throw invalid("S3 region and bucket are required");
+  } else if (hasS3Fields) {
+    throw invalid("S3 settings are only valid for S3 favorites");
+  }
+  if (isS3 && typeof secret === "string") throw invalid("S3 favorites store an S3 credential, not a password");
+  if (!isS3 && secret !== null && typeof secret === "object") {
+    throw invalid("Only S3 favorites store an S3 credential");
+  }
+
+  const authMethod = isS3
+    ? "s3"
+    : protocol === "sftp" && (input.authMethod === "key" || input.authMethod === "agent")
+      ? input.authMethod
+      : "password";
   const privateKeyPath = authMethod === "key" ? (input.privateKeyPath ?? null) : null;
+  const s3Endpoint = isS3 ? (input.s3Endpoint ?? null) : null;
+  const s3Region = isS3 ? (input.s3Region ?? null) : null;
+  const s3Bucket = isS3 ? (input.s3Bucket ?? null) : null;
+  const s3ForcePathStyle = isS3 && input.s3ForcePathStyle === true ? 1 : 0;
 
   let secretStored = existing?.secretStored ?? false;
   if (authMethod === "agent" || secret === null || (secret === undefined && existing && existing.authMethod !== authMethod)) {
     deleteSecret(id);
     secretStored = false;
+  } else if (isS3 && secret !== null && typeof secret === "object") {
+    storeSecret(id, serializeS3Secret(secret));
+    secretStored = true;
   } else if (typeof secret === "string" && secret.length > 0) {
     storeSecret(id, secret);
     secretStored = true;
@@ -91,7 +143,8 @@ export function saveFavorite(input: FavoriteInput, secret?: string | null): Favo
     db.prepare(
       `UPDATE favorites SET name=?, protocol=?, host=?, port=?, username=?, auth_method=?,
          secret_stored=?, private_key_path=?, tls_reject_unauthorized=?, remote_path=?, local_path=?,
-         note=?, color_label=? WHERE id=?`,
+         note=?, color_label=?, s3_endpoint=?, s3_region=?, s3_bucket=?, s3_force_path_style=?
+       WHERE id=?`,
     ).run(
       input.name,
       protocol,
@@ -106,6 +159,10 @@ export function saveFavorite(input: FavoriteInput, secret?: string | null): Favo
       input.localPath ?? null,
       input.note ?? null,
       input.colorLabel,
+      s3Endpoint,
+      s3Region,
+      s3Bucket,
+      s3ForcePathStyle,
       id,
     );
   } else {
@@ -113,8 +170,9 @@ export function saveFavorite(input: FavoriteInput, secret?: string | null): Favo
       `INSERT INTO favorites
          (id, name, protocol, host, port, username, auth_method, secret_stored,
           private_key_path, tls_reject_unauthorized, remote_path, local_path, note, color_label,
+          s3_endpoint, s3_region, s3_bucket, s3_force_path_style,
           sort_order, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)`,
     ).run(
       id,
       input.name,
@@ -130,6 +188,10 @@ export function saveFavorite(input: FavoriteInput, secret?: string | null): Favo
       input.localPath ?? null,
       input.note ?? null,
       input.colorLabel,
+      s3Endpoint,
+      s3Region,
+      s3Bucket,
+      s3ForcePathStyle,
       Date.now(),
     );
   }
