@@ -67,6 +67,18 @@ export const PrefChannels = {
   changed: "prefs:changed",
 } as const;
 
+export const KeybindingChannels = {
+  get: "keybindings:get",
+  set: "keybindings:set",
+  reset: "keybindings:reset",
+  resetAll: "keybindings:resetAll",
+  open: "keybindings:open",
+  /** main → renderer: a recorder is active, so menu accelerators are suppressed. */
+  recording: "keybindings:recording",
+  /** main → renderer: the effective bindings changed (UI or external edit). */
+  changed: "keybindings:changed",
+} as const;
+
 export const WindowChannels = {
   /** main → renderer: ⌘W pressed; the renderer disconnects the active remote pane or no-ops (never closes the window). */
   closeRequest: "window:closeRequest",

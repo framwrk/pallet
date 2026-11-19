@@ -1,3 +1,4 @@
+import type { CommandId, KeybindingsState } from "../keybindings/keybinding.types";
 import type { ConflictAction, ConflictPrompt, TransferJobSnapshot, TransferRequest } from "../transfer/transfer.types";
 import type { ConnectProfile, ConnectResult, HostKeyPrompt, SessionStatusEvent } from "../sftp/sftp.types";
 import type { DirListing, Entry, KnownFolders, PreviewData, VolumeInfo } from "../fs/fs.types";
@@ -137,6 +138,21 @@ export interface PalletApi {
     set(patch: Partial<Preferences>): Promise<Preferences>;
     /** Subscribe to changes from any window; returns unsubscribe. */
     onChange(cb: (prefs: Preferences) => void): () => void;
+  };
+  keybindings: {
+    get(): Promise<KeybindingsState>;
+    /** Persist one command's shortcuts; rejects with EKEYBINDING when invalid. */
+    set(id: CommandId, keys: string[]): Promise<void>;
+    /** Delete one command's overrides, restoring its defaults. */
+    reset(id: CommandId): Promise<void>;
+    /** Delete every override. */
+    resetAll(): Promise<void>;
+    /** Create keybindings.json when missing, then open it. */
+    open(): Promise<void>;
+    /** While true, menu accelerators for the customizable menu items are suspended. */
+    setRecording(active: boolean): Promise<void>;
+    /** Subscribe to effective-binding changes; returns unsubscribe. */
+    onChange(cb: (state: KeybindingsState) => void): () => void;
   };
   window: {
     /** Main window only: ⌘W pressed; disconnect the active remote pane or no-op. */
