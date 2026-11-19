@@ -1,6 +1,6 @@
 {
   "name": "pallet",
-  "version": "0.6.8",
+  "version": "0.7.0",
   "description": "A free and open-source macOS SFTP, FTP, FTPS, and S3 file manager",
   "license": "Apache-2.0",
   "repository": {
