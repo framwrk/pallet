@@ -253,7 +253,8 @@ export function integrationCases(root: string, s: Servers): Case[] {
     [
       "Settings favorites: test connection before saving, reject bad credentials",
       async (ui) => {
-        const dialog = "document.querySelector('[role=dialog]')";
+        // Settings stays open behind the add/edit form, so target the topmost dialog.
+        const dialog = "[...document.querySelectorAll('[role=dialog]')].at(-1)";
         async function openAdd(): Promise<void> {
           await ui.button("Add Favorite…", dialog);
           await ui.wait(`${dialog}.innerText.includes('Add Favorite') && !!(${field("Server")})`, "add favorite form");
@@ -283,6 +284,12 @@ export function integrationCases(root: string, s: Servers): Case[] {
           "favorite saved into the tab",
         );
         assert.equal(await ui.read(connected()), false, "saving did not connect a pane");
+
+        // Editing from the tab returns to it when the form is dismissed.
+        await ui.button("Edit Settings Favorite", dialog);
+        await ui.wait(`${dialog}?.innerText.includes('Edit Favorite')`, "edit favorite form");
+        await ui.key("Escape");
+        await ui.wait(`${dialog}?.innerText.includes('Saved connections')`, "back in the favorites tab");
 
         await openAdd();
         await submit("Rejected Favorite", "incorrect synthetic password");
