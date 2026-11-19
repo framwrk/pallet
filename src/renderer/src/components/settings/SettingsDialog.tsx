@@ -50,6 +50,7 @@ import type { AppInfo } from "@shared/app/app.types";
 import { Button } from "@renderer/components/ui/button";
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
 import type { Favorite } from "@shared/favorite/favorite.types";
+import { FavoriteDialog } from "@renderer/components/connection/FavoriteDialog";
 import { Input } from "@renderer/components/ui/input";
 import { LABEL_COLOR_CLASSES } from "@shared/favorite/favorite.constants";
 import type { LucideIcon } from "lucide-react";
@@ -772,8 +773,7 @@ function FavoritesPanel(): React.JSX.Element {
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
 
   function addFavorite(): void {
-    // The add dialog sits below the Settings modal, so step out first.
-    setSettingsOpen(false);
+    // Opens above Settings, which stays open so dismissing the form returns here.
     setAddingFavorite(true);
   }
 
@@ -783,8 +783,7 @@ function FavoritesPanel(): React.JSX.Element {
   }
 
   function editFavorite(favorite: Favorite): void {
-    // The edit dialog sits below the Settings modal, so step out first.
-    setSettingsOpen(false);
+    // Opens above Settings, which stays open so dismissing the form returns here.
     setEditingFavorite(favorite);
   }
 
@@ -1763,6 +1762,9 @@ export function SettingsDialog(): React.JSX.Element {
         if (!open) requestSettingsClose();
       }}
     >
+      {/* Nested inside the Settings root so Base UI treats it as a child dialog:
+          Escape, focus trapping, and stacking all defer from Settings to it. */}
+      <FavoriteDialog />
       <DialogPrimitive.Portal>
         <DialogPrimitive.Backdrop className="dialog-backdrop ease-entrance fixed inset-0 z-50 transition-all duration-200 data-ending-style:opacity-0 data-ending-style:duration-[160ms] data-starting-style:opacity-0" />
         <DialogPrimitive.Viewport

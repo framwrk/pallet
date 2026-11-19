@@ -507,7 +507,7 @@ protocol, endpoint, and when it was last used.
 | -------- | -------------------------------------------------------------------------------------- |
 | Add      | **Add Favorite…** opens the connection form. **Save** shows a spinner while Pallet connects once and disconnects to test the details. If the test fails, the message stays in the form and **Save Anyway** persists the favorite; editing the connection details makes the next save test again. |
 | Connect  | **Connect** closes Settings and connects the pane the sidebar would use.                |
-| Edit     | The pencil button opens the same Edit Favorite form as the sidebar's context menu.      |
+| Edit     | The pencil button opens the same Edit Favorite form as the sidebar's context menu; saving or dismissing returns to this tab. |
 | Reorder  | The up and down arrows move the favorite; the sidebar follows the new order.            |
 | Delete   | The trash button asks for confirmation, then removes the favorite and its saved secret. |
 

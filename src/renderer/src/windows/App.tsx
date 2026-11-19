@@ -31,7 +31,6 @@ import { useEffect, useState } from "react";
 import { ConfirmDeleteDialog } from "@/components/browser/ConfirmDeleteDialog";
 import { ConflictDialog } from "@/components/transfer/ConflictDialog";
 import { ConnectDialog } from "@/components/connection/QuickConnect";
-import { FavoriteDialog } from "@/components/connection/FavoriteDialog";
 import { GoToDialog } from "@/components/browser/GoToDialog";
 import { HostKeyDialog } from "@/components/connection/HostKeyDialog";
 import { Inspector } from "@/components/browser/Inspector";
@@ -309,12 +308,12 @@ function App(): React.JSX.Element {
         <QueueDrawer />
         <ConnectDialog />
         <GoToDialog />
-        <FavoriteDialog />
         <HostKeyDialog />
         <ConflictDialog />
         <ConfirmDeleteDialog />
         {/* Rendered last so it stacks on top of the other dialogs; Base UI's
-            topmost dialog owns the focus trap. */}
+            topmost dialog owns the focus trap. Settings nests the Favorites
+            add/edit form, which then never closes the tab behind it. */}
         <SettingsDialog />
         <Toasts />
         <UpdateToast />
