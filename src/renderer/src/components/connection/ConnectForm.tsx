@@ -10,7 +10,7 @@ import {
   Star,
   UserRound,
 } from "lucide-react";
-import type { ColorLabel, Favorite, FavoriteInput } from "@shared/favorite/favorite.types";
+import type { ColorLabel, Favorite, FavoriteInput, FavoriteSecret } from "@shared/favorite/favorite.types";
 import type { ConnectProfile, ConnectionProtocol } from "@shared/sftp/sftp.types";
 import { type PaneId, getState, pushToast, useAppState } from "@/store/pane.store";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -26,10 +26,37 @@ const PROTOCOLS: Record<ConnectionProtocol, string> = {
   sftp: "SFTP",
   ftp: "FTP",
   ftps: "FTPS",
+  s3: "S3",
 };
 
 function defaultPort(protocol: ConnectionProtocol): number {
-  return protocol === "sftp" ? 22 : 21;
+  if (protocol === "sftp") return 22;
+  if (protocol === "s3") return 443;
+  return 21;
+}
+
+/** Host (including port) of an absolute endpoint URL, or null when unparsable. */
+function endpointHost(endpoint: string): string | null {
+  try {
+    const url = new URL(endpoint);
+    return url.host || null;
+  } catch {
+    return null;
+  }
+}
+
+function validateS3Endpoint(endpoint: string): string | null {
+  if (!endpoint) return null;
+  let url: URL;
+  try {
+    url = new URL(endpoint);
+  } catch {
+    return "Endpoint must be a full http(s) URL";
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") return "Endpoint must start with http:// or https://";
+  if (url.username || url.password) return "Endpoint can’t include credentials";
+  if (url.pathname !== "/" || url.search || url.hash) return "Endpoint can’t include a path, query, or fragment";
+  return null;
 }
 
 function ProtocolSelect({
@@ -130,6 +157,7 @@ export function ConnectForm({
   targetPane?: PaneId;
 }): React.JSX.Element {
   const seed = editing ?? prefill;
+  const seedS3 = seed?.protocol === "s3" ? seed : null;
   const initialProtocol = seed?.protocol ?? "sftp";
   const [protocol, setProtocol] = useState<ConnectionProtocol>(initialProtocol);
   const [name, setName] = useState(seed?.name ?? "");
@@ -137,12 +165,19 @@ export function ConnectForm({
   const [port, setPort] = useState(String(seed?.port ?? defaultPort(initialProtocol)));
   const portTouched = useRef(seed ? seed.port !== defaultPort(initialProtocol) : false);
   const [username, setUsername] = useState(seed?.username ?? "");
-  const [authMethod, setAuthMethod] = useState<"password" | "key" | "agent">(
-    initialProtocol === "sftp" ? (seed?.authMethod ?? "password") : "password",
+  const [authMethod, setAuthMethod] = useState<"password" | "key" | "agent" | "s3">(
+    initialProtocol === "s3" ? "s3" : initialProtocol === "sftp" ? (seed?.authMethod ?? "password") : "password",
   );
   const [password, setPassword] = useState("");
   const [keyPath, setKeyPath] = useState(seed?.privateKeyPath ?? "");
   const [passphrase, setPassphrase] = useState("");
+  const [s3Endpoint, setS3Endpoint] = useState(seedS3?.s3Endpoint ?? "");
+  const [s3Region, setS3Region] = useState(seedS3?.s3Region ?? "us-east-1");
+  const [s3Bucket, setS3Bucket] = useState(seedS3?.s3Bucket ?? "");
+  const [s3ForcePathStyle, setS3ForcePathStyle] = useState(seedS3?.s3ForcePathStyle ?? Boolean(seedS3?.s3Endpoint));
+  const pathStyleTouched = useRef(seedS3?.s3ForcePathStyle !== undefined);
+  const [secretAccessKey, setSecretAccessKey] = useState("");
+  const [sessionToken, setSessionToken] = useState("");
   const [remotePathField, setRemotePathField] = useState(seed?.remotePath ?? "");
   const [localPathField, setLocalPathField] = useState(seed?.localPath ?? "");
   const [note, setNote] = useState(seed?.note ?? "");
@@ -161,6 +196,8 @@ export function ConnectForm({
 
   const secretPlaceholder =
     seed?.secretStored && !editing ? "Stored password" : editing?.secretStored ? "Leave blank to keep saved" : "";
+  const s3SecretPlaceholder = seedS3?.secretStored ? "Leave blank to keep saved" : "";
+  const s3EndpointValue = s3Endpoint.trim();
 
   function changeProtocol(nextProtocol: ConnectionProtocol): void {
     const currentDefault = defaultPort(protocol);
@@ -169,11 +206,21 @@ export function ConnectForm({
       portTouched.current = false;
     }
     setProtocol(nextProtocol);
-    if (nextProtocol !== "sftp") setAuthMethod("password");
+    if (nextProtocol === "s3") setAuthMethod("s3");
+    else if (authMethod === "s3" || nextProtocol !== "sftp") setAuthMethod("password");
     setError(null);
   }
 
   function validate(): string | null {
+    if (protocol === "s3") {
+      if (!s3Region.trim()) return "Region is required";
+      if (!s3Bucket.trim()) return "Bucket is required";
+      if (!username.trim()) return "Access key ID is required";
+      if (!secretAccessKey && !(editing && seedS3?.secretStored)) return "Secret access key is required";
+      const endpointError = validateS3Endpoint(s3EndpointValue);
+      if (endpointError) return endpointError;
+      return null;
+    }
     const portNum = Number.parseInt(port, 10);
     if (!server.trim() || !username.trim()) return "Server and username are required";
     if (!Number.isInteger(portNum) || portNum < 1 || portNum > 65535) return "Port must be 1–65535";
@@ -181,7 +228,32 @@ export function ConnectForm({
     return null;
   }
 
+  /** S3's display host: the endpoint's host, or the AWS regional endpoint. */
+  function s3Host(): string {
+    return endpointHost(s3EndpointValue) ?? `s3.${s3Region.trim()}.amazonaws.com`;
+  }
+
   function favoriteInput(): FavoriteInput {
+    if (protocol === "s3") {
+      return {
+        ...(editing ? { id: editing.id } : {}),
+        name:
+          name.trim() || `${s3Bucket.trim()} (${s3EndpointValue ? (endpointHost(s3EndpointValue) ?? s3EndpointValue) : "AWS"})`,
+        protocol: "s3",
+        host: s3Host(),
+        port: 443,
+        username: username.trim(),
+        authMethod: "s3",
+        ...(s3EndpointValue ? { s3Endpoint: s3EndpointValue } : {}),
+        s3Region: s3Region.trim(),
+        s3Bucket: s3Bucket.trim(),
+        s3ForcePathStyle,
+        ...(remotePathField.trim() ? { remotePath: remotePathField.trim() } : {}),
+        ...(localPathField.trim() ? { localPath: localPathField.trim() } : {}),
+        ...(note.trim() ? { note: note.trim() } : {}),
+        colorLabel,
+      };
+    }
     return {
       ...(editing ? { id: editing.id } : {}),
       name: name.trim() || `${username.trim()}@${server.trim()}`,
@@ -199,8 +271,15 @@ export function ConnectForm({
     };
   }
 
-  /** The secret to persist alongside a favorite: password or key passphrase. */
-  function enteredSecret(): string | undefined {
+  /**
+   * The secret to persist alongside a favorite: password, key passphrase, or
+   * the S3 credential pair. A blank S3 secret field means "keep" while editing.
+   */
+  function enteredSecret(): FavoriteSecret | undefined {
+    if (protocol === "s3") {
+      if (!secretAccessKey) return undefined;
+      return { secretAccessKey, ...(sessionToken ? { sessionToken } : {}) };
+    }
     const secret = authMethod === "password" ? password : authMethod === "key" ? passphrase : "";
     return secret.length > 0 ? secret : undefined;
   }
@@ -217,23 +296,41 @@ export function ConnectForm({
       return;
     }
     const keepaliveSeconds = Number.parseInt(keepalive, 10);
-    const profile: ConnectProfile = {
-      protocol,
-      host: server.trim(),
-      port: Number.parseInt(port, 10),
-      username: username.trim(),
-      auth:
-        authMethod === "password"
-          ? { method: "password", password }
-          : authMethod === "key"
-            ? { method: "key", keyPath: keyPath.trim(), ...(passphrase ? { passphrase } : {}) }
-            : { method: "agent" },
-      ...(remotePathField.trim() ? { remotePath: remotePathField.trim() } : {}),
-      keepaliveIntervalMs: Math.max(0, Number.isFinite(keepaliveSeconds) ? keepaliveSeconds : defaultKeepaliveSeconds) * 1000,
-      compression,
-      ...(protocol === "ftps" ? { tlsRejectUnauthorized } : {}),
-      concurrency: Number.parseInt(concurrency, 10) || defaultConcurrency,
-    };
+    const profile: ConnectProfile =
+      protocol === "s3"
+        ? {
+            protocol: "s3",
+            host: s3Host(),
+            port: 443,
+            username: username.trim(),
+            auth: { method: "s3", secretAccessKey, ...(sessionToken ? { sessionToken } : {}) },
+            s3: {
+              ...(s3EndpointValue ? { endpoint: s3EndpointValue } : {}),
+              region: s3Region.trim(),
+              bucket: s3Bucket.trim(),
+              forcePathStyle: s3ForcePathStyle,
+            },
+            ...(remotePathField.trim() ? { remotePath: remotePathField.trim() } : {}),
+            concurrency: Number.parseInt(concurrency, 10) || defaultConcurrency,
+          }
+        : {
+            protocol,
+            host: server.trim(),
+            port: Number.parseInt(port, 10),
+            username: username.trim(),
+            auth:
+              authMethod === "password"
+                ? { method: "password", password }
+                : authMethod === "key"
+                  ? { method: "key", keyPath: keyPath.trim(), ...(passphrase ? { passphrase } : {}) }
+                  : { method: "agent" },
+            ...(remotePathField.trim() ? { remotePath: remotePathField.trim() } : {}),
+            keepaliveIntervalMs:
+              Math.max(0, Number.isFinite(keepaliveSeconds) ? keepaliveSeconds : defaultKeepaliveSeconds) * 1000,
+            compression,
+            ...(protocol === "ftps" ? { tlsRejectUnauthorized } : {}),
+            concurrency: Number.parseInt(concurrency, 10) || defaultConcurrency,
+          };
     setBusy(true);
     setError(null);
     try {
@@ -307,6 +404,99 @@ export function ConnectForm({
     </div>
   );
 
+  const s3Fields = (
+    <>
+      <Row
+        label="Endpoint"
+        layout={fieldLayout}
+      >
+        <div className="flex flex-col gap-1">
+          <Input
+            className={fieldInputCls}
+            value={s3Endpoint}
+            onChange={(e) => {
+              setS3Endpoint(e.target.value);
+              if (!pathStyleTouched.current) setS3ForcePathStyle(e.target.value.trim() !== "");
+            }}
+            placeholder="AWS S3"
+            spellCheck={false}
+            autoFocus={autoFocus && !seed}
+          />
+          {/^http:\/\//i.test(s3EndpointValue) && (
+            <p
+              className="text-destructive text-[11px]"
+              role="alert"
+            >
+              Credentials and data would travel without TLS.
+            </p>
+          )}
+        </div>
+      </Row>
+      <Row
+        label="Region"
+        layout={fieldLayout}
+      >
+        <Input
+          className={fieldInputCls}
+          value={s3Region}
+          onChange={(e) => setS3Region(e.target.value)}
+          placeholder="us-east-1"
+          spellCheck={false}
+        />
+      </Row>
+      <Row
+        label="Bucket"
+        layout={fieldLayout}
+      >
+        <Input
+          className={fieldInputCls}
+          value={s3Bucket}
+          onChange={(e) => setS3Bucket(e.target.value)}
+          placeholder="my-bucket"
+          spellCheck={false}
+        />
+      </Row>
+      <Row
+        label="Access Key ID"
+        layout={fieldLayout}
+      >
+        <Input
+          className={fieldInputCls}
+          value={username}
+          onChange={(e) => setUsername(e.target.value)}
+          placeholder="AKIA…"
+          spellCheck={false}
+          autoCapitalize="off"
+        />
+      </Row>
+      <Row
+        label="Secret Access Key"
+        layout={fieldLayout}
+      >
+        <Input
+          className={fieldInputCls}
+          type="password"
+          value={secretAccessKey}
+          onChange={(e) => setSecretAccessKey(e.target.value)}
+          placeholder={s3SecretPlaceholder}
+          autoFocus={isPane && autoFocus && !!seed}
+        />
+      </Row>
+      <Row
+        label="Session Token"
+        layout={fieldLayout}
+      >
+        <Input
+          className={fieldInputCls}
+          type="password"
+          value={sessionToken}
+          onChange={(e) => setSessionToken(e.target.value)}
+          placeholder="Optional"
+        />
+      </Row>
+    </>
+  );
+
   return (
     <form
       className="pallet-connect-form flex flex-col gap-3"
@@ -317,190 +507,118 @@ export function ConnectForm({
       }}
     >
       {isPane ? (
-        <>
-          <div
-            className="pallet-endpoint-control border-input bg-background/55 focus-within:border-primary focus-within:ring-primary/20 flex h-11 items-center rounded-lg border px-3 transition-[border-color,box-shadow] focus-within:ring-3"
-            role="group"
-            aria-label="Server endpoint"
-          >
-            <Server className="text-primary mr-2 size-4 shrink-0" />
-            <ProtocolSelect
-              protocol={protocol}
-              onProtocolChange={changeProtocol}
-              endpoint
-            />
-            <input
-              className="text-foreground placeholder:text-muted-foreground min-w-0 flex-1 bg-transparent px-1.5 text-[13px] outline-none"
-              aria-label="Server"
-              value={server}
-              onChange={(e) => setServer(e.target.value)}
-              placeholder="example.com"
-              spellCheck={false}
-              autoFocus={autoFocus && !seed}
-            />
-            <div className="border-border/80 flex h-5 shrink-0 items-center border-l pl-2">
-              <span className="text-muted-foreground font-mono text-xs">:</span>
-              <input
-                className="text-foreground w-10 bg-transparent text-center font-mono text-xs tabular-nums outline-none"
-                aria-label="Port"
-                value={port}
-                onChange={(e) => {
-                  portTouched.current = true;
-                  setPort(e.target.value);
-                }}
-                spellCheck={false}
-              />
-            </div>
-          </div>
-
-          {authPicker}
-
-          <div className="pallet-credentials-grid grid grid-cols-2 gap-2.5">
+        protocol === "s3" ? (
+          <>
             <Row
-              label="Username"
+              label="Protocol"
               layout="stacked"
             >
-              <div className="relative">
-                <UserRound className="text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2" />
-                <Input
-                  className={cn(fieldInputCls, "pl-8")}
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
+              <ProtocolSelect
+                protocol={protocol}
+                onProtocolChange={changeProtocol}
+              />
+            </Row>
+            {s3Fields}
+          </>
+        ) : (
+          <>
+            <div
+              className="pallet-endpoint-control border-input bg-background/55 focus-within:border-primary focus-within:ring-primary/20 flex h-11 items-center rounded-lg border px-3 transition-[border-color,box-shadow] focus-within:ring-3"
+              role="group"
+              aria-label="Server endpoint"
+            >
+              <Server className="text-primary mr-2 size-4 shrink-0" />
+              <ProtocolSelect
+                protocol={protocol}
+                onProtocolChange={changeProtocol}
+                endpoint
+              />
+              <input
+                className="text-foreground placeholder:text-muted-foreground min-w-0 flex-1 bg-transparent px-1.5 text-[13px] outline-none"
+                aria-label="Server"
+                value={server}
+                onChange={(e) => setServer(e.target.value)}
+                placeholder="example.com"
+                spellCheck={false}
+                autoFocus={autoFocus && !seed}
+              />
+              <div className="border-border/80 flex h-5 shrink-0 items-center border-l pl-2">
+                <span className="text-muted-foreground font-mono text-xs">:</span>
+                <input
+                  className="text-foreground w-10 bg-transparent text-center font-mono text-xs tabular-nums outline-none"
+                  aria-label="Port"
+                  value={port}
+                  onChange={(e) => {
+                    portTouched.current = true;
+                    setPort(e.target.value);
+                  }}
                   spellCheck={false}
-                  autoCapitalize="off"
                 />
               </div>
-            </Row>
-            {authMethod === "agent" ? (
+            </div>
+
+            {authPicker}
+
+            <div className="pallet-credentials-grid grid grid-cols-2 gap-2.5">
               <Row
-                label="SSH Agent"
-                layout="stacked"
-              >
-                <div className="text-muted-foreground flex h-9 items-center gap-2 text-xs">
-                  <Fingerprint className="size-3.5 shrink-0" />
-                  <span>Uses SSH_AUTH_SOCK, including 1Password</span>
-                </div>
-              </Row>
-            ) : (
-              <Row
-                label={authMethod === "password" ? "Password" : "Passphrase"}
+                label="Username"
                 layout="stacked"
               >
                 <div className="relative">
-                  {authMethod === "password" ? (
-                    <LockKeyhole className="text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2" />
-                  ) : (
-                    <KeyRound className="text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2" />
-                  )}
+                  <UserRound className="text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2" />
                   <Input
                     className={cn(fieldInputCls, "pl-8")}
-                    type="password"
-                    value={authMethod === "password" ? password : passphrase}
-                    onChange={(e) => (authMethod === "password" ? setPassword(e.target.value) : setPassphrase(e.target.value))}
-                    placeholder={authMethod === "key" ? secretPlaceholder || "Optional" : secretPlaceholder}
-                    autoFocus={autoFocus && !!seed}
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    spellCheck={false}
+                    autoCapitalize="off"
                   />
                 </div>
               </Row>
-            )}
-          </div>
-
-          {authMethod === "key" && (
-            <Row
-              label="Private key"
-              layout="stacked"
-            >
-              <div className="flex items-center gap-2">
-                <Input
-                  className={fieldInputCls}
-                  value={keyPath}
-                  onChange={(e) => setKeyPath(e.target.value)}
-                  placeholder="~/.ssh/id_ed25519"
-                  spellCheck={false}
-                />
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  onClick={() => {
-                    void window.pallet.ui.pickFile("Choose Private Key").then((p) => {
-                      if (p) setKeyPath(p);
-                    });
-                  }}
+              {authMethod === "agent" ? (
+                <Row
+                  label="SSH Agent"
+                  layout="stacked"
                 >
-                  Choose…
-                </Button>
-              </div>
-            </Row>
-          )}
-        </>
-      ) : (
-        <>
-          <Row label="Name">
-            <Input
-              className={inputCls}
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder={`${username || "user"}@${server || "host"}`}
-            />
-          </Row>
-          <Row label="Protocol">
-            <ProtocolSelect
-              protocol={protocol}
-              onProtocolChange={changeProtocol}
-            />
-          </Row>
-          <Row label="Server">
-            <Input
-              className={inputCls}
-              value={server}
-              onChange={(e) => setServer(e.target.value)}
-              placeholder="example.com"
-              spellCheck={false}
-            />
-          </Row>
-          <Row label="Port">
-            <Input
-              className={cn(inputCls, "w-24")}
-              value={port}
-              onChange={(e) => {
-                portTouched.current = true;
-                setPort(e.target.value);
-              }}
-              spellCheck={false}
-            />
-          </Row>
-          <Row label="Username">
-            <Input
-              className={inputCls}
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              spellCheck={false}
-              autoCapitalize="off"
-              autoFocus={autoFocus}
-            />
-          </Row>
-          <Row label="Authenticate">{authPicker}</Row>
-          {authMethod === "password" ? (
-            <Row label="Password">
-              <Input
-                className={inputCls}
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder={secretPlaceholder}
-              />
-            </Row>
-          ) : authMethod === "agent" ? (
-            <Row label="SSH Agent">
-              <span className="text-muted-foreground text-xs">Uses SSH_AUTH_SOCK, including 1Password</span>
-            </Row>
-          ) : (
-            <>
-              <Row label="Key File">
+                  <div className="text-muted-foreground flex h-9 items-center gap-2 text-xs">
+                    <Fingerprint className="size-3.5 shrink-0" />
+                    <span>Uses SSH_AUTH_SOCK, including 1Password</span>
+                  </div>
+                </Row>
+              ) : (
+                <Row
+                  label={authMethod === "password" ? "Password" : "Passphrase"}
+                  layout="stacked"
+                >
+                  <div className="relative">
+                    {authMethod === "password" ? (
+                      <LockKeyhole className="text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2" />
+                    ) : (
+                      <KeyRound className="text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2" />
+                    )}
+                    <Input
+                      className={cn(fieldInputCls, "pl-8")}
+                      type="password"
+                      value={authMethod === "password" ? password : passphrase}
+                      onChange={(e) =>
+                        authMethod === "password" ? setPassword(e.target.value) : setPassphrase(e.target.value)
+                      }
+                      placeholder={authMethod === "key" ? secretPlaceholder || "Optional" : secretPlaceholder}
+                      autoFocus={autoFocus && !!seed}
+                    />
+                  </div>
+                </Row>
+              )}
+            </div>
+
+            {authMethod === "key" && (
+              <Row
+                label="Private key"
+                layout="stacked"
+              >
                 <div className="flex items-center gap-2">
                   <Input
-                    className={inputCls}
+                    className={fieldInputCls}
                     value={keyPath}
                     onChange={(e) => setKeyPath(e.target.value)}
                     placeholder="~/.ssh/id_ed25519"
@@ -508,7 +626,7 @@ export function ConnectForm({
                   />
                   <Button
                     type="button"
-                    size="xs"
+                    size="sm"
                     variant="outline"
                     onClick={() => {
                       void window.pallet.ui.pickFile("Choose Private Key").then((p) => {
@@ -520,15 +638,114 @@ export function ConnectForm({
                   </Button>
                 </div>
               </Row>
-              <Row label="Passphrase">
+            )}
+          </>
+        )
+      ) : (
+        <>
+          <Row label="Name">
+            <Input
+              className={inputCls}
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder={
+                protocol === "s3"
+                  ? `${s3Bucket || "bucket"} (${s3EndpointValue ? (endpointHost(s3EndpointValue) ?? s3EndpointValue) : "AWS"})`
+                  : `${username || "user"}@${server || "host"}`
+              }
+            />
+          </Row>
+          <Row label="Protocol">
+            <ProtocolSelect
+              protocol={protocol}
+              onProtocolChange={changeProtocol}
+            />
+          </Row>
+          {protocol === "s3" ? (
+            s3Fields
+          ) : (
+            <>
+              <Row label="Server">
                 <Input
                   className={inputCls}
-                  type="password"
-                  value={passphrase}
-                  onChange={(e) => setPassphrase(e.target.value)}
-                  placeholder={secretPlaceholder || "Optional"}
+                  value={server}
+                  onChange={(e) => setServer(e.target.value)}
+                  placeholder="example.com"
+                  spellCheck={false}
                 />
               </Row>
+              <Row label="Port">
+                <Input
+                  className={cn(inputCls, "w-24")}
+                  value={port}
+                  onChange={(e) => {
+                    portTouched.current = true;
+                    setPort(e.target.value);
+                  }}
+                  spellCheck={false}
+                />
+              </Row>
+              <Row label="Username">
+                <Input
+                  className={inputCls}
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  spellCheck={false}
+                  autoCapitalize="off"
+                  autoFocus={autoFocus}
+                />
+              </Row>
+              <Row label="Authenticate">{authPicker}</Row>
+              {authMethod === "password" ? (
+                <Row label="Password">
+                  <Input
+                    className={inputCls}
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder={secretPlaceholder}
+                  />
+                </Row>
+              ) : authMethod === "agent" ? (
+                <Row label="SSH Agent">
+                  <span className="text-muted-foreground text-xs">Uses SSH_AUTH_SOCK, including 1Password</span>
+                </Row>
+              ) : (
+                <>
+                  <Row label="Key File">
+                    <div className="flex items-center gap-2">
+                      <Input
+                        className={inputCls}
+                        value={keyPath}
+                        onChange={(e) => setKeyPath(e.target.value)}
+                        placeholder="~/.ssh/id_ed25519"
+                        spellCheck={false}
+                      />
+                      <Button
+                        type="button"
+                        size="xs"
+                        variant="outline"
+                        onClick={() => {
+                          void window.pallet.ui.pickFile("Choose Private Key").then((p) => {
+                            if (p) setKeyPath(p);
+                          });
+                        }}
+                      >
+                        Choose…
+                      </Button>
+                    </div>
+                  </Row>
+                  <Row label="Passphrase">
+                    <Input
+                      className={inputCls}
+                      type="password"
+                      value={passphrase}
+                      onChange={(e) => setPassphrase(e.target.value)}
+                      placeholder={secretPlaceholder || "Optional"}
+                    />
+                  </Row>
+                </>
+              )}
             </>
           )}
         </>
@@ -580,7 +797,7 @@ export function ConnectForm({
           )}
         >
           <Row
-            label="Remote Path"
+            label={protocol === "s3" ? "Prefix" : "Remote Path"}
             layout={fieldLayout}
             className={cn(isPane && "pallet-options-span col-span-2")}
           >
@@ -588,10 +805,29 @@ export function ConnectForm({
               className={fieldInputCls}
               value={remotePathField}
               onChange={(e) => setRemotePathField(e.target.value)}
-              placeholder="Optional, defaults to home"
+              placeholder={protocol === "s3" ? "Optional starting prefix" : "Optional, defaults to home"}
               spellCheck={false}
             />
           </Row>
+          {protocol === "s3" && (
+            <Row
+              label="Addressing"
+              layout={fieldLayout}
+              className={cn(isPane && "pallet-options-span col-span-2")}
+            >
+              <div className="flex items-center gap-2 text-xs">
+                <Checkbox
+                  aria-label="Path-style addressing"
+                  checked={s3ForcePathStyle}
+                  onCheckedChange={(checked) => {
+                    pathStyleTouched.current = true;
+                    setS3ForcePathStyle(checked);
+                  }}
+                />
+                <span className="text-muted-foreground">Path-style addressing (needed by most custom endpoints)</span>
+              </div>
+            </Row>
+          )}
           {!(isPane && targetPane === "left") && (
             <Row
               label="Local Path"

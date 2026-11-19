@@ -70,6 +70,18 @@ services:
       retries: 10
       start_period: 2s
 
+  minio:
+    profiles: ["s3"]
+    image: cgr.dev/chainguard/minio@sha256:16b824a0016ffad3dfa8b059755f83800aa42ca68fe86f1782cabd0c5a16d322
+    command: server /data
+    environment:
+      MINIO_ROOT_USER: "${PALLET_S3_TEST_ACCESS_KEY:-pallet}"
+      MINIO_ROOT_PASSWORD: "${PALLET_S3_TEST_SECRET_KEY:-pallet-secret}"
+    ports:
+      - "127.0.0.1:${PALLET_S3_TEST_PORT:-19000}:9000"
+    tmpfs:
+      - /data
+
 volumes:
   test-server-host-keys:
   test-server-ftps-certificate:

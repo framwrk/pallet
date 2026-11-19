@@ -5,10 +5,24 @@
  */
 
 export type AuthSpec =
-  { method: "password"; password: string } | { method: "key"; keyPath: string; passphrase?: string } | { method: "agent" };
+  | { method: "password"; password: string }
+  | { method: "key"; keyPath: string; passphrase?: string }
+  | { method: "agent" }
+  /** S3 keeps the access key id in the nonsecret principal field (username). */
+  | { method: "s3"; secretAccessKey: string; sessionToken?: string };
 
 /** Remote connection protocol. Missing values from older callers mean SFTP. */
-export type ConnectionProtocol = "sftp" | "ftp" | "ftps";
+export type ConnectionProtocol = "sftp" | "ftp" | "ftps" | "s3";
+
+/** S3 connection settings; one connection is scoped to one bucket and prefix. */
+export interface S3ConnectionOptions {
+  /** Absolute http(s) origin; blank uses the AWS regional endpoint. */
+  endpoint?: string;
+  region: string;
+  bucket: string;
+  /** Addressed by host or path. Defaults on for custom endpoints. */
+  forcePathStyle?: boolean;
+}
 
 export interface ConnectProfile {
   protocol?: ConnectionProtocol;
@@ -16,6 +30,8 @@ export interface ConnectProfile {
   port: number;
   username: string;
   auth: AuthSpec;
+  /** Present when protocol is "s3". */
+  s3?: S3ConnectionOptions;
   /** Initial remote directory; empty means the server-side home. */
   remotePath?: string;
   keepaliveIntervalMs?: number;

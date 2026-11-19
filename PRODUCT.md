@@ -10,7 +10,7 @@ Pallet is an Electron desktop application for macOS. Its interface should feel a
 
 ## Users
 
-Pallet is primarily for developers and technical operators who need to browse and move files between a Mac and remote servers over SFTP, FTP, or explicit FTPS.
+Pallet is primarily for developers and technical operators who need to browse and move files between a Mac and remote servers over SFTP, FTP, explicit FTPS, or S3-compatible object storage.
 
 ## Product Purpose
 
@@ -18,7 +18,7 @@ Pallet makes routine remote file management approachable through a macOS-native-
 
 ## Positioning
 
-Pallet is a free and open-source, native-feeling macOS file-transfer client for SFTP, FTP, and explicit FTPS.
+Pallet is a free and open-source, native-feeling macOS file-transfer client for SFTP, FTP, explicit FTPS, and S3-compatible object storage.
 
 ## Operating Context
 
@@ -27,9 +27,10 @@ The workspace starts with local Mac files on the left and a remote server on the
 ## Capabilities and Constraints
 
 - SFTP supports password, private-key, and SSH-agent authentication. FTP and explicit FTPS use passwords.
-- FTPS validates server certificates by default; users may explicitly relax verification for a trusted private or test server.
+- S3 connections target one general-purpose bucket with an optional starting key prefix on AWS S3 or a custom http(s) endpoint such as MinIO, Cloudflare R2, or Wasabi. They use explicit static credentials with an optional session token, stored in the same Keychain-backed secret blob as other favorites. Bucket administration, multi-bucket panes, and advanced S3 features are out of scope.
+- FTPS validates server certificates by default; users may explicitly relax verification for a trusted private or test server. S3 HTTPS verification is always on.
 - It provides dual-pane browsing, local and remote file operations, saved connections, transfers with conflict handling, previews, permissions inspection, and external editing of remote files.
-- Transfers are enumerated, staged, checked for size and source changes, then renamed into place. Replacement is atomic locally and on SFTP servers supporting POSIX rename; other servers determine rename behavior. Optional SHA-256 verification rereads the full source and staged destination before replacement; it is off by default and adds disk/network traffic.
+- Transfers are enumerated, staged, checked for size and source changes, then renamed into place. Replacement is atomic locally and on SFTP servers supporting POSIX rename; other servers determine rename behavior. S3 replacements upload to a staging key and copy server-side to the final key, so an existing object survives a failed replacement, but S3 folder renames are not atomic. Optional SHA-256 verification rereads the full source and staged destination before replacement; it is off by default and adds disk/network traffic.
 - Pallet ships for Apple silicon on macOS 13 or later, using Electron, React, and TypeScript.
 - Current beta omissions and release-specific limitations are documented in [FEATURES.md](FEATURES.md); they are not permanent product commitments.
 

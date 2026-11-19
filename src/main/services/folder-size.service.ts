@@ -13,6 +13,7 @@
  */
 import { type Dirent, promises as fs } from "fs";
 import type { FileInfo } from "basic-ftp";
+import { S3Service } from "./s3/s3.service";
 import type { SFTPWrapper } from "ssh2";
 import type { SessionManager } from "./sftp/session-manager";
 import type { SizeTarget } from "@shared/fs/fs.types";
@@ -185,8 +186,11 @@ export class FolderSizes {
   private wanted = new Set<string>();
   private localGate = new Gate(LOCAL_JOBS);
   private remoteGates = new Map<string, Gate>();
+  private s3: S3Service;
 
-  constructor(private sessions: SessionManager) {}
+  constructor(private sessions: SessionManager) {
+    this.s3 = new S3Service(sessions);
+  }
 
   private remoteGate(sessionId: string): Gate {
     let gate = this.remoteGates.get(sessionId);
@@ -232,7 +236,9 @@ export class FolderSizes {
   private async compute(target: SizeTarget, path: string): Promise<number> {
     if (target.kind === "local") return walkLocal(path);
     const { sessionId } = target;
-    if (this.sessions.protocol(sessionId) !== "sftp") return walkFtp(this.sessions, sessionId, path);
+    const protocol = this.sessions.protocol(sessionId);
+    if (protocol === "s3") return this.s3.folderSize(sessionId, path);
+    if (protocol !== "sftp") return walkFtp(this.sessions, sessionId, path);
     return walkRemote(this.sessions, sessionId, path);
   }
 

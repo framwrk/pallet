@@ -1,7 +1,7 @@
 import type { ConflictAction, ConflictPrompt, TransferJobSnapshot, TransferRequest } from "../transfer/transfer.types";
 import type { ConnectProfile, ConnectResult, HostKeyPrompt, SessionStatusEvent } from "../sftp/sftp.types";
 import type { DirListing, Entry, KnownFolders, PreviewData, VolumeInfo } from "../fs/fs.types";
-import type { Favorite, FavoriteInput } from "../favorite/favorite.types";
+import type { Favorite, FavoriteInput, FavoriteSecret } from "../favorite/favorite.types";
 import type { UpdateDownloadState, UpdateInfo } from "../update/update.types";
 import type { AppInfo } from "../app/app.types";
 import type { ContextMenuItem } from "./ipc.types";
@@ -75,8 +75,8 @@ export interface PalletApi {
   };
   favorites: {
     list(): Promise<Favorite[]>;
-    /** secret: undefined = keep, null = clear, string = replace. */
-    save(input: FavoriteInput, secret?: string | null): Promise<Favorite>;
+    /** secret: undefined = keep, null = clear, string/object = replace. */
+    save(input: FavoriteInput, secret?: FavoriteSecret | null): Promise<Favorite>;
     remove(id: string): Promise<void>;
     reorder(ids: string[]): Promise<void>;
     /** Connects main-side with the stored secret; ENOSECRET if none. */

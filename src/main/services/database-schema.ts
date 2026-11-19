@@ -18,7 +18,11 @@ CREATE TABLE IF NOT EXISTS favorites (
   color_label TEXT,
   sort_order INTEGER NOT NULL DEFAULT 0,
   created_at INTEGER NOT NULL,
-  last_used_at INTEGER
+  last_used_at INTEGER,
+  s3_endpoint TEXT,
+  s3_region TEXT,
+  s3_bucket TEXT,
+  s3_force_path_style INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS host_keys (
   host TEXT NOT NULL,
@@ -54,8 +58,17 @@ export function initializeDatabase(db: Database.Database): void {
   const favoriteColumns = new Set(
     (db.prepare("PRAGMA table_info(favorites)").all() as { name: string }[]).map((column) => column.name),
   );
-  if (!favoriteColumns.has("tls_reject_unauthorized")) {
-    db.exec("ALTER TABLE favorites ADD COLUMN tls_reject_unauthorized INTEGER NOT NULL DEFAULT 1");
+  const favoriteMigrations: { column: string; definition: string }[] = [
+    { column: "tls_reject_unauthorized", definition: "INTEGER NOT NULL DEFAULT 1" },
+    { column: "s3_endpoint", definition: "TEXT" },
+    { column: "s3_region", definition: "TEXT" },
+    { column: "s3_bucket", definition: "TEXT" },
+    { column: "s3_force_path_style", definition: "INTEGER NOT NULL DEFAULT 0" },
+  ];
+  for (const { column, definition } of favoriteMigrations) {
+    if (!favoriteColumns.has(column)) {
+      db.exec(`ALTER TABLE favorites ADD COLUMN ${column} ${definition}`);
+    }
   }
 }
 

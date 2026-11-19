@@ -15,6 +15,16 @@ import type {
   SessionStatusEvent,
 } from "@shared/sftp/sftp.types";
 import { DEFAULT_CONCURRENCY, MAX_CONCURRENCY } from "@shared/prefs/prefs.constants";
+import { ListObjectsV2Command, type S3Client } from "@aws-sdk/client-s3";
+import { type S3Like, type S3Target } from "../s3/s3-ops";
+import {
+  createS3Client,
+  credentialsFromProfile,
+  isConnectivityError,
+  normalizeS3Error,
+  s3ConfigFromProfile,
+} from "../s3/s3-client";
+import { locationFor, prefixForPath } from "../s3/s3-path";
 import { Client as FtpClient } from "basic-ftp";
 import { createHash } from "crypto";
 import { promises as fs } from "fs";
@@ -58,6 +68,10 @@ interface Session {
   client: SshClient | null;
   /** Dedicated FTP/FTPS client for browsing and metadata operations. */
   ftp: FtpClient | null;
+  /** S3 SDK client; shareable across every queued request. */
+  s3: S3Client | null;
+  /** Bucket and canonical root prefix for the S3 session. */
+  s3Target: S3Target | null;
   /** Dedicated browsing channel; navigation never queues behind a transfer. */
   sftp: SFTPWrapper | null;
   /** Pool of transfer channels (§3.3); size from the profile's concurrency. */
@@ -68,6 +82,8 @@ interface Session {
   closing: boolean;
   reconnectAttempt: number;
   reconnectTimer: NodeJS.Timeout | null;
+  /** Set once a drop has been scheduled, so repeated failures do not stack timers. */
+  dropNotified: boolean;
 }
 
 const RECONNECT_DELAYS_MS = [1000, 2000, 4000, 8000, 15000];
@@ -114,7 +130,8 @@ export function parseKeyType(keyBlob: Buffer): string {
 }
 
 export function protocolOf(profile: ConnectProfile): ConnectionProtocol {
-  return profile.protocol === "ftp" || profile.protocol === "ftps" ? profile.protocol : "sftp";
+  if (profile.protocol === "ftp" || profile.protocol === "ftps" || profile.protocol === "s3") return profile.protocol;
+  return "sftp";
 }
 
 /** Parallel transfers plus one channel of headroom for short metadata calls. */
@@ -202,6 +219,9 @@ export class SessionManager {
     if (profile.auth.method === "agent") {
       return { ...base, agent: await resolveSshAgent() };
     }
+    if (profile.auth.method !== "key") {
+      throw new Error("S3 sessions do not use SSH authentication");
+    }
     const privateKey = await fs.readFile(profile.auth.keyPath);
     return {
       ...base,
@@ -219,6 +239,8 @@ export class SessionManager {
       generation: 0,
       client: protocolOf(profile) === "sftp" ? new SshClient() : null,
       ftp: null,
+      s3: null,
+      s3Target: null,
       sftp: null,
       pool: { free: [], total: 0, waiters: [] },
       ftpPool: { free: [], total: 0, waiters: [] },
@@ -226,6 +248,7 @@ export class SessionManager {
       closing: false,
       reconnectAttempt: 0,
       reconnectTimer: null,
+      dropNotified: false,
     };
     this.sessions.set(id, session);
     this.setStatus(session, "connecting");
@@ -246,7 +269,12 @@ export class SessionManager {
 
   /** One dial attempt: TCP+SSH handshake plus the browse SFTP channel. */
   private async dial(session: Session): Promise<void> {
-    if (protocolOf(session.profile) !== "sftp") {
+    const protocol = protocolOf(session.profile);
+    if (protocol === "s3") {
+      await this.dialS3(session);
+      return;
+    }
+    if (protocol !== "sftp") {
       await this.dialFtp(session);
       return;
     }
@@ -276,6 +304,7 @@ export class SessionManager {
     // Post-handshake errors must not become uncaught exceptions.
     client.on("error", () => {});
     session.reconnectAttempt = 0;
+    session.dropNotified = false;
     // handleDrop already emptied the pool, but a stream destroyed by the drop
     // can emit 'close' without an 'error' and release its channel back into
     // the free list afterwards — still on the outgoing generation, so the
@@ -312,6 +341,40 @@ export class SessionManager {
   private async dialFtp(session: Session): Promise<void> {
     session.ftp = await this.openFtpClient(session.profile);
     session.reconnectAttempt = 0;
+    session.dropNotified = false;
+    this.resetFtpPool(session, new Error("Connection replaced"));
+    session.generation++;
+    this.setStatus(session, "connected");
+  }
+
+  /**
+   * S3 "dial" validates exactly the configured bucket and starting prefix with
+   * a minimal ListObjectsV2. HeadBucket or ListBuckets would reject credentials
+   * that are correctly scoped to one bucket/prefix.
+   */
+  private async dialS3(session: Session): Promise<void> {
+    const config = s3ConfigFromProfile(session.profile);
+    const credentials = credentialsFromProfile(session.profile);
+    const client = createS3Client(config, credentials);
+    const target: S3Target = { bucket: config.bucket, location: locationFor(session.profile.remotePath) };
+    try {
+      await client.send(
+        new ListObjectsV2Command({
+          Bucket: config.bucket,
+          Prefix: prefixForPath(target.location, "/"),
+          MaxKeys: 1,
+        }),
+      );
+    } catch (err) {
+      client.destroy();
+      throw normalizeS3Error(err);
+    }
+    session.s3?.destroy();
+    session.s3 = client;
+    session.s3Target = target;
+    session.reconnectAttempt = 0;
+    session.dropNotified = false;
+    this.resetPool(session, new Error("Connection replaced"));
     this.resetFtpPool(session, new Error("Connection replaced"));
     session.generation++;
     this.setStatus(session, "connected");
@@ -334,6 +397,11 @@ export class SessionManager {
 
   private async resolveInitialPath(session: Session): Promise<string> {
     const want = session.profile.remotePath?.trim();
+    if (protocolOf(session.profile) === "s3") {
+      // The connection's starting prefix is the pane root; an empty prefix is
+      // a valid, empty folder rather than a failed navigation.
+      return "/";
+    }
     if (protocolOf(session.profile) !== "sftp") {
       const ftp = session.ftp;
       if (!ftp) throw new Error("No FTP client");
@@ -363,11 +431,24 @@ export class SessionManager {
 
   private handleDrop(session: Session): void {
     if (session.closing || !this.sessions.has(session.id)) return;
+    // Several in-flight requests can fail on one dead socket; reconnect once.
+    if (session.dropNotified) return;
+    session.dropNotified = true;
     session.sftp = null;
+    session.s3?.destroy();
+    session.s3 = null;
     session.generation++;
     this.resetPool(session, new Error("Connection lost"));
     this.resetFtpPool(session, new Error("Connection lost"));
     this.scheduleReconnect(session);
+  }
+
+  /** Called by S3 operations: only connectivity failures schedule a reconnect. */
+  noteS3Failure(sessionId: string, err: unknown): void {
+    const session = this.sessions.get(sessionId);
+    if (!session || protocolOf(session.profile) !== "s3") return;
+    if (session.status !== "connected" || !isConnectivityError(err)) return;
+    this.handleDrop(session);
   }
 
   private resetPool(session: Session, err: Error): void {
@@ -435,6 +516,8 @@ export class SessionManager {
     if (session.reconnectTimer) clearTimeout(session.reconnectTimer);
     session.client?.end();
     session.ftp?.close();
+    session.s3?.destroy();
+    session.s3 = null;
     session.generation++;
     this.resetPool(session, new Error("Disconnected"));
     this.resetFtpPool(session, new Error("Disconnected"));
@@ -489,6 +572,17 @@ export class SessionManager {
       throw err;
     }
     return session.ftp;
+  }
+
+  /** Checked S3 request surface; the SDK client is shareable and stateless. */
+  s3Session(sessionId: string): { client: S3Like; target: S3Target } {
+    const session = this.mustGet(sessionId);
+    if (!session.s3 || !session.s3Target || session.status !== "connected") {
+      const err: NodeJS.ErrnoException = new Error("Not connected");
+      err.code = "ENOTCONN";
+      throw err;
+    }
+    return { client: session.s3 as unknown as S3Like, target: session.s3Target };
   }
 
   /**
@@ -552,7 +646,9 @@ export class SessionManager {
   /** Lease an independent FTP control connection for one transfer/endpoint. */
   async acquireFtpClient(sessionId: string): Promise<{ client: FtpClient; release: (broken?: boolean) => void }> {
     const session = this.mustGet(sessionId);
-    if (protocolOf(session.profile) === "sftp") throw new Error("Not an FTP session");
+    if (protocolOf(session.profile) !== "ftp" && protocolOf(session.profile) !== "ftps") {
+      throw new Error("Not an FTP session");
+    }
     if (session.status !== "connected") {
       const err: NodeJS.ErrnoException = new Error("Not connected");
       err.code = "ENOTCONN";

@@ -50,7 +50,8 @@ export function initSftpEvents(): void {
  * pane opts in for remote-to-remote work.
  */
 export async function connectRemote(profile: ConnectProfile, localPath?: string, paneId: PaneId = "right"): Promise<void> {
-  const attempt = { paneId, label: `${profile.username}@${profile.host}`, host: profile.host };
+  const label = profile.s3?.bucket ?? `${profile.username}@${profile.host}`;
+  const attempt = { paneId, label, host: profile.host };
   if (!beginConnection(attempt)) {
     const pending = getState().connecting;
     throw new Error(pending ? `Still connecting to ${pending.label}` : "Another connection is already opening");
@@ -79,6 +80,16 @@ export async function connectRemote(profile: ConnectProfile, localPath?: string,
       host: profile.host,
       username: profile.username,
       status: "connected",
+      ...(profile.s3
+        ? {
+            s3: {
+              bucket: profile.s3.bucket,
+              ...(profile.s3.endpoint ? { endpoint: profile.s3.endpoint } : {}),
+              region: profile.s3.region,
+              ...(profile.remotePath ? { prefix: profile.remotePath } : {}),
+            },
+          }
+        : {}),
     });
     setActive(paneId);
     // The session is live, so the progress toast can go before the listing loads.

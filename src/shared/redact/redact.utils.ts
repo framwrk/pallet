@@ -11,11 +11,13 @@
 const PATTERNS: { re: RegExp; replace: string }[] = [
   // scheme://user:secret@host  →  scheme://user:***@host
   { re: /(\b[a-z][a-z0-9+.-]*:\/\/[^\s/@:]+):[^\s/@]*@/gi, replace: "$1:***@" },
-  // password=secret, "passphrase": "secret", password: secret
+  // Authorization carries a whole signed value (Bearer …, AWS4-HMAC-SHA256 …).
+  { re: /\b(authorization)("?)(\s*[:=]\s*)("[^"]*"|'[^']*'|[^\r\n]+)/gi, replace: "$1$2$3***" },
+  // password=secret, "passphrase": "secret", secretAccessKey: secret
   {
     // The optional quote is captured, not swallowed, so `"passphrase": "x"`
     // keeps its closing quote and stays valid-looking JSON in the log.
-    re: /\b(password|passphrase|passwd|secret|token|api[_-]?key)\b("?)(\s*[:=]\s*)("[^"]*"|'[^']*'|\S+)/gi,
+    re: /\b(password|passphrase|passwd|secret|secret[_-]?access[_-]?key|session[_-]?token|token|x-amz-security-token|x-amz-signature|api[_-]?key)\b("?)(\s*[:=]\s*)("[^"]*"|'[^']*'|\S+)/gi,
     replace: "$1$2$3***",
   },
   // PEM private key bodies

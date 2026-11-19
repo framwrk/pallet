@@ -197,7 +197,8 @@ export function Inspector(): React.JSX.Element | null {
     return null;
   }, [pane.selected, pane.entries]);
 
-  const editable = pane.backend.kind === "sftp" && entry !== null;
+  const isS3 = pane.backend.kind === "sftp" && pane.backend.protocol === "s3";
+  const editable = pane.backend.kind === "sftp" && !isS3 && entry !== null;
   // Draft is tagged with the file it belongs to; switching files discards it.
   const [draft, setDraft] = useState<{ path: string; mode: number } | null>(null);
   const draftMode = entry && draft?.path === entry.path ? draft.mode : null;
@@ -330,42 +331,48 @@ export function Inspector(): React.JSX.Element | null {
               )}
             </dl>
 
-            <div className="border-t pt-2">
-              <div className="mb-1 flex items-center justify-between">
-                <span className="text-xs font-medium">Permissions</span>
-                <code className="text-muted-foreground text-[11px]">{modeString(mode, entry.kind)}</code>
-              </div>
-              <PermissionsMatrix
-                mode={mode}
-                editable={editable}
-                onChange={(m) => setDraftMode(m)}
-              />
-              <div className="mt-2 flex items-center gap-2">
-                <input
-                  className={cn(
-                    "border-input bg-background w-16 rounded-sm border px-1.5 py-0.5 font-mono text-xs",
-                    !editable && "opacity-60",
-                  )}
-                  value={mode.toString(8).padStart(4, "0")}
-                  disabled={!editable}
-                  onChange={(e) => {
-                    const parsed = Number.parseInt(e.target.value, 8);
-                    if (Number.isInteger(parsed)) setDraftMode(parsed & 0o7777);
-                  }}
-                  spellCheck={false}
+            {isS3 ? (
+              <p className="text-muted-foreground border-t pt-2 text-[11px]">
+                Permissions and timestamps are managed by the object store.
+              </p>
+            ) : (
+              <div className="border-t pt-2">
+                <div className="mb-1 flex items-center justify-between">
+                  <span className="text-xs font-medium">Permissions</span>
+                  <code className="text-muted-foreground text-[11px]">{modeString(mode, entry.kind)}</code>
+                </div>
+                <PermissionsMatrix
+                  mode={mode}
+                  editable={editable}
+                  onChange={(m) => setDraftMode(m)}
                 />
-                {editable && (
-                  <Button
-                    size="xs"
-                    disabled={!dirty}
-                    onClick={() => void applyMode()}
-                  >
-                    Apply
-                  </Button>
-                )}
-                {!editable && <span className="text-muted-foreground text-[10px]">Editable on remote files</span>}
+                <div className="mt-2 flex items-center gap-2">
+                  <input
+                    className={cn(
+                      "border-input bg-background w-16 rounded-sm border px-1.5 py-0.5 font-mono text-xs",
+                      !editable && "opacity-60",
+                    )}
+                    value={mode.toString(8).padStart(4, "0")}
+                    disabled={!editable}
+                    onChange={(e) => {
+                      const parsed = Number.parseInt(e.target.value, 8);
+                      if (Number.isInteger(parsed)) setDraftMode(parsed & 0o7777);
+                    }}
+                    spellCheck={false}
+                  />
+                  {editable && (
+                    <Button
+                      size="xs"
+                      disabled={!dirty}
+                      onClick={() => void applyMode()}
+                    >
+                      Apply
+                    </Button>
+                  )}
+                  {!editable && <span className="text-muted-foreground text-[10px]">Editable on remote files</span>}
+                </div>
               </div>
-            </div>
+            )}
           </>
         )}
       </div>

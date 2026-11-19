@@ -1,9 +1,10 @@
 import * as store from "../services/favorite-store.service";
 import type { ConnectProfile, ConnectResult } from "@shared/sftp/sftp.types";
-import type { Favorite, FavoriteInput } from "@shared/favorite/favorite.types";
+import type { Favorite, FavoriteInput, FavoriteSecret } from "@shared/favorite/favorite.types";
 import { FavoriteChannels } from "@shared/ipc/ipc.constants";
 import type { IpcResult } from "@shared/ipc/ipc.types";
 import { ipcMain } from "electron";
+import { parseS3Secret } from "../services/s3/s3-secret";
 import { readSecret } from "../services/secrets";
 import { sessionManager } from "./sftp";
 
@@ -27,7 +28,44 @@ async function connectFavorite(id: string): Promise<ConnectResult & { favorite: 
   if (!favorite) throw new Error("Favorite not found");
 
   let profile: ConnectProfile;
-  if (favorite.authMethod === "agent") {
+  if (favorite.authMethod === "s3") {
+    if (favorite.protocol !== "s3") {
+      const err: NodeJS.ErrnoException = new Error("S3 credentials are only available for S3 favorites");
+      err.code = "EINVAL";
+      throw err;
+    }
+    const region = favorite.s3Region;
+    const bucket = favorite.s3Bucket;
+    if (!region || !bucket) {
+      const err: NodeJS.ErrnoException = new Error("S3 region and bucket are required");
+      err.code = "EINVAL";
+      throw err;
+    }
+    const secret = favorite.secretStored ? parseS3Secret(readSecret(id)) : null;
+    if (!secret) {
+      const err: NodeJS.ErrnoException = new Error("Enter S3 credentials for this favorite");
+      err.code = "ENOSECRET";
+      throw err;
+    }
+    profile = {
+      protocol: "s3",
+      host: favorite.host,
+      port: favorite.port,
+      username: favorite.username,
+      auth: {
+        method: "s3",
+        secretAccessKey: secret.secretAccessKey,
+        ...(secret.sessionToken ? { sessionToken: secret.sessionToken } : {}),
+      },
+      s3: {
+        ...(favorite.s3Endpoint ? { endpoint: favorite.s3Endpoint } : {}),
+        region,
+        bucket,
+        forcePathStyle: favorite.s3ForcePathStyle,
+      },
+      ...(favorite.remotePath ? { remotePath: favorite.remotePath } : {}),
+    };
+  } else if (favorite.authMethod === "agent") {
     if (favorite.protocol !== "sftp") throw new Error("SSH agent authentication is only available for SFTP");
     profile = {
       protocol: favorite.protocol,
@@ -83,7 +121,7 @@ async function connectFavorite(id: string): Promise<ConnectResult & { favorite: 
 
 export function registerFavoriteHandlers(): void {
   handle(FavoriteChannels.list, () => store.listFavorites());
-  handle(FavoriteChannels.save, (input: FavoriteInput, secret?: string | null) => store.saveFavorite(input, secret));
+  handle(FavoriteChannels.save, (input: FavoriteInput, secret?: FavoriteSecret | null) => store.saveFavorite(input, secret));
   handle(FavoriteChannels.remove, (id: string) => store.removeFavorite(id));
   handle(FavoriteChannels.reorder, (ids: string[]) => store.reorderFavorites(ids));
   handle(FavoriteChannels.connect, connectFavorite);

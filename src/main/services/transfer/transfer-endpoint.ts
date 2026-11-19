@@ -10,6 +10,7 @@ import { PassThrough, type Readable, Writable } from "stream";
 import { createPipelinedReadStream, createPipelinedWriteStream } from "../sftp/pipelined-streams";
 import { createReadStream, createWriteStream, promises as fs } from "fs";
 import { isDirMode, isSymlinkMode } from "../../utils/file-mode";
+import { S3Endpoint } from "../s3/s3-endpoint";
 import type { SFTPWrapper } from "ssh2";
 import type { SessionManager } from "../sftp/session-manager";
 import { TLSSocket } from "tls";
@@ -20,6 +21,8 @@ export interface EndpointStat {
   mode: number;
   isDir: boolean;
   isSymlink: boolean;
+  /** Opaque source-stability token (S3 ETag); never treated as a hash. */
+  etag?: string;
 }
 
 export interface ReadOptions {
@@ -46,7 +49,7 @@ export interface TransferEndpoint {
   supportsRanges?: boolean;
   kind: "local" | "sftp";
   statOrNull(p: string): Promise<EndpointStat | null>;
-  fileVersion?(p: string): Promise<{ size: number; mtimeMs: number }>;
+  fileVersion?(p: string): Promise<{ size: number; mtimeMs: number; etag?: string }>;
   fileSize?(p: string): Promise<number>;
   listNames(dir: string): Promise<string[]>;
   /** Names + kinds, for enumeration. */
@@ -630,7 +633,7 @@ export function makeEndpoint(
   ref: { kind: "local" } | { kind: "sftp"; sessionId: string },
 ): TransferEndpoint {
   if (ref.kind === "local") return new LocalEndpoint();
-  return sessions.protocol(ref.sessionId) === "sftp"
-    ? new SftpEndpoint(sessions, ref.sessionId)
-    : new FtpEndpoint(sessions, ref.sessionId);
+  const protocol = sessions.protocol(ref.sessionId);
+  if (protocol === "s3") return new S3Endpoint(sessions, ref.sessionId);
+  return protocol === "sftp" ? new SftpEndpoint(sessions, ref.sessionId) : new FtpEndpoint(sessions, ref.sessionId);
 }

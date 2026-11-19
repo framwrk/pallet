@@ -1,5 +1,5 @@
 /** Favorites CRUD + connect-by-favorite (M4). */
-import type { Favorite, FavoriteInput } from "@shared/favorite/favorite.types";
+import type { Favorite, FavoriteInput, FavoriteSecret } from "@shared/favorite/favorite.types";
 import {
   type PaneId,
   beginConnection,
@@ -25,7 +25,7 @@ export async function loadFavorites(): Promise<void> {
   }
 }
 
-export async function saveFavorite(input: FavoriteInput, secret?: string | null): Promise<Favorite | null> {
+export async function saveFavorite(input: FavoriteInput, secret?: FavoriteSecret | null): Promise<Favorite | null> {
   try {
     const saved = await window.pallet.favorites.save(input, secret);
     await loadFavorites();
@@ -82,6 +82,16 @@ export async function connectFavorite(favoriteId: string, paneId: PaneId = "righ
       host: result.favorite.host,
       username: result.favorite.username,
       status: "connected",
+      ...(result.favorite.protocol === "s3"
+        ? {
+            s3: {
+              bucket: result.favorite.s3Bucket ?? result.favorite.host,
+              ...(result.favorite.s3Endpoint ? { endpoint: result.favorite.s3Endpoint } : {}),
+              region: result.favorite.s3Region ?? "",
+              ...(result.favorite.remotePath ? { prefix: result.favorite.remotePath } : {}),
+            },
+          }
+        : {}),
     });
     setActive(paneId);
     // The session is live, so the progress toast can go before the listing loads.
@@ -105,7 +115,7 @@ export async function connectFavorite(favoriteId: string, paneId: PaneId = "righ
   }
   if (needsSecret) {
     openQuickConnect(favorite, paneId);
-    pushToast("Enter the password to connect", "info");
+    pushToast(favorite.protocol === "s3" ? "Enter S3 credentials to connect" : "Enter the password to connect", "info");
   }
 }
 

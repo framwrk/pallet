@@ -101,6 +101,9 @@ save debouncing, staged uploads, timeouts, and cleanup on close.
 | Integration: remote-to-remote | SFTP-to-FTP hash equality; Keep Both; replacement cancellation preserves old file and cleans staging; retry; restore local pane while keeping right connection |
 | Integration: stale listings | Confirm a listing is pending under server-side delay; disconnect right or restore local over left; assert throughout the delayed-response window that the remote backend never reappears |
 
+These suites do not cover S3-compatible connections. MinIO, AWS S3, and packaged-app S3 checks are
+opt-in and are not part of default CI; see [S3 connections](s3-connections.md).
+
 A group passes only when every assertion returns successfully. Errors stop the suite and exit
 nonzero; earlier passed groups are printed. An explicitly selected suite with missing prerequisites
 fails (it is not reported as skipped). The local command names the unselected integration/native
