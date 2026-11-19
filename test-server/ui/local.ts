@@ -1,5 +1,5 @@
-import { type ElectronUI, button, dialogInput, grid, pane, row, until } from "./electron";
-import { cp, mkdir, readFile, readdir, utimes, writeFile } from "node:fs/promises";
+import { type ElectronUI, button, delay, dialogInput, grid, pane, row, until } from "./electron";
+import { cp, mkdir, readFile, readdir, rm, utimes, writeFile } from "node:fs/promises";
 import assert from "node:assert/strict";
 import { join } from "node:path";
 
@@ -255,6 +255,64 @@ export function settingsCases(root: string): Case[] {
         );
         await ui.button("Close inspector");
         assert.ok(await ui.read(`!!(${button("Get Info (⌘I)")})`));
+      },
+    ],
+    [
+      "custom keybindings: recorder, conflict, persistence, live reload, reset all",
+      async (ui) => {
+        const dir = join(root, "keybindings");
+        const file = join(ui.profile, "keybindings.json");
+        await mkdir(dir);
+        await ui.go(dir);
+        await ui.settings();
+        await ui.button("Keybindings");
+        await ui.wait(`!!(${button("Shortcut ⌘ ⇧ N for New Folder, press to change")})`, "New Folder default binding listed");
+
+        // Rebind through the recorder: click the chip, press ⌃N.
+        await ui.button("Shortcut ⌘ ⇧ N for New Folder, press to change");
+        await ui.key("n", 2);
+        await ui.wait(`!!(${button("Shortcut ⌃ N for New Folder, press to change")})`, "New Folder rebound to ⌃N");
+        assert.equal(await readFile(file, "utf8"), '{\n  "files.newFolder": [\n    "ctrl+n"\n  ]\n}\n');
+
+        // A conflicting recording reports the owner and saves nothing.
+        await ui.button("Shortcut ⌃ N for New Folder, press to change");
+        await ui.key("d", 4);
+        await ui.wait("document.body.innerText.includes('⌘D is already used by Copy to Other Pane')", "conflict message");
+        assert.equal(await readFile(file, "utf8"), '{\n  "files.newFolder": [\n    "ctrl+n"\n  ]\n}\n');
+        await ui.key("Escape");
+        await ui.wait("!document.body.innerText.includes('already used by')", "conflict recorder cancelled");
+        await ui.key("Escape");
+        await ui.wait("!document.querySelector('[role=dialog]')", "Settings closed");
+
+        // New binding acts on disk; the old default does not.
+        await ui.click(grid());
+        await ui.key("n", 2);
+        await until(async () => (await readdir(dir)).includes("untitled folder"), "⌃N created a folder on disk");
+        await ui.key("Escape");
+        const before = (await readdir(dir)).sort();
+        await ui.key("n", 12);
+        await delay(400);
+        assert.deepEqual((await readdir(dir)).sort(), before);
+
+        // The binding survives a full restart.
+        await ui.close();
+        await ui.start();
+        await ui.settings();
+        await ui.button("Keybindings");
+        await ui.wait(`!!(${button("Shortcut ⌃ N for New Folder, press to change")})`, "⌃N persisted across restart");
+
+        // An external write is picked up live.
+        await writeFile(file, '{ "files.newFolder": ["cmd+shift+n"] }\n');
+        await ui.wait(`!!(${button("Shortcut ⌘ ⇧ N for New Folder, press to change")})`, "external edit reloaded live");
+
+        // Reset all restores defaults and empties the overrides file.
+        await ui.button("Reset all");
+        await ui.wait("document.body.innerText.includes('Reset all keybindings to defaults?')", "reset all confirmation");
+        await ui.button("Reset");
+        await until(async () => (await readFile(file, "utf8")) === "{}\n", "reset all wrote an empty overrides file");
+        await ui.wait(`!document.querySelector('[title="Modified"]')`, "reset all cleared modified markers");
+        assert.equal(await readFile(file, "utf8"), "{}\n");
+        await rm(file, { force: true });
       },
     ],
   ];
