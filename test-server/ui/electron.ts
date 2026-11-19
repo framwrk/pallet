@@ -101,13 +101,24 @@ export class ElectronUI {
     }, "Electron debugger");
     const port = this.log.match(/DevTools listening on ws:\/\/127.0.0.1:(\d+)/)![1];
     let target: { webSocketDebuggerUrl: string } | undefined;
-    await until(async () => {
-      const targets = (await (
-        await fetch(`http://127.0.0.1:${port}/json/list`, { signal: AbortSignal.timeout(2000) })
-      ).json()) as { type: string; url: string; webSocketDebuggerUrl: string }[];
-      target = targets.find((t) => t.type === "page" && t.url.startsWith("file:"));
-      return target;
-    }, "built renderer target");
+    await until(
+      async () => {
+        try {
+          const targets = (await (
+            await fetch(`http://127.0.0.1:${port}/json/list`, { signal: AbortSignal.timeout(2000) })
+          ).json()) as { type: string; url: string; webSocketDebuggerUrl: string }[];
+          target = targets.find((t) => t.type === "page" && t.url.startsWith("file:"));
+          return target;
+        } catch {
+          // The debugger endpoint can be slow to answer on a loaded runner. A
+          // per-request timeout is not a startup failure; retry until the
+          // outer deadline.
+          return false;
+        }
+      },
+      "built renderer target",
+      20000,
+    );
     this.socket = new WebSocket(target!.webSocketDebuggerUrl);
     await until(async () => this.socket?.readyState === WebSocket.OPEN, "CDP socket");
     this.socket.addEventListener("message", (event) => {
