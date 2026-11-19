@@ -173,3 +173,9 @@ export function setPreferenceRow(key: string, value: string): void {
     )
     .run(key, value);
 }
+
+/** Reads a raw row written by `setPreferenceRow`; `null` when absent. */
+export function getPreferenceRow(key: string): string | null {
+  const row = getDb().prepare("SELECT value FROM preferences WHERE key = ?").get(key) as { value: string | null } | undefined;
+  return row?.value ?? null;
+}

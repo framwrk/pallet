@@ -5,6 +5,7 @@ import { installCrashHandlers, log, logFilePath } from "./services/logger";
 import { is, optimizer } from "@electron-toolkit/utils";
 import { isAllowedExternalUrl, isAllowedNavigation } from "./utils/navigation-policy";
 import { quitAfterTransfers, setQuitCleanup } from "./services/quit";
+import { restoreWindowState, trackWindowState } from "./services/window-state";
 import { join } from "path";
 import { pathToFileURL } from "url";
 import { registerIpcHandlers } from "./ipc/register";
@@ -31,9 +32,11 @@ let mainWindow: BrowserWindow | null = null;
 
 function createWindow(): void {
   const entryFile = join(__dirname, "../renderer/index.html");
+  // No fixed size: the window reopens at the frame the user left it in, and
+  // Electron centers and sizes it on the first launch.
+  const restored = restoreWindowState();
   const win = new BrowserWindow({
-    width: 1200,
-    height: 760,
+    ...restored.bounds,
     minWidth: 820,
     minHeight: 480,
     show: false,
@@ -50,7 +53,10 @@ function createWindow(): void {
 
   mainWindow = win;
 
+  trackWindowState(win);
+
   win.on("ready-to-show", () => {
+    if (restored.maximized) win.maximize();
     win.show();
   });
 
