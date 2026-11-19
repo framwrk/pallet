@@ -158,8 +158,8 @@ default app.
 
 **Quick Connect** fills the right pane whenever no server is attached to it: at launch, and again
 after you disconnect. To open it over a connected pane, press **⌘K** or click **Connect to Server**
-at the top of the sidebar. It lists saved favorites above the server fields, so you can pick one
-without retyping its settings. **Cancel** returns you to the file list.
+at the top of the sidebar. Saved favorites are listed in the sidebar rather than the dialog.
+**Cancel** returns you to the file list.
 
 **Remote to remote:** click the **Replace Local Pane with Remote** button in the toolbar to connect
 a server in the left pane. While that pane is remote, a local folder picked in the sidebar opens in
@@ -286,7 +286,7 @@ Saved connections live in the Favorites section of the sidebar, each with its co
 | Action   | How                                      |
 | -------- | ---------------------------------------- |
 | Save one | Turn on **Add to Favorites** in Quick Connect, then connect |
-| Connect  | Click it in the sidebar or Quick Connect |
+| Connect  | Click it in the sidebar                  |
 | Edit     | Right-click → **Edit**                   |
 | Delete   | Right-click → **Delete**                 |
 | Reorder  | Drag it up or down the list              |
