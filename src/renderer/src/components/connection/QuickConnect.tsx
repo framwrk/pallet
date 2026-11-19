@@ -26,14 +26,14 @@ export function ConnectDialog(): React.JSX.Element {
         if (!open) closeQuickConnect();
       }}
     >
-      <DialogContent className="max-h-[85vh] overflow-y-auto p-4 sm:max-w-lg">
+      <DialogContent className="max-h-[85vh] gap-4 overflow-y-auto p-4 sm:max-w-lg">
         <DialogHeader className="pr-10">
-          <div className="flex items-center gap-3">
-            <div className="bg-primary/12 text-primary flex size-9 shrink-0 items-center justify-center rounded-[10px]">
-              <EthernetPort className="size-4.5" />
+          <div className="flex items-center gap-2.5">
+            <div className="bg-primary/10 text-primary ring-primary/15 flex size-8 shrink-0 items-center justify-center rounded-[9px] ring-1">
+              <EthernetPort className="size-4" />
             </div>
             <div className="min-w-0">
-              <DialogTitle className="text-sm font-semibold tracking-[-0.01em]">Connect to a server</DialogTitle>
+              <DialogTitle className="text-[13px] font-semibold tracking-[-0.01em]">Connect to a server</DialogTitle>
               <DialogDescription className="mt-0.5 text-[11px]">FTP, FTPS, SFTP, or S3</DialogDescription>
             </div>
           </div>
@@ -60,7 +60,7 @@ export function ConnectDialog(): React.JSX.Element {
                     aria-busy={isConnecting}
                     aria-label={`Connect to ${favorite.name}`}
                     className={cn(
-                      "hover:bg-accent flex h-9 w-full shrink-0 items-center gap-2 rounded-md px-2 text-left text-[13px]",
+                      "hover:bg-accent flex h-8 w-full shrink-0 items-center gap-2 rounded-md px-2 text-left text-[13px]",
                       "disabled:cursor-not-allowed",
                       connecting !== null && !isConnecting && "opacity-55",
                     )}

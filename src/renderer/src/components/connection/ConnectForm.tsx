@@ -1,6 +1,8 @@
-import { COLOR_LABELS, LABEL_COLOR_CLASSES } from "@shared/favorite/favorite.constants";
 import {
+  AlertCircle,
   ChevronDown,
+  Eye,
+  EyeOff,
   Fingerprint,
   KeyRound,
   LoaderCircle,
@@ -10,6 +12,7 @@ import {
   Star,
   UserRound,
 } from "lucide-react";
+import { COLOR_LABELS, LABEL_COLOR_CLASSES } from "@shared/favorite/favorite.constants";
 import type { ColorLabel, Favorite, FavoriteInput, FavoriteSecret } from "@shared/favorite/favorite.types";
 import type { ConnectProfile, ConnectionProtocol } from "@shared/sftp/sftp.types";
 import { type PaneId, getState, pushToast, useAppState } from "@/store/pane.store";
@@ -83,7 +86,7 @@ function ProtocolSelect({
         className={cn(
           endpoint
             ? "pallet-endpoint-protocol dark:hover:bg-muted/40 h-7 min-w-0 gap-0.5 border-transparent bg-transparent px-1 py-0 font-mono text-[11px] shadow-none data-[size=sm]:h-7 dark:bg-transparent [&>svg]:size-3"
-            : "h-7 w-24 text-[13px] data-[size=sm]:h-7",
+            : "h-8 w-28 text-[13px] data-[size=sm]:h-8",
         )}
       >
         {endpoint ? <span className="text-muted-foreground">{protocol}://</span> : <SelectValue />}
@@ -91,7 +94,7 @@ function ProtocolSelect({
       <SelectContent
         align="start"
         alignItemWithTrigger={false}
-        className="min-w-24 p-1"
+        className="w-auto min-w-[92px] p-1"
       >
         {Object.entries(PROTOCOLS).map(([value, label]) => (
           <SelectItem
@@ -125,13 +128,13 @@ function Row({
         className,
       )}
     >
-      <span className={cn("text-muted-foreground text-xs", layout === "stacked" ? "font-medium" : "text-right")}>{label}</span>
+      <span className={cn("text-muted-foreground text-[11px] font-medium", layout === "aligned" && "text-right")}>{label}</span>
       {children}
     </label>
   );
 }
 
-const inputCls = "h-7 text-[13px]";
+const inputCls = "h-8 text-[13px]";
 
 /**
  * Server fields shared by the connection dialog and Edit Favorite.
@@ -170,6 +173,7 @@ export function ConnectForm({
     initialProtocol === "s3" ? "s3" : initialProtocol === "sftp" ? (seed?.authMethod ?? "password") : "password",
   );
   const [password, setPassword] = useState("");
+  const [showSecret, setShowSecret] = useState(false);
   const [keyPath, setKeyPath] = useState(seed?.privateKeyPath ?? "");
   const [passphrase, setPassphrase] = useState("");
   const [s3Endpoint, setS3Endpoint] = useState(seedS3?.s3Endpoint ?? "");
@@ -208,9 +212,16 @@ export function ConnectForm({
       portTouched.current = false;
     }
     setProtocol(nextProtocol);
+    setShowSecret(false);
     if (nextProtocol === "s3") setAuthMethod("s3");
     else if (authMethod === "s3" || nextProtocol !== "sftp") setAuthMethod("password");
     setError(null);
+  }
+
+  /** Switching auth modes never carries a revealed secret across. */
+  function changeAuthMethod(nextMethod: "password" | "key" | "agent"): void {
+    setShowSecret(false);
+    setAuthMethod(nextMethod);
   }
 
   function validate(): string | null {
@@ -363,20 +374,25 @@ export function ConnectForm({
 
   const isPane = editing === null;
   const fieldLayout = isPane ? "stacked" : "aligned";
-  const fieldInputCls = cn(inputCls, isPane && "h-9");
+  const fieldInputCls = inputCls;
   const authPicker = (
     <div
-      className="pallet-auth-picker bg-muted/40 flex rounded-md p-0.5"
+      className="pallet-auth-picker flex h-8 rounded-full bg-black/[0.04] p-0.5 ring-1 ring-black/[0.04] ring-inset dark:bg-black/20 dark:ring-white/[0.05]"
       role="group"
       aria-label="Authentication method"
     >
       <Button
         type="button"
         size="xs"
-        variant={authMethod === "password" ? "secondary" : "ghost"}
-        className="flex-1 rounded-[6px]"
+        variant="ghost"
+        className={cn(
+          "h-7 flex-1 rounded-full px-2 text-xs",
+          authMethod === "password"
+            ? "text-foreground bg-white shadow-[0_1px_2px_rgb(0_0_0/0.10)] ring-1 ring-black/[0.04] dark:bg-white/[0.13] dark:shadow-none dark:ring-white/[0.06]"
+            : "text-muted-foreground hover:text-foreground hover:bg-black/[0.03] dark:hover:bg-white/[0.05]",
+        )}
         aria-pressed={authMethod === "password"}
-        onClick={() => setAuthMethod("password")}
+        onClick={() => changeAuthMethod("password")}
       >
         <LockKeyhole data-icon="inline-start" /> Password
       </Button>
@@ -385,10 +401,15 @@ export function ConnectForm({
           <Button
             type="button"
             size="xs"
-            variant={authMethod === "key" ? "secondary" : "ghost"}
-            className="flex-1 rounded-[6px]"
+            variant="ghost"
+            className={cn(
+              "h-7 flex-1 rounded-full px-2 text-xs",
+              authMethod === "key"
+                ? "text-foreground bg-white shadow-[0_1px_2px_rgb(0_0_0/0.10)] ring-1 ring-black/[0.04] dark:bg-white/[0.13] dark:shadow-none dark:ring-white/[0.06]"
+                : "text-muted-foreground hover:text-foreground hover:bg-black/[0.03] dark:hover:bg-white/[0.05]",
+            )}
             aria-pressed={authMethod === "key"}
-            onClick={() => setAuthMethod("key")}
+            onClick={() => changeAuthMethod("key")}
           >
             <KeyRound data-icon="inline-start" />
             <span>
@@ -398,10 +419,15 @@ export function ConnectForm({
           <Button
             type="button"
             size="xs"
-            variant={authMethod === "agent" ? "secondary" : "ghost"}
-            className="flex-1 rounded-[6px]"
+            variant="ghost"
+            className={cn(
+              "h-7 flex-1 rounded-full px-2 text-xs",
+              authMethod === "agent"
+                ? "text-foreground bg-white shadow-[0_1px_2px_rgb(0_0_0/0.10)] ring-1 ring-black/[0.04] dark:bg-white/[0.13] dark:shadow-none dark:ring-white/[0.06]"
+                : "text-muted-foreground hover:text-foreground hover:bg-black/[0.03] dark:hover:bg-white/[0.05]",
+            )}
             aria-pressed={authMethod === "agent"}
-            onClick={() => setAuthMethod("agent")}
+            onClick={() => changeAuthMethod("agent")}
           >
             <Fingerprint data-icon="inline-start" />
             <span>SSH Agent</span>
@@ -530,11 +556,11 @@ export function ConnectForm({
         ) : (
           <>
             <div
-              className="pallet-endpoint-control border-input bg-background/55 focus-within:border-primary focus-within:ring-primary/20 flex h-11 items-center rounded-lg border px-3 transition-[border-color,box-shadow] focus-within:ring-3"
+              className="pallet-endpoint-control group border-input focus-within:border-primary focus-within:ring-primary/25 dark:bg-input/30 flex h-8 items-center rounded-lg border bg-white px-2.5 transition-[border-color,box-shadow] focus-within:ring-2"
               role="group"
               aria-label="Server endpoint"
             >
-              <Server className="text-primary mr-2 size-4 shrink-0" />
+              <Server className="text-muted-foreground group-focus-within:text-primary mr-1.5 size-3.5 shrink-0 transition-colors" />
               <ProtocolSelect
                 protocol={protocol}
                 onProtocolChange={changeProtocol}
@@ -549,10 +575,10 @@ export function ConnectForm({
                 spellCheck={false}
                 autoFocus={autoFocus && !seed}
               />
-              <div className="border-border/80 flex h-5 shrink-0 items-center border-l pl-2">
-                <span className="text-muted-foreground font-mono text-xs">:</span>
+              <div className="border-border/80 flex h-4 shrink-0 items-center border-l pl-2">
+                <span className="text-muted-foreground font-mono text-[11px]">:</span>
                 <input
-                  className="text-foreground w-10 bg-transparent text-center font-mono text-xs tabular-nums outline-none"
+                  className="text-foreground w-9 bg-transparent text-center font-mono text-[11px] tabular-nums outline-none"
                   aria-label="Port"
                   value={port}
                   onChange={(e) => {
@@ -564,7 +590,7 @@ export function ConnectForm({
               </div>
             </div>
 
-            {authPicker}
+            {protocol === "sftp" && authPicker}
 
             <div className="pallet-credentials-grid grid grid-cols-2 gap-2.5">
               <Row
@@ -604,8 +630,10 @@ export function ConnectForm({
                       <KeyRound className="text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2" />
                     )}
                     <Input
-                      className={cn(fieldInputCls, "pl-8")}
-                      type="password"
+                      className={cn(fieldInputCls, "pr-8 pl-8")}
+                      aria-label={authMethod === "password" ? "Password" : "Passphrase"}
+                      autoComplete={authMethod === "password" ? "current-password" : "off"}
+                      type={showSecret ? "text" : "password"}
                       value={authMethod === "password" ? password : passphrase}
                       onChange={(e) =>
                         authMethod === "password" ? setPassword(e.target.value) : setPassphrase(e.target.value)
@@ -613,6 +641,19 @@ export function ConnectForm({
                       placeholder={authMethod === "key" ? secretPlaceholder || "Optional" : secretPlaceholder}
                       autoFocus={autoFocus && !!seed}
                     />
+                    <button
+                      type="button"
+                      className="text-muted-foreground hover:text-foreground focus-visible:ring-ring/60 absolute top-1/2 right-0.5 size-7 -translate-y-1/2 rounded-[6px] transition-colors duration-[140ms] outline-none hover:bg-black/[0.05] focus-visible:ring-2 dark:hover:bg-white/[0.08]"
+                      aria-label={
+                        showSecret
+                          ? `Hide ${authMethod === "key" ? "passphrase" : "password"}`
+                          : `Show ${authMethod === "key" ? "passphrase" : "password"}`
+                      }
+                      aria-pressed={showSecret}
+                      onClick={() => setShowSecret((value) => !value)}
+                    >
+                      {showSecret ? <EyeOff className="mx-auto size-3.5" /> : <Eye className="mx-auto size-3.5" />}
+                    </button>
                   </div>
                 </Row>
               )}
@@ -761,7 +802,7 @@ export function ConnectForm({
       <div className={cn("grid gap-2", isPane && "pallet-disclosure-grid grid-cols-2")}>
         <button
           type="button"
-          className="border-border/80 bg-background/25 text-muted-foreground hover:bg-muted/50 hover:text-foreground focus-visible:ring-ring/50 flex h-9 items-center justify-between rounded-lg border px-2.5 text-left text-xs transition-colors duration-[140ms] outline-none focus-visible:ring-2"
+          className="border-border/80 text-muted-foreground hover:text-foreground focus-visible:ring-ring/50 flex h-8 items-center justify-between rounded-[8px] border bg-black/[0.03] px-2.5 text-left text-xs transition-colors duration-[140ms] outline-none hover:bg-black/[0.06] focus-visible:ring-2 dark:bg-white/[0.035] dark:hover:bg-white/[0.06]"
           aria-label="Connection options"
           aria-expanded={showOptions}
           onClick={() => setShowOptions((value) => !value)}
@@ -777,7 +818,7 @@ export function ConnectForm({
         {isPane && (
           <button
             type="button"
-            className="border-border/80 bg-background/25 text-muted-foreground hover:bg-muted/50 hover:text-foreground focus-visible:ring-ring/50 flex h-9 items-center justify-between rounded-lg border px-2.5 text-left text-xs transition-colors duration-[140ms] outline-none focus-visible:ring-2"
+            className="border-border/80 text-muted-foreground hover:text-foreground focus-visible:ring-ring/50 flex h-8 items-center justify-between rounded-[8px] border bg-black/[0.03] px-2.5 text-left text-xs transition-colors duration-[140ms] outline-none hover:bg-black/[0.06] focus-visible:ring-2 dark:bg-white/[0.035] dark:hover:bg-white/[0.06]"
             aria-label="Favorite details"
             aria-expanded={showFavoriteDetails}
             onClick={() => setShowFavoriteDetails((value) => !value)}
@@ -942,7 +983,7 @@ export function ConnectForm({
             label="Label"
             layout={fieldLayout}
           >
-            <div className="flex h-9 items-center gap-2">
+            <div className="flex h-8 items-center gap-2">
               {COLOR_LABELS.map((value) => (
                 <button
                   key={value}
@@ -963,12 +1004,16 @@ export function ConnectForm({
       )}
 
       {error && (
-        <p
-          className={cn("text-destructive text-xs", isPane && "bg-destructive/10 rounded-md px-3 py-2")}
+        <div
+          className={cn(
+            "border-destructive/25 bg-destructive/10 text-destructive flex items-start gap-2 rounded-md border px-2.5 py-2 text-[12px] leading-snug",
+            !isPane && "border-0 bg-transparent px-0 py-0",
+          )}
           role="alert"
         >
-          {error}
-        </p>
+          <AlertCircle className="mt-px size-3.5 shrink-0" />
+          <p>{error}</p>
+        </div>
       )}
 
       <div className="border-border/70 mt-0.5 flex items-center justify-end gap-2 border-t pt-3">
@@ -985,9 +1030,8 @@ export function ConnectForm({
             <div className="flex flex-col">
               <label
                 htmlFor="connect-add-favorite"
-                className="text-foreground flex items-center gap-1.5 text-xs font-medium"
+                className="text-foreground text-xs font-medium"
               >
-                <Star className="text-muted-foreground size-3.5" />
                 Add to Favorites
               </label>
               <span
@@ -1004,6 +1048,7 @@ export function ConnectForm({
             type="button"
             variant="outline"
             size="sm"
+            className="h-8 text-[13px]"
             disabled={busy}
             onClick={onClose}
           >
@@ -1013,7 +1058,7 @@ export function ConnectForm({
         <Button
           type="submit"
           size="sm"
-          className={cn(isPane && "h-9 min-w-24")}
+          className={cn("h-8 text-[13px]", isPane && "min-w-[84px]")}
           disabled={busy || connectionBlocked}
           title={connectionBlocked ? "A connection is already opening" : undefined}
         >

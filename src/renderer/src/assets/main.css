@@ -96,18 +96,20 @@
   --card-foreground: var(--foreground);
   --popover: var(--background);
   --popover-foreground: var(--foreground);
-  --primary: oklch(0.522 0.1771 255.83);
-  --primary-foreground: oklch(0.98 0 0);
-  --secondary: var(--primary);
-  --secondary-foreground: var(--primary-foreground);
+  /* Contrast-safe system blue: same macOS hue as Focus Blue Light, darkened
+     to 4.7:1 against white so filled buttons stay AA at 13px. */
+  --primary: #0071e3;
+  --primary-foreground: #ffffff;
+  --secondary: color-mix(in oklch, var(--foreground) 7%, var(--background));
+  --secondary-foreground: var(--foreground);
   --muted: oklch(0.92 0 0);
   --muted-foreground: oklch(0.45 0 0);
-  --accent: var(--primary);
-  --accent-foreground: var(--primary-foreground);
+  --accent: color-mix(in srgb, var(--foreground) 6%, transparent);
+  --accent-foreground: var(--foreground);
   --destructive: oklch(0.6434 0.2343 28.32);
   --border: oklch(0 0 0 / 10%);
   --input: var(--border);
-  --ring: oklch(0.5 0 0);
+  --ring: var(--primary);
   --chart-1: oklch(0.1 0 0);
   --chart-2: oklch(0.3 0 0);
   --chart-3: oklch(0.5 0 0);
@@ -145,18 +147,18 @@
   --card-foreground: var(--foreground);
   --popover: var(--background);
   --popover-foreground: var(--foreground);
-  --primary: oklch(0.522 0.1771 255.83);
-  --primary-foreground: var(--foreground);
-  --secondary: var(--primary);
-  --secondary-foreground: var(--primary-foreground);
+  --primary: #0a72e0;
+  --primary-foreground: #ffffff;
+  --secondary: color-mix(in oklch, var(--foreground) 12%, var(--background));
+  --secondary-foreground: var(--foreground);
   --muted: oklch(0 0 0);
   --muted-foreground: oklch(0.7 0 0);
-  --accent: var(--primary);
-  --accent-foreground: var(--primary-foreground);
+  --accent: color-mix(in srgb, var(--foreground) 8%, transparent);
+  --accent-foreground: var(--foreground);
   --destructive: oklch(0.6434 0.2343 28.32);
   --border: oklch(1 0 0 / 10%);
   --input: var(--border);
-  --ring: oklch(0.5 0 0);
+  --ring: var(--primary);
   --chart-1: oklch(0.9 0 0);
   --chart-2: oklch(0.7 0 0);
   --chart-3: oklch(0.5 0 0);
@@ -300,6 +302,43 @@
 }
 
 @layer components {
+  /* Dialog material (DESIGN.md › Dialogs): glass shell, one hairline, a top
+     rim light, and the dialog lift. Falls back to an opaque popover when
+     transparency is reduced. */
+  .pallet-dialog {
+    background: color-mix(in srgb, var(--popover) 92%, transparent);
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.72),
+      0 24px 64px rgb(0 0 0 / 0.18),
+      0 4px 16px rgb(0 0 0 / 0.12);
+    -webkit-backdrop-filter: blur(24px) saturate(160%);
+    backdrop-filter: blur(24px) saturate(160%);
+  }
+
+  .dark .pallet-dialog {
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.07),
+      0 24px 64px rgb(0 0 0 / 0.32),
+      0 4px 16px rgb(0 0 0 / 0.18);
+  }
+
+  .pallet-popover {
+    background: color-mix(in srgb, var(--popover) 90%, var(--foreground) 10%);
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.65),
+      0 12px 36px rgb(0 0 0 / 0.24),
+      0 2px 8px rgb(0 0 0 / 0.16);
+    -webkit-backdrop-filter: blur(24px) saturate(160%);
+    backdrop-filter: blur(24px) saturate(160%);
+  }
+
+  .dark .pallet-popover {
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.08),
+      0 12px 36px rgb(0 0 0 / 0.4),
+      0 2px 8px rgb(0 0 0 / 0.28);
+  }
+
   .pallet-skeleton-bar {
     border-radius: 2px;
     background: color-mix(in oklch, var(--muted-foreground) 32%, transparent);
@@ -366,6 +405,19 @@
     background: var(--sidebar);
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
+  }
+
+  .pallet-dialog,
+  .pallet-popover {
+    background: var(--popover);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
+  .pallet-dialog {
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.06),
+      0 24px 64px rgb(0 0 0 / 0.3);
   }
 }
 
