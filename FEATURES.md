@@ -509,7 +509,7 @@ removes the temporary copy. Closing the editor alone does not end monitoring.
 
 ## Settings
 
-Press **⌘,** or choose **Pallet → Settings**. An in-app modal opens with seven sidebar sections.
+Press **⌘,** or choose **Pallet → Settings**. An in-app modal opens with eight sidebar sections.
 Use **⌘F** or **/** to focus its section search when not editing a field.
 
 ### General
@@ -557,6 +557,47 @@ without connecting a pane.
 | **Stall timeout**           | 60 s    | Abandon a file after this long without progress.                                       |
 | **Retries per file**        | 5       | Per-file retries after a dead channel before reporting failure.                        |
 | **Speed window**            | 30 s    | Trailing window for the transfer drawer's average and median speeds.                   |
+
+### Keybindings
+
+**Every shortcut is customizable.** Settings → Keybindings lists each command with its current key
+chips, grouped as Navigation, Files, Transfers, and Panels. Click a chip group to record a
+replacement, or use **+** on a row to add an alternate. A group's **×** removes that shortcut, and a
+command with none shows **Unbound**. Escape cancels recording; click elsewhere or move focus away
+for the same result.
+
+A shortcut is valid when it has **⌘**, **⌃**, or **⌥**, or when it is a function key or a special
+key (Return, Escape, Space, Tab, Delete, Backspace, or an arrow). ⇧ may be added. Bare letters,
+digits, and symbols are rejected, as are modifier-only presses and combinations macOS owns (for
+example **⌘Q**, **⌘Space**, **⇧⌘3**, **⌘X**, and **⌃⌘F**). Pallet blocks a shortcut another
+command already uses, names the owner, and keeps the recorder open. A duplicate within the same
+command is a no-op.
+
+Shortcuts marked **Built in; can't be changed** are selection movement (**↑**/**↓** and
+**⇧↑**/**⇧↓**). **⌘F** and **/** inside Settings and **⌘K** inside the terminal are internal to
+those views and are not listed.
+
+A customized row shows a small dot and a reset button that restores that command. **Reset all** in
+the toolbar restores every default after an inline confirmation. Edits save immediately.
+
+**Open keybindings.json** opens the overrides file in `~/Library/Application Support/Pallet/`,
+next to `pallet.db`. The file is optional and stores overrides only, keyed by command id:
+
+```json
+{
+  "transfers.copyToOther": ["f5", "cmd+shift+c"]
+}
+```
+
+A command absent from the file uses its defaults, and `[]` means unbound. Pallet writes the file in
+registry order with 2-space JSON and a trailing newline, and drops an entry that matches its
+defaults. Edits in your editor apply live. If the file is not valid JSON, Pallet keeps the last good
+bindings (defaults on launch), shows a warning banner in the tab, and raises a toast. Entries that
+are individually invalid are skipped and listed in the banner while the rest still apply. Within the
+file, earlier commands win a conflict, so both sides of a swap can be written at once.
+
+Bindings follow the **physical key**, not the character the layout produces, so **⌘⇧.** stays on the
+period key and **⌥** combinations match their position on non-US keyboards.
 
 ### Updates
 
@@ -630,6 +671,9 @@ intended for bug reports; review it for hostnames, file paths, or other sensitiv
 ---
 
 ## Keyboard reference
+
+These are the **defaults**. Every shortcut listed here (except selection movement) can be rebound in
+[Settings → Keybindings](#keybindings).
 
 ### Navigation
 

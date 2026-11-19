@@ -186,7 +186,7 @@ Pallet keeps its dual-pane workspace: the left pane starts local, and the right 
 - **Inspector:** `272–320px` wide, right-docked, translucent at its outer shell, with stable inset surfaces for previews and editable permission controls.
 - **Transfer drawer:** full-width beneath the workspace, `32–38px` collapsed and up to `240px` open. Its shell may use glass; progress rows use stable surfaces.
 - **Dialogs and connection forms:** compact and centered, with label/control alignment maintained. Destructive decisions keep the action nearest the consequence and visually separate Cancel.
-- **Settings:** retain the in-app modal, searchable sidebar, and seven categories: General, Appearance, Favorites, Transfers, Updates, Advanced, and About. The right side uses grouped settings surfaces.
+- **Settings:** retain the in-app modal, searchable sidebar, and eight categories: General, Appearance, Favorites, Transfers, Keybindings, Updates, Advanced, and About. The right side uses grouped settings surfaces.
 
 Use a `4px` base spacing unit. Routine gaps are `8px` and `12px`; region padding is `12–16px`; major panel transitions use `20–24px`. Dense file rows target `26–28px`. Controls target `28px`, growing to `32px` only when the interaction benefits from a larger hit area. Minimum pointer targets remain `28px`; keyboard access is mandatory for all compact controls.
 
