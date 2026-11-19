@@ -14,6 +14,7 @@ import {
   updateSessionStatus,
 } from "./pane.store";
 import type { ConnectProfile } from "@shared/sftp/sftp.types";
+import { expandHome } from "@shared/path/path.utils";
 
 let eventsBound = false;
 /** Last local directory shown by the left pane, restored after a remote visit. */
@@ -98,7 +99,7 @@ export async function connectRemote(profile: ConnectProfile, localPath?: string,
     closeQuickConnect();
     // A favorite's local path only belongs to a local left pane.
     if (paneId === "right" && localPath && getState().panes.left.backend.kind === "local") {
-      await navigate("left", localPath);
+      await navigate("left", expandHome(localPath, await window.pallet.fs.homeDir()));
     }
   } finally {
     endConnection();

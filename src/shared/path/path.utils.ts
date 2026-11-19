@@ -69,6 +69,15 @@ function extname(p: string): string {
   return idx > 0 ? base.slice(idx) : "";
 }
 
+/**
+ * Expand a leading `~` to the user's home directory. Local paths only: the
+ * caller supplies `home` because the renderer cannot read the environment.
+ */
+export function expandHome(p: string, home: string): string {
+  if (p === "~") return home;
+  return p.startsWith("~/") ? posixJoin(home, p.slice(2)) : p;
+}
+
 export const remotePath = {
   join: posixJoin,
   normalize: posixNormalize,

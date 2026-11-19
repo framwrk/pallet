@@ -181,6 +181,8 @@ the selected pane when the right pane is already connected, and otherwise opens 
 | **Note**                            | Free text, shown when editing the favorite.                                                                                         |
 | **Color Label**                     | A dot for spotting the connection in a long favorites list.                                                                         |
 
+In **Local Path**, `~` expands to your home folder (for example `~/Downloads`).
+
 **Options** reveals connection-specific controls:
 
 - **Keepalive (s)**: SFTP only; how often to ping an idle connection. The default is 15.

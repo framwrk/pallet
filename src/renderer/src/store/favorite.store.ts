@@ -15,6 +15,7 @@ import {
   setBackend,
   setFavorites,
 } from "./pane.store";
+import { expandHome } from "@shared/path/path.utils";
 import { rememberLeftLocalPane } from "./sftp.store";
 
 export async function loadFavorites(): Promise<void> {
@@ -99,7 +100,7 @@ export async function connectFavorite(favoriteId: string, paneId: PaneId = "righ
     await navigate(paneId, result.initialPath, "replace");
     closeQuickConnect();
     if (paneId === "right" && result.favorite.localPath && getState().panes.left.backend.kind === "local") {
-      await navigate("left", result.favorite.localPath);
+      await navigate("left", expandHome(result.favorite.localPath, await window.pallet.fs.homeDir()));
     }
     await loadFavorites(); // last-used ordering may have changed
   } catch (err) {
