@@ -66,7 +66,6 @@ function run(request: TransferRequest): Promise<TransferJobSnapshot> {
   });
 }
 
-/** Drive the interactive sftp CLI through expect; commands are sent one by one. */
 function sftpCli(commands: string[], label: string): void {
   const lines = [
     "set timeout 900",
@@ -175,7 +174,6 @@ try {
       names: ["many"],
     });
     console.log(`pallet many download ${((Date.now() - start) / 1000).toFixed(2)}s  ${fmtRate(manyBytes, Date.now() - start)}`);
-    // Sanity: digests of the first and last small file.
     const bytes = await fs.readFile(`${root}/many-dl/many/f-0000.bin`);
     if (bytes.length !== MANY_KB * 1024) throw new Error("small-file download size mismatch");
     localEndpoint.dispose();

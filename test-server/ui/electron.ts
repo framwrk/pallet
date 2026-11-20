@@ -171,7 +171,6 @@ export class ElectronUI {
     assert.ok(object.result?.objectId, `Missing control: ${expression}`);
     await this.call("DOM.scrollIntoViewIfNeeded", { objectId: object.result.objectId });
     await this.call("Runtime.releaseObject", { objectId: object.result.objectId });
-    // Wait for dialogs/rails to finish their CSS transition before taking the hit point.
     let previous = "";
     await until(async () => {
       const rect = await this.read<string>(
@@ -192,10 +191,6 @@ export class ElectronUI {
         modifiers,
       });
   }
-  /**
-   * The floating transfer panel overlays the panes. Act as a user would: expand
-   * it to reach a job's controls, and collapse it when it covers a pane target.
-   */
   private async makeRoomForTarget(expression: string): Promise<void> {
     const need = await this.read<string>(
       `(()=>{const e=(${expression});const p=document.querySelector('section[aria-label="Transfer queue"]');if(!e||!p)return '';` +
@@ -277,8 +272,6 @@ export class ElectronUI {
   async settings(): Promise<void> {
     this.native('keystroke "," using command down');
     await this.wait("!!document.querySelector('[role=dialog]')", "native Settings menu (requires Accessibility)");
-    // The dialog is mounted for the app's lifetime and remembers its tab, so a
-    // reopened Settings can land somewhere other than General.
     await this.button("General");
     await this.wait("!!document.getElementById('pref-show-hidden')", "General settings panel");
   }

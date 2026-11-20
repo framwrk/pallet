@@ -1,13 +1,3 @@
-/**
- * Path utilities usable from any process, including the renderer.
- *
- * The renderer is banned (by lint rule) from importing Node's `path`, because a
- * remote path is not a local path even when both are POSIX. `remotePath` and
- * `localPath` are therefore separate objects with identical behaviour: the
- * split keeps remote semantics (no `~`, no local filesystem) isolated, and
- * makes every call site say which side of the connection it means.
- */
-
 function normalizeSegments(input: string): { abs: boolean; segs: string[] } {
   const abs = input.startsWith("/");
   const segs: string[] = [];
@@ -50,7 +40,6 @@ function posixBasename(p: string): string {
   return idx === -1 ? n : n.slice(idx + 1);
 }
 
-/** Split an absolute path into breadcrumb segments, each with its full path. */
 function posixSegments(p: string): { name: string; path: string }[] {
   const n = posixNormalize(p);
   const out: { name: string; path: string }[] = [{ name: "/", path: "/" }];
@@ -88,7 +77,6 @@ export const remotePath = {
   isAbsolute: (p: string): boolean => p.startsWith("/"),
 };
 
-// macOS local paths are POSIX; kept distinct from `remotePath` on purpose (see header).
 export const localPath = {
   join: posixJoin,
   normalize: posixNormalize,

@@ -49,7 +49,6 @@ function RenameInput({ paneId, entry }: { paneId: PaneId; entry: Entry }): React
     const input = ref.current;
     if (!input) return;
     input.focus();
-    // Select the stem, not the extension, Finder-style.
     const dot = entry.kind === "file" ? entry.name.lastIndexOf(".") : -1;
     input.setSelectionRange(0, dot > 0 ? dot : entry.name.length);
   }, [entry.kind, entry.name]);
@@ -93,8 +92,6 @@ export function FileList({ paneId, pane, visible, isActive }: FileListProps): Re
   const rowHeight = ROW_HEIGHTS[rowDensity];
   const scrollRef = useRef<HTMLDivElement>(null);
   const [dropTarget, setDropTarget] = useState<"pane" | string | null>(null);
-  // A plain click on an already-selected row collapses the selection, but only
-  // once it is clear the user is not starting a drag of the whole selection.
   const pendingCollapse = useRef<string | null>(null);
 
   function onRowDragStart(e: React.DragEvent, entry: Entry): void {
@@ -106,7 +103,6 @@ export function FileList({ paneId, pane, visible, isActive }: FileListProps): Re
     e.dataTransfer.effectAllowed = "copy";
   }
 
-  /** Same-directory drops are a no-op, so hover must not offer one (Finder). */
   function isDroppableDir(entry: Entry): boolean {
     return isDirLike(entry) && !(activeDrag?.pane === paneId && activeDrag.names.includes(entry.name));
   }
@@ -125,9 +121,7 @@ export function FileList({ paneId, pane, visible, isActive }: FileListProps): Re
     activeDrag = null;
     const payload = readDragPayload(e);
     if (!payload) return;
-    // Dropping into the pane you dragged from with no folder target is a no-op.
     if (payload.pane === paneId && destDir === undefined) return;
-    // Dropping a folder onto itself would copy it into itself.
     if (payload.pane === paneId && destDir !== undefined && payload.names.includes(destDir)) return;
     void enqueuePaneCopy(payload.pane, paneId, payload.names, destDir);
   }
@@ -149,8 +143,6 @@ export function FileList({ paneId, pane, visible, isActive }: FileListProps): Re
     virtualizer.measure();
   }, [rowHeight, virtualizer]);
 
-  // Only the rows the virtualizer has mounted, so sizing follows the viewport
-  // rather than the whole directory.
   const virtualItems = virtualizer.getVirtualItems();
   const folderSizes = useFolderSizes(
     virtualItems
@@ -193,8 +185,6 @@ export function FileList({ paneId, pane, visible, isActive }: FileListProps): Re
       pendingCollapse.current = null;
       selectOnly(paneId, entry.name);
     } else {
-      // Already-selected row: keep the multi-selection so a drag can move all
-      // of it; collapse on click when no drag follows.
       pendingCollapse.current = entry.name;
     }
   }
@@ -251,8 +241,6 @@ export function FileList({ paneId, pane, visible, isActive }: FileListProps): Re
         // drop, so it is the backstop for any highlight dragleave missed.
         setDropTarget(null);
         activeDrag = null;
-        // Non-pallet drags (OS files) never set activeDrag; dropping them is a
-        // copy into cwd, so signal "not allowed" instead of offering it.
         if (e.dataTransfer) e.dataTransfer.dropEffect = "none";
       }}
       onDrop={(e) => onDrop(e)}
@@ -260,13 +248,7 @@ export function FileList({ paneId, pane, visible, isActive }: FileListProps): Re
       style={dropTarget === "pane" ? { boxShadow: "inset 0 0 0 2px var(--primary)" } : undefined}
     >
       <div
-        className={cn(
-          "relative w-full",
-          // Zero-height when no rows exist, which clips the empty message
-          // behind the column header; stretch to the viewport instead. Pointer
-          // events pass through so background clicks still hit the pane.
-          visible.length === 0 && "pointer-events-none h-full",
-        )}
+        className={cn("relative w-full", visible.length === 0 && "pointer-events-none h-full")}
         style={visible.length === 0 ? undefined : { height: virtualizer.getTotalSize() }}
       >
         {!pane.loading && pane.cwd && visible.length === 0 && (
@@ -287,7 +269,6 @@ export function FileList({ paneId, pane, visible, isActive }: FileListProps): Re
               aria-selected={selected}
               className={cn(
                 "font-file absolute left-0 grid w-full grid-cols-1 items-center gap-4 px-3 text-[13px] outline-none @min-[240px]:grid-cols-[minmax(0,1fr)_5.5rem] @min-[440px]:grid-cols-[minmax(0,1fr)_5.5rem_12rem]",
-                // row.index % 2 === 1 && !selected && "bg-muted/40",
                 selected && (isActive ? "bg-primary text-primary-foreground" : "bg-muted text-foreground"),
               )}
               style={{

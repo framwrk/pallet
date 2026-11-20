@@ -47,7 +47,6 @@ export async function trash(paths: string[]): Promise<void> {
 async function copyOne(src: string, destDir: string): Promise<string> {
   const dest = join(destDir, basename(src));
   if (src === dest) {
-    // Finder-style duplicate: "name copy.ext", "name copy 2.ext", …
     const ext = extname(src);
     const stem = basename(src, ext);
     for (let i = 1; i < 1000; i++) {

@@ -26,7 +26,6 @@ function isCaseSensitive(dir: string): boolean {
   }
 }
 
-/** Mount a small case-sensitive HFSX image; null when hdiutil is unavailable. */
 function createCaseSensitiveVolume(): string | null {
   if (process.platform !== "darwin") return null;
   const image = join(root, "case-sensitive.dmg");

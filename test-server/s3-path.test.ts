@@ -57,14 +57,12 @@ describe("root prefix mapping", () => {
     expect(normalizePath("/2024")).toBe("/2024");
     expect(keyForPath(location, "/2024")).toBe("photos/2024");
     expect(prefixForPath(location, "/2024")).toBe("photos/2024/");
-    // keyForPath never emits a trailing slash, even for the root.
     expect(keyForPath(location, "/")).toBe("photos");
   });
 
   test("isRootPath only accepts canonical paths", () => {
     expect(isRootPath("/")).toBe(true);
     expect(isRootPath("/a")).toBe(false);
-    // A trailing slash is never accepted from the API boundary.
     expect(errorCode(() => isRootPath("/a/"))).toBe("EINVAL");
   });
 });
@@ -121,7 +119,6 @@ describe("joinPath", () => {
   test("joins validated entry names onto normalized directories", () => {
     expect(joinPath("/", "a")).toBe("/a");
     expect(joinPath("/dir", "a.txt")).toBe("/dir/a.txt");
-    // joinPath never repairs a trailing slash; callers pass normalized paths.
     expect(errorCode(() => joinPath("/dir/", "a.txt"))).toBe("EINVAL");
   });
 

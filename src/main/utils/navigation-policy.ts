@@ -1,8 +1,3 @@
-/**
- * URL policy shared by the windows and the IPC surface. Keeping it pure makes
- * the rules testable without booting Electron.
- */
-
 /** External links may only open http(s); other schemes can reach local files or app handlers. */
 export function isAllowedExternalUrl(value: string): boolean {
   try {

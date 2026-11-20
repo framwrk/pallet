@@ -1,8 +1,3 @@
-/**
- * Pure helpers for the in-app update download. Kept free of Electron imports so
- * the security-critical pieces (version, destination, asset URL, checksum) can
- * be unit-tested without a running app.
- */
 import { basename, dirname, join, resolve } from "node:path";
 import { parseVersion } from "@shared/version/version.utils";
 

@@ -1,10 +1,3 @@
-/**
- * S3 credentials share the single encrypted Keychain blob with every other
- * favorite secret. The blob holds a small versioned JSON document so the
- * access key secret and the optional session token survive a round trip.
- *
- * Pure Node so it can be exercised by the Bun test suite without Electron.
- */
 import type { S3FavoriteSecret } from "@shared/favorite/favorite.types";
 
 export const S3_SECRET_VERSION = 1;

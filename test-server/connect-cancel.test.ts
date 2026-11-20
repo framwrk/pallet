@@ -4,7 +4,6 @@ import type { SessionStatusEvent } from "../src/shared/sftp/sftp.types";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-/** Accepts TCP but never speaks SSH, so a dial hangs until its 20s ready timeout. */
 async function silentServer(): Promise<{ server: Server; port: number; sockets: Socket[] }> {
   const sockets: Socket[] = [];
   const server = createServer((socket) => sockets.push(socket));
@@ -31,7 +30,6 @@ test("cancelling a hanging connect rejects promptly and drops the session", asyn
     const sessionId = events[0].sessionId;
     assert.equal(events.at(-1)?.status, "disconnected");
     assert.throws(() => manager.status(sessionId), /Unknown session/);
-    // Cancelling again, or after settling, is a no-op.
     manager.cancelConnect("attempt-1");
   } finally {
     for (const socket of sockets) socket.destroy();

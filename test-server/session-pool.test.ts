@@ -190,6 +190,29 @@ test("SFTP replacement never unlinks the original when atomic rename fails", asy
   assert.equal(unlinks, 0);
 });
 
+test("FTP replacement renames over the original and never removes it first", async () => {
+  const calls: string[] = [];
+  const client = new Proxy(
+    {},
+    {
+      get: (_target, method) => {
+        if (method === "then") return undefined;
+        return async (...args: unknown[]) => {
+          calls.push(`${String(method)} ${args.join(" ")}`);
+          if (method === "rename") throw new Error("550 Rename failed");
+        };
+      },
+    },
+  );
+  const manager = {
+    protocol: () => "ftp",
+    acquireFtpClient: async () => ({ client, release: () => {} }),
+  } as unknown as SessionManager;
+  const endpoint = makeEndpoint(manager, { kind: "sftp", sessionId: "ftp" });
+  await assert.rejects(endpoint.renameReplacing("/part", "/original"), /Rename failed/);
+  assert.deepEqual(calls, ["rename /part /original"]);
+});
+
 test("SFTP upload waits for CLOSE and propagates a late server error", async () => {
   let broken = false;
   const manager = {

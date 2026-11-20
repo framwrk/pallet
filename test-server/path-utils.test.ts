@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { expandHome } from "../src/shared/path/path.utils";
+import { expandHome, localPath, remotePath } from "../src/shared/path/path.utils";
 
 describe("expandHome", () => {
   const home = "/Users/pallet";
@@ -16,4 +16,8 @@ describe("expandHome", () => {
     expect(expandHome("~pallet/Downloads", home)).toBe("~pallet/Downloads");
     expect(expandHome("~/../tmp", home)).toBe("/Users/tmp");
   });
+});
+
+test("localPath and remotePath stay separate objects", () => {
+  expect(localPath).not.toBe(remotePath);
 });

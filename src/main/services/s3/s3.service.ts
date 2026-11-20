@@ -1,9 +1,3 @@
-/**
- * Read and small write operations for an S3 session. The service is a thin
- * session-bound wrapper over s3-ops: it resolves the checked client, maps
- * entries into the shared shape, and reports connectivity failures to the
- * session manager so only genuine outages reconnect.
- */
 import type { DirListing, Entry } from "@shared/fs/fs.types";
 import {
   type S3Like,

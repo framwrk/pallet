@@ -1,9 +1,7 @@
 import { type BrowserWindow, type Rectangle, screen } from "electron";
 import { getPreferenceRow, setPreferenceRow } from "./prefs-store";
 
-/** Frame and zoom state persisted between launches. */
 interface WindowState {
-  /** Un-maximized frame, so restoring then un-maximizing returns the right size. */
   bounds: Rectangle;
   maximized: boolean;
 }
@@ -31,10 +29,6 @@ function readWindowState(): WindowState | null {
   }
 }
 
-/**
- * Pulls a saved frame back onto a display that still exists: unplugging the
- * monitor the window was last on must not reopen it off-screen.
- */
 function clampToDisplay(bounds: Rectangle): Rectangle {
   const area = screen.getDisplayMatching(bounds).workArea;
   const width = Math.min(bounds.width, area.width);

@@ -1,8 +1,3 @@
-/**
- * Rotating file log in ~/Library/Logs/Pallet (§7). Nothing in the app logs a
- * secret deliberately, and every line is passed through `redact()` before it
- * hits disk in case an error message or stack carries one incidentally.
- */
 import { appendFileSync, mkdirSync, renameSync, statSync } from "fs";
 import { app } from "electron";
 import { join } from "path";

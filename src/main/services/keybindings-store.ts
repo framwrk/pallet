@@ -1,7 +1,3 @@
-/**
- * Owns keybindings.json in userData: loading, validation, atomic writes, and
- * live reload from external editors. The renderer never writes the file.
- */
 import { COMMAND_BY_ID, COMMAND_TITLES, defaultBindings } from "@shared/keybindings/keybinding.constants";
 import type { CommandId, KeybindingsState } from "@shared/keybindings/keybinding.types";
 import { type FSWatcher, existsSync, readFileSync, renameSync, watch, writeFileSync } from "fs";

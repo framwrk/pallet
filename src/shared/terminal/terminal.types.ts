@@ -1,9 +1,3 @@
-/**
- * Interactive terminal shapes shared across main, preload, and renderer.
- *
- * This file must stay dependency-free: no Node imports, no Electron imports.
- */
-
 export interface TerminalDataEvent {
   terminalId: string;
   data: Uint8Array;

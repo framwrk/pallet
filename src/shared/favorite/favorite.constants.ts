@@ -1,4 +1,3 @@
-/** Favorite colour labels: the palette's order, and the swatch class for each. */
 import type { ColorLabel } from "./favorite.types";
 
 /** Palette order, as the connect dialog lays the swatches out. */

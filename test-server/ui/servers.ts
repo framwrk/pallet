@@ -26,7 +26,6 @@ export class Servers {
     return join(this.root, "agent.sock");
   }
   docker(args: string[], input?: string): string {
-    // Never print Docker argv/errors: env includes a synthetic password.
     try {
       return execFileSync("docker", args, { input, encoding: "utf8", timeout: 30000, stdio: ["pipe", "pipe", "pipe"] });
     } catch {
@@ -55,7 +54,7 @@ export class Servers {
       await writeFile(join(this.path(p), "sized", "a"), "123456");
       await writeFile(join(this.path(p), "sized", "empty", "b"), "12345678");
       const name = `pallet-ui-${randomUUID()}`;
-      this.containers.set(p, name); // Register before docker run, including partial startup failures.
+      this.containers.set(p, name);
       const base = basePort + protocols.indexOf(p) * 64;
       const common = 'printf "pallet:%s\\n" "$PALLET_TEST_PASSWORD" | chpasswd\nchown -R pallet:pallet /home/pallet\n';
       let script: string;

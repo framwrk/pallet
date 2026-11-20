@@ -1,9 +1,3 @@
-/**
- * SSH/SFTP session shapes shared across main, preload, and renderer.
- *
- * This file must stay dependency-free: no Node imports, no Electron imports.
- */
-
 export type AuthSpec =
   | { method: "password"; password: string }
   | { method: "key"; keyPath: string; passphrase?: string }

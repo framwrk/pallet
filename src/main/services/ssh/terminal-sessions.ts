@@ -1,11 +1,3 @@
-/**
- * Interactive SSH shells for SFTP panes.
- *
- * Every terminal dials its own SSH connection from the file session's stored
- * profile, so a long-running shell never competes with browse or transfer
- * channels. This module deliberately imports nothing from Electron: the IPC
- * layer injects event hooks, so tests can drive it directly.
- */
 import type { ClientChannel, Client as SshClient } from "ssh2";
 import type { TerminalDataEvent, TerminalExitEvent } from "@shared/terminal/terminal.types";
 import type { SessionManager } from "../sftp/session-manager";
@@ -20,15 +12,11 @@ interface Terminal {
   sessionId: string;
   client: SshClient | null;
   channel: ClientChannel | null;
-  /** close() arrived before the dial or shell finished; emit nothing. */
   cancelled: boolean;
-  /** onExit already fired, or close() suppressed it. */
   finished: boolean;
-  /** Present when the shell reported a numeric exit status. */
   exitCode: number | undefined;
 }
 
-/** PTY dimensions are whole cells; a hidden container may measure 0×0. */
 function dimension(value: number): number {
   return Number.isFinite(value) ? Math.max(1, Math.floor(value)) : 1;
 }
@@ -39,7 +27,6 @@ function codedError(code: string, message: string): NodeJS.ErrnoException {
 
 export class TerminalSessions {
   private terminals = new Map<string, Terminal>();
-  /** One terminal per file session; the value is its terminalId. */
   private bySession = new Map<string, string>();
 
   constructor(
@@ -144,7 +131,6 @@ export class TerminalSessions {
     this.release(terminal, { terminalId: terminal.terminalId, reason: "error", message });
   }
 
-  /** Emit at most one event, drop the bookkeeping, and end both resources. */
   private release(terminal: Terminal, event?: TerminalExitEvent): void {
     if (terminal.finished) return;
     terminal.finished = true;

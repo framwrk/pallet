@@ -37,8 +37,6 @@ const queue = new TransferQueue(
       if (!p.endsWith("/large.bin") || options?.end == null) return read(p, options);
       starts.push(options?.start ?? 0);
       if (starts.length > 1) return read(p, options);
-      // First attempt: stream real bytes, then cut the connection mid-file so
-      // the retry must resume at the destination-confirmed offset.
       const inner = await read(p, options);
       return Readable.from(
         (async function* () {
@@ -48,12 +46,8 @@ const queue = new TransferQueue(
             yield chunk;
             if (emitted > CHUNK) break;
           }
-          // Let the destination acknowledge a prefix so the retry has a
-          // checkpoint to resume from even on rate-shaped profiles, where a
-          // burst of yielded bytes sits in the shaper unacknowledged.
           await new Promise((resolve) => setTimeout(resolve, 2000));
           if (process.env.PALLET_TEST_DISCONNECT === "1") {
-            // Fault injection touches only the session created by this test.
             const internal = sessions as unknown as { sessions: Map<string, { client: { destroy(): void } }> };
             internal.sessions.get(activeSessionId)!.client.destroy();
             await new Promise((resolve) => setTimeout(resolve, 50));
@@ -125,14 +119,12 @@ try {
       const uploaded = await run(request);
       console.log(`✓ ${profile.protocol}: uploaded ${uploaded.doneFiles} files`);
       assert.equal(uploaded.doneFiles, expected.size);
-      // Repeat overwrites real existing files through each protocol's safe rename path.
       await run({ ...request, sourceBase: `${source}/tree`, destDir: `${remote}/tree`, names: ["file-1"] });
       const result = await run({ from: ref, to: { kind: "local" }, sourceBase: remote, destDir: download, names: ["tree"] });
       assert.equal(result.doneBytes, uploaded.doneBytes);
       for (const [name, data] of expected)
         assert.equal(digest(await fs.readFile(`${download}/tree/${name}`)), digest(data), `${profile.protocol}: ${name}`);
       assert((await fs.stat(`${download}/tree/empty`)).isDirectory());
-      // Two stream leases on the smallest pool, with two jobs competing for it.
       await Promise.all(
         [1, 2].map((n) =>
           run({

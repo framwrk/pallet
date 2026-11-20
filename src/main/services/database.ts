@@ -3,10 +3,6 @@ import { app } from "electron";
 import { initializeDatabase } from "./database-schema";
 import { join } from "path";
 
-/**
- * SQLite holds metadata only (§3.5). Secrets never touch this file — they go
- * to Electron safeStorage (M4).
- */
 let db: Database.Database | null = null;
 
 /** Where the file lives, for anyone who wants to open it with their own client. */

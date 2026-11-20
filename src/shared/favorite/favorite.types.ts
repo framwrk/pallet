@@ -1,9 +1,3 @@
-/**
- * Saved connection shapes shared across main, preload, and renderer.
- *
- * This file must stay dependency-free: no Node imports, no Electron imports.
- */
-
 import type { ConnectionProtocol } from "../sftp/sftp.types";
 
 export type ColorLabel = "none" | "red" | "orange" | "yellow" | "green" | "blue" | "purple" | "gray";

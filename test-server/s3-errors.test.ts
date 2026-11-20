@@ -26,10 +26,6 @@ function errorCode(fn: () => unknown): string | undefined {
   return undefined;
 }
 
-/**
- * Every configuration failure (endpoint, region, bucket) must be a validation
- * error the UI can present; S3 code standardizes on EINVAL.
- */
 function validationCode(fn: () => unknown): string | undefined {
   const code = errorCode(fn);
   expect(code).toBe("EINVAL");

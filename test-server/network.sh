@@ -42,7 +42,6 @@ if [ "$profile" != off ]; then
     loss="${PALLET_TEST_LOSS_PERCENT:-$loss}"
   fi
 
-  # Validate everything before altering an existing setup, including live edits.
   for value in "$download" "$upload" "$delay" "$jitter"; do
     case "$value" in ''|*[!0-9]*) fail "Rates, delay, and jitter must be whole numbers." ;; esac
     [ "${#value}" -le 7 ] || fail "Rates, delay, and jitter are too large."
@@ -64,7 +63,6 @@ if ip link show "$incoming" >/dev/null 2>&1; then
 fi
 
 if [ "$profile" = off ]; then
-  # Do not claim shaping is disabled if removing it failed (e.g. no NET_ADMIN).
   if tc qdisc show dev "$device" | grep -Eq 'netem|ingress'; then
     fail "Cannot disable shaping; check the container's NET_ADMIN capability."
   fi

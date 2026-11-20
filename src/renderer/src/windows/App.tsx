@@ -55,14 +55,6 @@ function isEditableTarget(target: EventTarget | null): boolean {
   return target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable;
 }
 
-/**
- * True when the key event belongs to the file lists (the window handler's
- * jurisdiction). Plain and ⇧-only keys yield to whatever widget is focused —
- * buttons, menus, checkboxes keep their own Enter/Space/arrows — while a
- * binding with ⌘, ⌃, or ⌥ fires from a focused widget too: they never collide
- * with widget activation (Finder keeps ⌘C working with a toolbar button
- * focused). Dialogs and text fields were already excluded by the caller.
- */
 function isFileContext(e: KeyboardEvent, key: string): boolean {
   const t = e.target;
   if (!(t instanceof Element)) return false;
@@ -80,7 +72,6 @@ function isFileContext(e: KeyboardEvent, key: string): boolean {
   return true;
 }
 
-/** Dispatch one binding per command; menu accelerators are handled by main. */
 function handleKeyDown(e: KeyboardEvent): void {
   if (e.defaultPrevented || e.isComposing) return;
   const key = eventToKey(e);
@@ -92,10 +83,6 @@ function handleKeyDown(e: KeyboardEvent): void {
   if (isEditableTarget(e.target)) return;
   if (isModalOpen()) return;
 
-  // Tab is the pane switch wherever focus is (Total Commander), except inside
-  // dialogs and text fields. With a single pane (disconnected) it falls
-  // through so native traversal can move focus — previously it was swallowed
-  // here and switchPane() also no-op'd, leaving focus stuck on the document.
   if (command && spec?.scope === "pane-switch") {
     const focused = e.target instanceof Element && !e.target.closest("[role='dialog'], input, textarea, [contenteditable]");
     if (focused && getState().panes.right.backend.kind !== "none" && getState().connecting?.paneId !== "right") {
@@ -110,12 +97,9 @@ function handleKeyDown(e: KeyboardEvent): void {
   const state = getState();
   const id = state.active;
   const pane = state.panes[id];
-  // The terminal owns every key it receives. Even when focus sits on a button,
-  // file-list shortcuts must not act on a pane that shows no listing.
   if (pane.view === "terminal") return;
   const visible = visibleEntries(pane.entries, pane.sortKey, pane.sortDir, state.showHidden, state.foldersFirst);
 
-  // Locked selection movement keeps its original code path.
   if (key === "up" || key === "down" || key === "shift+up" || key === "shift+down") {
     const extend = key.startsWith("shift+");
     e.preventDefault();
@@ -148,8 +132,6 @@ function handleKeyDown(e: KeyboardEvent): void {
       selectAll(id, visible);
       return;
     case "navigation.clearSelection":
-      // Escape stays un-prevented, as before, so surrounding controls keep
-      // their own Escape handling when the selection is already clear.
       clearSelection(id);
       return;
     case "navigation.toggleHidden":
@@ -157,7 +139,6 @@ function handleKeyDown(e: KeyboardEvent): void {
       setShowHidden(!state.showHidden);
       return;
     case "files.rename":
-      // Finder convention: Enter renames (plan §9.3); ⌘↓/⌘O opens.
       if (!key.split("+").includes("cmd") && pane.selected.size === 1) {
         e.preventDefault();
         beginRename(id);
@@ -202,16 +183,10 @@ function handleKeyDown(e: KeyboardEvent): void {
   }
 }
 
-/**
- * Hold a value on screen for one exit transition after it clears. The pending
- * skeleton hands off to the real pane while it fades instead of cutting over.
- */
 function useHeldValue<T>(value: T | null, holdMs: number): T | null {
   const [held, setHeld] = useState<T | null>(value);
   const [previous, setPrevious] = useState<T | null>(value);
 
-  // Derive during render (React's "adjust state on prop change" pattern) so a
-  // new attempt is on screen immediately; only the exit waits on a timer.
   if (value !== previous) {
     setPrevious(value);
     if (value !== null) setHeld(value);
@@ -230,13 +205,9 @@ function App(): React.JSX.Element {
   const app = useAppState();
   const right = app.panes.right;
   const pendingRight = app.connecting?.paneId === "right" ? app.connecting : null;
-  // The placeholder covers the handshake and the first listing fetch. Once the
-  // listing lands the real pane mounts beneath it and the placeholder fades.
   const skeletonLive = pendingRight !== null && right.cwd === "";
   const heldAttempt = useHeldValue(skeletonLive ? pendingRight : null, 190);
   const skeletonLeaving = heldAttempt !== null && !skeletonLive;
-  // Keep the slot while the placeholder fades, including when a failed attempt
-  // has no pane behind it; it collapses once the fade ends.
   const hasRightPane = right.backend.kind !== "none" || heldAttempt !== null;
 
   useEffect(() => {
@@ -253,11 +224,6 @@ function App(): React.JSX.Element {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
-  // ⌘W arrives from the app menu (accelerators outrun renderer keydowns) and
-  // belongs to the file browser only: it closes the selected remote pane and
-  // never the window itself (a local pane leaves it a no-op). With the
-  // Settings modal open the pane behind still disconnects and the modal
-  // stays up.
   useEffect(() => {
     return window.pallet.window.onCloseRequest(() => {
       const state = getState();
@@ -267,8 +233,6 @@ function App(): React.JSX.Element {
     });
   }, []);
 
-  // ⌘, opens the Settings modal; a retrigger while it is open is a no-op
-  // (setting the same state changes nothing).
   useEffect(() => {
     return window.pallet.window.onSettingsOpen(() => setSettingsOpen(true));
   }, []);
@@ -297,7 +261,6 @@ function App(): React.JSX.Element {
           )}
           <Inspector />
         </div>
-        {/* Floats over the panes in a bottom corner; the panes stay usable around it. */}
         <TransferPanel />
         <ConnectDialog />
         <GoToDialog />

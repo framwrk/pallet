@@ -1,12 +1,7 @@
-/**
- * Renderer terminal state: which SFTP panes show a shell, and the output sinks
- * that hand main-process bytes to the right xterm instance.
- */
 import { type PaneId, getState, isModalOpen, pushToast, setPaneTerminal } from "./pane.store";
 
 type Sink = (data: Uint8Array) => void;
 
-/** Registered by TerminalView before it asks main to open the shell. */
 const sinks = new Map<string, Sink>();
 
 let bound = false;
@@ -41,7 +36,6 @@ export function toggleTerminal(paneId: PaneId): void {
 
   if (pane.view === "terminal") {
     setPaneTerminal(paneId, { view: "files" });
-    // Give the keyboard back to the listing the terminal replaced.
     requestAnimationFrame(() => {
       document.querySelector<HTMLElement>(`[data-pane="${paneId}"] [role="grid"]`)?.focus({ preventScroll: true });
     });
@@ -51,7 +45,6 @@ export function toggleTerminal(paneId: PaneId): void {
     setPaneTerminal(paneId, { view: "terminal" });
     return;
   }
-  // No shell exists yet, so the file session has to be up.
   if (pane.backend.status !== "connected") return;
   setPaneTerminal(paneId, { view: "terminal", terminalId: crypto.randomUUID() });
 }

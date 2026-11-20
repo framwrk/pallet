@@ -32,20 +32,16 @@ const LIST_ID = "transfer-panel-jobs";
 
 /** CSS variable the toast stacks read to sit above a panel in their corner. */
 export const TOAST_CLEARANCE_VAR = "--transfer-panel-clearance";
-/** Space between the panel and toasts stacked above it. */
 const PANEL_GAP_PX = 8;
 
-/** Clicks on Remove this soon after a job ends are the tail of a Cancel double-click. */
 const REMOVE_GUARD_MS = 400;
 
-/** Jobs queue for a session slot; items also queue while waiting for a worker. */
 type RowState = TransferState;
 
 function formatSpeed(bytesPerSec: number): string {
   return bytesPerSec > 0 ? `${formatBytes(bytesPerSec)}/s` : "0 B/s";
 }
 
-/** Stats start at zero until enough samples exist; an em dash is quieter than "0 B/s". */
 function formatStatSpeed(bytesPerSec: number): string {
   return bytesPerSec > 0 ? formatSpeed(bytesPerSec) : "—";
 }
@@ -61,7 +57,6 @@ function formatDuration(ms: number): string {
   return rest === 0 ? `${hours}h` : `${hours}h ${rest}m`;
 }
 
-/** Ticks once a second while the stats panel is open, for live elapsed time. */
 function useNow(intervalMs = 1000): number {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -87,9 +82,6 @@ function iconTone(state: RowState): string {
   }
 }
 
-/** Every state's icon is stacked in the same well, so a state change is a
- * crossfade with a slight scale and blur instead of a hard swap
- * (DESIGN.md › Motion). Completed pulses once as the success confirmation. */
 const STATE_ICON_DEFS: { key: string; states: RowState[]; Icon: typeof CheckCircle2 }[] = [
   { key: "completed", states: ["completed"], Icon: CheckCircle2 },
   { key: "failed", states: ["failed"], Icon: AlertCircle },
@@ -150,7 +142,6 @@ function barTone(state: RowState): string {
   }
 }
 
-/** Read-back progress never contributes to copy totals or throughput. */
 function verificationText(files: TransferVerificationProgress[] | undefined): string | null {
   if (!files?.length) return null;
   const checked = files.reduce((sum, file) => sum + file.checkedBytes, 0);
@@ -158,7 +149,6 @@ function verificationText(files: TransferVerificationProgress[] | undefined): st
   return `Verifying… ${formatBytes(checked)} of ${formatBytes(total)} checked · ${files.map((file) => file.relPath).join(", ")}`;
 }
 
-/** Bytes and rate shown at the end of a job's title line. */
 function jobSummary(job: TransferJobSnapshot): string {
   const bytes = job.totalBytes > 0 ? `${formatBytes(job.doneBytes)} of ${formatBytes(job.totalBytes)}` : null;
   switch (job.state) {
@@ -183,7 +173,6 @@ function jobSummary(job: TransferJobSnapshot): string {
   }
 }
 
-/** Secondary line: what the job is doing, or what it is waiting on. */
 function jobDetail(job: TransferJobSnapshot): { text: string; full: string; destructive: boolean } {
   if (job.state === "failed") {
     const error = job.errors[0]?.message;
@@ -225,7 +214,6 @@ function jobDetail(job: TransferJobSnapshot): { text: string; full: string; dest
   }
 }
 
-/** What a progress bar announces, matching what the row shows. */
 function progressValueText(state: RowState, pct: number, sized: boolean): string {
   switch (state) {
     case "queued":
@@ -247,7 +235,6 @@ function progressValueText(state: RowState, pct: number, sized: boolean): string
   }
 }
 
-/** Item state plus the job-level pause/scan cues that apply while it waits. */
 function itemDisplayState(job: TransferJobSnapshot, item: TransferItemSnapshot): RowState {
   if (item.state === "running" && job.state === "paused") return "paused";
   if (item.state === "running" && job.state === "waiting") return "waiting";
@@ -279,7 +266,6 @@ function itemSummary(item: TransferItemSnapshot, state: RowState, job: TransferJ
   return item.state === "skipped" ? "Skipped" : (bytes ?? "Canceled");
 }
 
-/** Secondary line for one item: its live file, or what it is waiting on. */
 function itemDetail(
   job: TransferJobSnapshot,
   item: TransferItemSnapshot,
@@ -335,7 +321,6 @@ function itemDetail(
   }
 }
 
-/** A compact confirmed-throughput line for the expanded row. */
 function SpeedGraph({ points }: { points: TransferSpeedPoint[] }): React.JSX.Element {
   const last = points[points.length - 1];
   if (points.length < 2 || !last) {
@@ -346,7 +331,6 @@ function SpeedGraph({ points }: { points: TransferSpeedPoint[] }): React.JSX.Ele
     );
   }
 
-  // The first point is the zero-speed origin, not a measured interval.
   const measured = points.filter((point) => point.elapsedMs > 0);
   const samples = measured.length > 0 ? measured : points;
   const peak = Math.max(...samples.map((point) => point.bytesPerSec), 0);
@@ -450,7 +434,6 @@ function AdvancedStats({
   const now = useNow();
   const elapsedMs = Math.max(0, (finishedAt ?? now) - startedAt);
   const remainingBytes = Math.max(0, totalBytes - doneBytes);
-  // The trailing average smooths out per-second noise better than the live rate.
   const estimateRate = speedStats.recentAverageBytesPerSec;
   const etaMs = state === "running" && remainingBytes > 0 && estimateRate > 0 ? (remainingBytes / estimateRate) * 1000 : null;
   const timeLeft =
@@ -533,10 +516,6 @@ function AdvancedStats({
   );
 }
 
-/**
- * Move focus to the job's cancel/remove button, which stays mounted, before the
- * clicked button unmounts with the state change.
- */
 function focusJobPrimary(from: HTMLElement): void {
   from.closest("[data-job-row]")?.querySelector<HTMLElement>("[data-row-primary]")?.focus();
 }
@@ -549,7 +528,6 @@ function RowAction({
 }: {
   label: string;
   onClick: (event: React.MouseEvent<HTMLButtonElement>) => void;
-  /** The job's cancel/remove button: always mounted, so focus can land on it. */
   primary?: boolean;
   children: React.ReactNode;
 }): React.JSX.Element {
@@ -560,7 +538,6 @@ function RowAction({
       title={label}
       aria-label={label}
       data-row-primary={primary || undefined}
-      // A held Enter or Space must not repeat into whatever button replaces this one; other keys still repeat.
       onKeyDown={(event) => {
         if (event.repeat && (event.key === "Enter" || event.key === " ")) event.preventDefault();
       }}
@@ -660,7 +637,6 @@ function ItemRow({
             <div
               className={cn(
                 "h-full rounded-full",
-                // Bridge the queue's 100 ms counter updates without easing to a stop between them.
                 state === "running" && "transition-[width] duration-300 ease-linear motion-reduce:transition-none",
                 barTone(state),
               )}
@@ -714,7 +690,6 @@ function ItemRow({
         )}
       </div>
       <div className="flex shrink-0 items-center gap-0.5">
-        {/* One slot for pause and resume, so toggling keeps keyboard focus. */}
         {(canPauseItem || canResumeItem) && (
           <RowAction
             key="pause-resume"
@@ -814,13 +789,11 @@ function JobRow({ job, index }: { job: TransferJobSnapshot; index: number }): Re
           )}
         </div>
         <div className="flex shrink-0 items-center gap-0.5">
-          {/* One slot for pause and resume, so toggling keeps keyboard focus. */}
           {(job.state === "running" || (job.state === "paused" && !job.autoPaused)) && (
             <RowAction
               key="pause-resume"
               label={job.state === "paused" ? "Resume transfer" : "Pause transfer"}
               onClick={(event) => {
-                // The second click of a double-click on Retry can land here once the job restarts.
                 if (event.detail > 1) return;
                 jobAction(job.id, job.state === "paused" ? "resume" : "pause");
               }}
@@ -840,7 +813,6 @@ function JobRow({ job, index }: { job: TransferJobSnapshot; index: number }): Re
               <RotateCcw className="size-3.5" />
             </RowAction>
           )}
-          {/* One slot for cancel and remove keeps focus; the guard stops a double-click on Cancel from removing. */}
           <RowAction
             key="cancel-remove"
             primary
@@ -875,10 +847,6 @@ function JobRow({ job, index }: { job: TransferJobSnapshot; index: number }): Re
   );
 }
 
-/**
- * Publish the panel's height while it sits in the toasts' corner, so toasts
- * stack above it instead of covering it.
- */
 function useToastClearance(ref: React.RefObject<HTMLElement | null>, active: boolean): void {
   useLayoutEffect(() => {
     const root = document.documentElement;
@@ -904,7 +872,6 @@ export function TransferPanel(): React.JSX.Element | null {
   const { jobs, panelExpanded, announcement } = useTransfers();
   const { transferPanelSide } = useAppState();
   const panelRef = useRef<HTMLElement>(null);
-  // Toasts live in the bottom-right corner; only a right-side panel needs to make room.
   useToastClearance(panelRef, jobs.length > 0 && transferPanelSide === "right");
   if (jobs.length === 0) return null;
 
@@ -933,7 +900,6 @@ export function TransferPanel(): React.JSX.Element | null {
       aria-label="Transfer queue"
       className={cn(
         "pallet-popover animate-in fade-in slide-in-from-bottom-2 ease-entrance absolute bottom-3 z-40 flex max-h-[calc(100%-1.5rem)] flex-col overflow-hidden rounded-[14px] border duration-[240ms]",
-        // Width eases between the summary card and the full panel.
         "ease-onscreen transition-[width] motion-reduce:animate-none motion-reduce:transition-none",
         transferPanelSide === "left" ? "left-3" : "right-3",
         panelExpanded
@@ -941,7 +907,6 @@ export function TransferPanel(): React.JSX.Element | null {
           : "w-[min(22rem,calc(100%-1.5rem))] duration-[190ms]",
       )}
       onKeyDown={(event) => {
-        // Escape inside the panel tucks it away without reaching pane shortcuts.
         if (event.key !== "Escape" || !panelExpanded) return;
         event.stopPropagation();
         setPanelExpanded(false);
@@ -956,7 +921,6 @@ export function TransferPanel(): React.JSX.Element | null {
       </p>
       <div
         className={cn("flex h-10 shrink-0 items-center gap-2 pr-1.5 pl-3", !panelExpanded && "cursor-pointer")}
-        // The whole collapsed card is a mouse target; keyboard users use the toggle button.
         onClick={panelExpanded ? undefined : () => setPanelExpanded(true)}
       >
         <ArrowLeftRight
@@ -1020,10 +984,6 @@ export function TransferPanel(): React.JSX.Element | null {
       )}
       <div
         className={cn(
-          // Rows stay mounted; the clip animates height to and from auto (240ms in,
-          // 190ms out, ease in out). A 0fr/1fr grid-row collapse is not used: its track
-          // and the panel's own height ease on different curves, so the glass outran
-          // the rows and left an empty band mid-animation.
           "ease-onscreen min-h-0 overflow-hidden transition-[height] [interpolate-size:allow-keywords] motion-reduce:transition-none",
           panelExpanded ? "h-auto duration-[240ms]" : "h-0 duration-[190ms]",
         )}
@@ -1031,9 +991,6 @@ export function TransferPanel(): React.JSX.Element | null {
         <div
           id={LIST_ID}
           role="list"
-          // Rows sit on a stable surface inside the glass shell (DESIGN.md › The Glass Has a Job).
-          // The list grows with its jobs and scrolls only once the panel would reach the
-          // toolbar: 11rem leaves room for the toolbar, the panel header, and margins.
           className="bg-popover max-h-[calc(100vh-11rem)] overflow-y-auto overscroll-contain border-t"
           aria-hidden={!panelExpanded || undefined}
           inert={!panelExpanded}

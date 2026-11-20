@@ -1,10 +1,3 @@
-/**
- * S3 as a TransferEndpoint. Reads honor byte ranges (bounded previews and full
- * SHA-256 passes), while writes are streamed multipart uploads that finish only
- * after the SDK confirms completion. `supportsRanges` stays false because v1
- * does not persist multipart upload ids or resume a partial object; an
- * interrupted file that involves S3 restarts from byte zero.
- */
 import { DeleteObjectCommand, GetObjectCommand, HeadObjectCommand, type S3Client } from "@aws-sdk/client-s3";
 import {
   type EndpointStat,
@@ -20,7 +13,6 @@ import { normalizeS3Error, s3Call, s3Error } from "./s3-client";
 import type { SessionManager } from "../sftp/session-manager";
 import { Upload } from "@aws-sdk/lib-storage";
 
-/** Multipart part size for uploads; keeps memory bounded per worker. */
 const UPLOAD_PART_SIZE = 8 * 1024 * 1024;
 const UPLOAD_QUEUE_SIZE = 2;
 
@@ -131,7 +123,6 @@ export class S3Endpoint implements TransferEndpoint {
       try {
         await createFolder(client, target, path);
       } catch (err) {
-        // Lost a race with a concurrent mkdir: fine if the folder exists now.
         if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
         const now = await statPathOrNull(client, target, path);
         if (now?.kind !== "dir") throw err;
@@ -221,7 +212,6 @@ export class S3Endpoint implements TransferEndpoint {
           return;
         }
         input.end();
-        // Finish only after the SDK confirms PutObject/multipart completion.
         completion.then(
           () => {
             settled = true;
@@ -262,7 +252,6 @@ export class S3Endpoint implements TransferEndpoint {
       const fromKey = keyForPath(target.location, normalizePath(from));
       const toKey = keyForPath(target.location, normalizePath(to));
       if (fromKey === toKey) return;
-      // Copy first: the existing final object survives a failed copy.
       await copyObject(client, target.bucket, fromKey, toKey);
       await s3Call(() => client.send(new DeleteObjectCommand({ Bucket: target.bucket, Key: fromKey })));
     });

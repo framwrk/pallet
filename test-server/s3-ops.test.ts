@@ -30,7 +30,6 @@ interface Call {
   input: CommandInput;
 }
 
-/** In-memory S3 that switches on command constructor name and input. */
 class FakeS3 implements S3Like {
   readonly objects = new Map<string, FakeObject>();
   readonly calls: Call[] = [];
@@ -51,7 +50,6 @@ class FakeS3 implements S3Like {
     });
   }
 
-  /** Store metadata only, so a "large" object needs no large buffer. */
   putSize(key: string, size: number): void {
     this.objects.set(key, {
       size,

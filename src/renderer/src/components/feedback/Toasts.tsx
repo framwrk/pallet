@@ -17,13 +17,8 @@ export function Toasts(): React.JSX.Element | null {
           key={t.id}
           className={cn(
             "bg-popover flex items-start gap-2 rounded-lg border p-3 text-sm shadow-lg",
-            // While exiting (connection completed, errored out, dismissed) the
-            // row runs a 145ms outro — 20% shorter than the 180ms entrance
-            // (DESIGN.md › Motion) — and is removed right after.
             t.exiting &&
               "animate-out fade-out-0 zoom-out-95 slide-out-to-bottom-1 fill-mode-both ease-entrance pointer-events-none duration-[145ms]",
-            // Entrance from below, staggered 30ms per existing toast so a
-            // burst settles in sequence (DESIGN.md › Motion).
             !t.exiting &&
               "animate-in fade-in zoom-in-95 slide-in-from-bottom-1 fill-mode-both ease-entrance pointer-events-auto duration-[180ms]",
             t.kind === "error" ? "border-destructive/40" : "border-border",

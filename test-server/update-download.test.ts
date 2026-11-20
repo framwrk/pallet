@@ -1,9 +1,3 @@
-/**
- * Exercise the update handoff without a real DMG. The renderer only supplies a
- * version: main resolves the release, verifies the SHA-256, and mounts the
- * image. These tests cover the open/quit behavior plus invalid versions,
- * traversal, checksum mismatches, and oversized/incomplete/stalled responses.
- */
 import {
   MAX_UPDATE_BYTES,
   UPDATE_DOWNLOAD_TIMEOUT_MS,
@@ -122,8 +116,6 @@ beforeEach(() => {
   openPath = async () => "";
   rmSync(dest, { force: true });
   rmSync(part, { force: true });
-  // A verified image already in Downloads is the common happy path; individual
-  // tests remove it when they want to exercise the download itself.
   writeFileSync(dest, image);
   jest.useFakeTimers();
 });
@@ -194,7 +186,6 @@ test("an open that never completes times out without quitting", async () => {
   expect(quitCalls).toBe(0);
   expect(states.at(-1)?.status).toBe("error");
 
-  // A late success must not quit after the user has already been told it failed.
   finishOpen("");
   await Promise.resolve();
   jest.advanceTimersByTime(1_000);

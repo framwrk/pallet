@@ -1,4 +1,3 @@
-/** Renderer-side SFTP session flow: connect/disconnect panes, events (M3). */
 import {
   type PaneId,
   beginConnection,
@@ -18,7 +17,6 @@ import type { ConnectProfile } from "@shared/sftp/sftp.types";
 import { expandHome } from "@shared/path/path.utils";
 
 let eventsBound = false;
-/** Last local directory shown by the left pane, restored after a remote visit. */
 let leftLocalCwd: string | null = null;
 
 /** Remember the current local directory before replacing the left pane with a server. */
@@ -66,8 +64,6 @@ export async function connectRemote(profile: ConnectProfile, localPath?: string,
     const result = await window.pallet.sftp.connect(profile, attemptId);
     await dropIfCancelled(attemptId, result.sessionId);
 
-    // Keep the current workspace intact while connecting. Once the replacement
-    // succeeds, retire the old session before mounting the new one.
     if (previousBackend.kind === "sftp" && previousBackend.sessionId !== result.sessionId) {
       try {
         await window.pallet.sftp.disconnect(previousBackend.sessionId);
@@ -95,12 +91,10 @@ export async function connectRemote(profile: ConnectProfile, localPath?: string,
         : {}),
     });
     setActive(paneId);
-    // The session is live, so the progress toast can go before the listing loads.
     dismissConnectionToast();
     await navigate(paneId, result.initialPath, "replace");
     await closeIfCancelled(attemptId, paneId);
     closeQuickConnect();
-    // A favorite's local path only belongs to a local left pane.
     if (paneId === "right" && localPath && getState().panes.left.backend.kind === "local") {
       await navigate("left", expandHome(localPath, await window.pallet.fs.homeDir()));
     }
@@ -155,7 +149,6 @@ export async function disconnectPane(paneId: PaneId): Promise<void> {
   if (paneId === "left") {
     const restore = leftLocalCwd;
     setBackend("left", { kind: "local" });
-    // The local disk returns to the left, so retire the copy the sidebar put right.
     if (getState().panes.right.backend.kind === "local") setBackend("right", { kind: "none" });
     setActive("left");
     const home = await window.pallet.fs.homeDir();

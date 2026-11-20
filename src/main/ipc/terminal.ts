@@ -22,8 +22,6 @@ export const terminalSessions = new TerminalSessions(sessionManager, {
   onExit: (event: TerminalExitEvent) => broadcast(TerminalChannels.exit, event),
 });
 
-// A closed file session takes its terminal with it; the renderer has already
-// reset the pane on the same status event.
 onSessionStatus((event) => {
   if (event.status === "disconnected") terminalSessions.closeForSession(event.sessionId);
 });
@@ -34,8 +32,6 @@ export function registerTerminalHandlers(): void {
   );
   handle(TerminalChannels.close, (terminalId: string) => terminalSessions.close(terminalId));
 
-  // Keystrokes and resizes are fire-and-forget: ordered, and no per-key round
-  // trip. An unknown id is a silent no-op because the shell may have exited.
   ipcMain.on(TerminalChannels.write, (_event, terminalId: string, data: string) => {
     terminalSessions.write(terminalId, data);
   });

@@ -41,7 +41,6 @@ function SidebarItem({
   path: string;
   currentPath: string;
   disabled?: boolean;
-  /** Right-click handler for rows that own a context menu (volumes). */
   onContextMenu?: (event: React.MouseEvent) => void;
 }): React.JSX.Element {
   const isCurrent = currentPath === path;
@@ -72,7 +71,6 @@ function SidebarItem({
   );
 }
 
-/** Endpoint's host (including port), or the raw value when it cannot be parsed. */
 function endpointHost(endpoint: string): string {
   try {
     return new URL(endpoint).host || endpoint;
@@ -117,16 +115,13 @@ function FavoriteItem({
   onDrop: () => void;
   onDragEnd: () => void;
   dragTarget: boolean;
-  /** This favorite is the connection currently opening. */
   connecting: boolean;
-  /** Another connection is opening, so this row cannot start one. */
   disabled: boolean;
 }): React.JSX.Element {
   return (
     <button
       type="button"
       draggable
-      // The opening row stays clickable: clicking it cancels the attempt.
       disabled={disabled && !connecting}
       aria-busy={connecting}
       aria-label={connecting ? `Cancel connecting to ${favorite.name}` : undefined}
@@ -193,8 +188,6 @@ export function Sidebar(): React.JSX.Element {
   const connecting = app.connecting;
   const connectKey = bindings.effective["panels.connect"];
   const connectHint = connectKey ? displayParts(connectKey).join("") : null;
-  // Devices and folders drive the local pane: the left disk, or the right one
-  // while the left pane is a server and the right is free.
   const localId = localPaneId();
   const common = {
     currentPath: localId ? app.panes[localId].cwd : "",
@@ -204,9 +197,6 @@ export function Sidebar(): React.JSX.Element {
   const dragIndex = useRef<number | null>(null);
   const [dropIndex, setDropIndex] = useState<number | null>(null);
 
-  // Tab inside the sidebar cycles its own items (Shift reverses, both wrap)
-  // instead of reaching the window-level pane switch, which respects
-  // defaultPrevented and stays out of the way.
   function cycleSidebarFocus(nav: HTMLElement, back: boolean): void {
     const items = Array.from(nav.querySelectorAll<HTMLElement>("button:not([disabled])"));
     if (items.length === 0) return;

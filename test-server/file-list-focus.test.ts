@@ -3,7 +3,6 @@ import { localCases } from "./ui/local";
 import { mkdtemp } from "node:fs/promises";
 import { test } from "bun:test";
 
-// Backwards-compatible opt-in entry point; the maintained command is test:ui:local.
 test.skipIf(process.platform !== "darwin" || process.env.PALLET_TEST_UI !== "1")(
   "real Electron local UI regressions (including rename focus and narrow filenames)",
   async () => {

@@ -41,13 +41,11 @@ function defaultPort(protocol: ConnectionProtocol): number {
   return 21;
 }
 
-/** Absolute endpoint URL, assuming HTTPS when the user left the scheme off. */
 function normalizeS3Endpoint(endpoint: string): string {
   if (!endpoint) return "";
   return /^[a-z][a-z0-9+.-]*:\/\//i.test(endpoint) ? endpoint : `https://${endpoint}`;
 }
 
-/** Host (including port) of an absolute endpoint URL, or null when unparsable. */
 function endpointHost(endpoint: string): string | null {
   try {
     const url = new URL(normalizeS3Endpoint(endpoint));
@@ -126,7 +124,6 @@ function Row({
   className,
 }: {
   label: string;
-  /** Help text shown from an info icon beside the label. */
   hint?: string;
   children: React.ReactNode;
   layout?: "aligned" | "stacked";
@@ -235,9 +232,7 @@ export function ConnectForm({
   const [addToFavorites, setAddToFavorites] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  /** Profile of the failed test; unchanged values may be saved without retesting. */
   const [failedProfileKey, setFailedProfileKey] = useState<string | null>(null);
-  // Closing the dialog while a test dials must not save behind the user's back.
   const mounted = useRef(true);
   useEffect(() => {
     mounted.current = true;
@@ -246,7 +241,6 @@ export function ConnectForm({
     };
   }, []);
   const connecting = useAppState().connecting;
-  /** A different connection is opening, so this form's Connect action waits. */
   const connectionBlocked = !editing && connecting !== null && !busy;
 
   const secretPlaceholder =
@@ -254,7 +248,6 @@ export function ConnectForm({
   const s3SecretPlaceholder = seedS3?.secretStored ? "Leave blank to keep saved" : "";
   const s3EndpointValue = s3Endpoint.trim();
   const s3RegionValue = s3Region.trim();
-  /** Custom endpoints default the signing region so non-AWS users can leave it blank. */
   const s3RegionResolved = s3RegionValue || (s3EndpointValue ? "us-east-1" : "");
 
   function changeProtocol(nextProtocol: ConnectionProtocol): void {
@@ -270,7 +263,6 @@ export function ConnectForm({
     setError(null);
   }
 
-  /** Switching auth modes never carries a revealed secret across. */
   function changeAuthMethod(nextMethod: "password" | "key" | "agent"): void {
     setShowSecret(false);
     setAuthMethod(nextMethod);
@@ -290,12 +282,10 @@ export function ConnectForm({
     if (!server.trim() || !username.trim()) return "Server and username are required";
     if (!Number.isInteger(portNum) || portNum < 1 || portNum > 65535) return "Port must be 1–65535";
     if (authMethod === "key" && !keyPath.trim()) return "Choose a private key file";
-    // A saved favorite cannot ask for the password later, so require one now.
     if (creating && authMethod === "password" && !password) return "Password is required";
     return null;
   }
 
-  /** S3's display host: the endpoint's host, or the AWS regional endpoint. */
   function s3Host(): string {
     return endpointHost(s3EndpointValue) ?? `s3.${s3RegionResolved}.amazonaws.com`;
   }
@@ -338,10 +328,6 @@ export function ConnectForm({
     };
   }
 
-  /**
-   * The secret to persist alongside a favorite: password, key passphrase, or
-   * the S3 credential pair. A blank S3 secret field means "keep" while editing.
-   */
   function enteredSecret(): FavoriteSecret | undefined {
     if (protocol === "s3") {
       if (!secretAccessKey) return undefined;
@@ -351,7 +337,6 @@ export function ConnectForm({
     return secret.length > 0 ? secret : undefined;
   }
 
-  /** Current form values as the profile the session manager dials. */
   function buildProfile(): ConnectProfile {
     const keepaliveSeconds = Number.parseInt(keepalive, 10);
     return protocol === "s3"
@@ -405,7 +390,6 @@ export function ConnectForm({
     setError(null);
     try {
       await connectRemote(buildProfile(), targetPane === "right" ? localPathField.trim() || undefined : undefined, targetPane);
-      // Only persist a favorite once the server has accepted the connection.
       if (addToFavorites) {
         const saved = await saveFavorite(favoriteInput(), enteredSecret());
         if (saved) pushToast(`Added “${saved.name}” to Favorites`, "info");
@@ -423,8 +407,6 @@ export function ConnectForm({
       return;
     }
     const profileKey = creating ? JSON.stringify(buildProfile()) : null;
-    // A failure belongs to the values that produced it: saving again unchanged
-    // is the user's explicit "save anyway", while edited values retest first.
     const testing = creating && profileKey !== failedProfileKey;
     setBusy(true);
     setError(null);
@@ -1150,7 +1132,6 @@ export function ConnectForm({
             variant="outline"
             size="sm"
             className="h-8 text-[13px]"
-            // While this form's connection opens, Cancel stops it instead of closing.
             disabled={busy && !isPane}
             onClick={isPane && busy ? cancelConnection : onClose}
             title={isPane && busy ? "Stop connecting" : undefined}

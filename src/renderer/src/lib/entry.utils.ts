@@ -23,8 +23,6 @@ export function visibleEntries(
     let cmp: number;
     switch (sortKey) {
       case "size":
-        // Folder sizes aren't computed; fall back to name among folders. When
-        // folders are mixed in, use their size so the order stays coherent.
         cmp = foldersFirst && da ? collator.compare(a.name, b.name) : a.size - b.size;
         break;
       case "mtime":

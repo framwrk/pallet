@@ -1,8 +1,3 @@
-/**
- * Interactive shells against the Compose SSH server. Like the UI suites, these
- * need Docker; without a reachable test server they report a skip rather than
- * a failure, so ordinary offline CI keeps its no-Docker contract.
- */
 import type { ConnectProfile, TerminalExitEvent } from "../src/shared/sftp/sftp.types";
 import { SessionManager } from "../src/main/services/sftp/session-manager";
 import { SftpService } from "../src/main/services/sftp/sftp.service";
@@ -113,7 +108,6 @@ dockerTest("exiting the shell reports exactly one clean exit", async () => {
     await terminal.sessions.open("t3", sessionId, 80, 24);
     terminal.sessions.write("t3", "exit\n");
     await until(() => terminal.events.length > 0, "exit event");
-    // Give a duplicate channel/client-close path time to surface.
     await new Promise((resolve) => setTimeout(resolve, 250));
     assert.equal(terminal.events.length, 1);
     assert.equal(terminal.events[0].reason, "exit");
@@ -133,7 +127,6 @@ dockerTest("closing for a disconnected session ends the shell without an exit ev
     terminal.sessions.closeForSession(sessionId);
     await new Promise((resolve) => setTimeout(resolve, 250));
     assert.deepEqual(terminal.events, []);
-    // The session slot was released: a repeat open fails at the session, not EEXIST.
     await assert.rejects(terminal.sessions.open("t5", sessionId, 80, 24), /Unknown session/);
   } finally {
     terminal.sessions.closeAll();

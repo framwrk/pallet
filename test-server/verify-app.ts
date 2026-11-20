@@ -20,7 +20,6 @@ const profiles: { protocol: ConnectionProtocol; port: number; remotePath: string
     protocol: "ftps",
     port: Number(process.env.PALLET_TEST_FTPS_PORT ?? 2122),
     remotePath: "/",
-    // The local server's certificate is intentionally self-signed.
     tlsRejectUnauthorized: false,
   },
 ];
@@ -46,7 +45,6 @@ for (const item of profiles) {
   const payload = Buffer.from(`${item.protocol} application transfer verification\n`);
 
   try {
-    // These overlap intentionally: FTP uses one serialized browse client.
     const [listing, readmeStat] = await Promise.all([
       service.list(sessionId, initialPath),
       service.stat(sessionId, `${base}/README.txt`),

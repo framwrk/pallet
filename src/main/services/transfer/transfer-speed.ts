@@ -1,8 +1,3 @@
-/**
- * Pure throughput statistics for the transfer panel. The queue stores one
- * sample per second while a job runs; this module turns those samples into the
- * average/median figures shown when a row is expanded.
- */
 import { SPEED_GRAPH_MAX_POINTS, SPEED_STATS_WINDOW_MS } from "@shared/transfer/transfer.constants";
 import type { TransferSpeedPoint, TransferSpeedStats } from "@shared/transfer/transfer.types";
 
@@ -63,8 +58,6 @@ export function speedStatsFromSamples(samples: readonly SpeedSample[], windowMs 
   for (let i = 1; i < samples.length; i++) {
     const activeMs = samples[i].activeMs;
     if (activeMs <= 0) continue;
-    // A rollback can lower doneBytes between samples, so count progress rather
-    // than a negative delta; retried bytes still count as throughput.
     const bytes = Math.max(0, samples[i].bytes - samples[i - 1].bytes);
     totalBytes += bytes;
     totalMs += activeMs;
@@ -77,11 +70,7 @@ export function speedStatsFromSamples(samples: readonly SpeedSample[], windowMs 
   const recentRates: number[] = [];
   for (let i = samples.length - 1; i >= 1; i--) {
     const activeMs = samples[i].activeMs;
-    // A zero-duration sample marks a pause or sampling gap; stop rather than
-    // mixing pre-gap speeds into the trailing window.
     if (activeMs <= 0) break;
-    // Always keep at least one interval, even when a caller shrinks the
-    // window below the sampling cadence.
     if (recentMs > 0 && recentMs + activeMs > windowMs) break;
     const bytes = Math.max(0, samples[i].bytes - samples[i - 1].bytes);
     recentBytes += bytes;

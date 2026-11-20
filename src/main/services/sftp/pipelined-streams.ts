@@ -12,7 +12,6 @@
 import { Readable, Writable } from "stream";
 import type { SFTPWrapper } from "ssh2";
 
-/** In-flight requests per stream: 32 × 128 KiB keeps ~4 MiB in flight. */
 const WINDOW = 32;
 const CHUNK = 128 * 1024;
 
@@ -70,7 +69,6 @@ export function createPipelinedWriteStream(
   });
 }
 
-/** Half-open byte range [start, end); end may be Infinity. */
 interface Range {
   start: number;
   end: number;
@@ -80,7 +78,6 @@ class ReadStream extends Readable {
   completed = false;
   private handle: Buffer | null;
   private ranges: Range[] = [];
-  /** Completed chunks waiting for their predecessors, keyed by offset. */
   private ready = new Map<number, Buffer>();
   private outstanding = 0;
   private nextPush: number;
@@ -111,7 +108,6 @@ class ReadStream extends Readable {
       const offset = range.start;
       const length = Math.min(CHUNK, range.end - offset);
       if (length <= 0) continue;
-      // Keep the unread tail of this range queued behind its issue.
       if (range.end > offset + length) this.ranges.unshift({ start: offset + length, end: range.end });
       this.outstanding++;
       const buffer = Buffer.allocUnsafe(length);
@@ -124,7 +120,6 @@ class ReadStream extends Readable {
         }
         const chunk = data ?? buffer.subarray(0, bytesRead);
         if (bytesRead <= 0) {
-          // EOF: no more requests make sense, drain what is buffered.
           this.sawEof = true;
           this.ranges.length = 0;
         } else {
@@ -175,11 +170,9 @@ class WriteStream extends Writable {
   private handle: Buffer | null;
   private pos: number;
   private acked: number;
-  /** Issued writes in offset order, used to advance the contiguous ack frontier. */
   private entries: { end: number; done: boolean }[] = [];
   private front = 0;
   private outstanding = 0;
-  /** The single _write callback Node is waiting on while the window is full. */
   private deferred: ((error?: Error | null) => void) | null = null;
   private finalCallback: ((error?: Error | null) => void) | null = null;
   private failure: Error | null = null;
@@ -230,7 +223,6 @@ class WriteStream extends Writable {
     else this.deferred = callback;
   }
 
-  /** Advance the confirmed frontier over every consecutive completed write. */
   private advanceAcked(): void {
     while (this.front < this.entries.length && this.entries[this.front].done) {
       this.acked = this.entries[this.front].end;
@@ -263,7 +255,6 @@ class WriteStream extends Writable {
     this.finalCallback = callback;
   }
 
-  /** All writes are acknowledged; CLOSE decides success (quota errors land here). */
   private finish(callback = this.finalCallback ?? undefined): void {
     this.finalCallback = null;
     const handle = this.handle;

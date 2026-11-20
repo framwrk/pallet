@@ -1,4 +1,3 @@
-/** App-wide preferences, persisted in the SQLite `preferences` table. */
 import type { SortDir, SortKey } from "../fs/fs.types";
 
 export type Appearance = "system" | "light" | "dark";

@@ -1,8 +1,3 @@
-/**
- * Object operations expressed once, independent of the session layer, so the
- * browsing service, transfer endpoint, sizing walker, and tests share the same
- * pagination, collision, and copy rules.
- */
 import {
   AbortMultipartUploadCommand,
   CompleteMultipartUploadCommand,
@@ -432,11 +427,9 @@ export async function renamePath(client: S3Like, target: S3Target, from: string,
     });
   }
 
-  // Snapshot the complete source key set before touching the destination.
   const sourceKeys = (await listAllKeys(client, target.bucket, fromPrefix)).map((object) => object.key);
   const moves = sourceKeys.map((key) => ({ from: key, to: `${toPrefix}${key.slice(fromPrefix.length)}` }));
 
-  // Preflight every destination so a collision cannot leave a half-copied move.
   for (const move of moves) {
     if (await headObject(client, target.bucket, move.to)) {
       throw Object.assign(new Error(`A destination object already exists: ${move.to}`), { code: "EEXIST" });
@@ -457,7 +450,6 @@ export async function renamePath(client: S3Like, target: S3Target, from: string,
     );
   }
 
-  // Only after every copy succeeded is it safe to remove the sources.
   await deleteKeys(
     client,
     target.bucket,

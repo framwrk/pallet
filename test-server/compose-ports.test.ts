@@ -4,7 +4,6 @@ import { readFileSync } from "node:fs";
 
 const compose = readFileSync(join(import.meta.dir, "..", "docker-compose.yml"), "utf8");
 
-// Host port mappings are the quoted list items under each service's `ports:` key.
 function publishedPorts(): string[] {
   const ports: string[] = [];
   let inPorts = false;

@@ -1,7 +1,3 @@
-/**
- * Renderer keybinding state: the effective bindings, a key → command lookup
- * for the dispatcher, and the recorder suspension flag.
- */
 import type { CommandId, KeybindingsState } from "@shared/keybindings/keybinding.types";
 import { KEYBINDING_COMMANDS, defaultBindings } from "@shared/keybindings/keybinding.constants";
 import { pushToast } from "./pane.store";

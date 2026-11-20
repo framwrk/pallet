@@ -1,7 +1,3 @@
-/**
- * Read-side SFTP operations over a session's browse channel (M3).
- * Electron-free so the Docker integration tests can exercise it directly.
- */
 import type { DirListing, Entry } from "@shared/fs/fs.types";
 import { type FileInfo, FileType, type Client as FtpClient } from "basic-ftp";
 import { isDirMode, kindFromMode } from "../../utils/file-mode";
@@ -94,7 +90,6 @@ export class SftpService {
       };
     });
 
-    // Resolve what symlinks point at (bounded), so the UI knows to descend.
     const links = entries.filter((e) => e.kind === "symlink");
     await mapLimit(links, SYMLINK_STAT_CONCURRENCY, async (entry) => {
       try {
@@ -172,8 +167,6 @@ export class SftpService {
     const sftp = this.sftp(sessionId);
     return new Promise((resolve, reject) => sftp.realpath(p, (err, resolved) => (err ? reject(err) : resolve(resolved))));
   }
-
-  // --- M6 write-side ops (browse channel; small metadata operations) -------
 
   mkdir(sessionId: string, p: string): Promise<void> {
     if (this.sessions.protocol(sessionId) === "s3") return this.s3.mkdir(sessionId, p);

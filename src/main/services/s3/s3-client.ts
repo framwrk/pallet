@@ -1,10 +1,3 @@
-/**
- * S3 client construction and the error boundary shared by browsing, transfers,
- * sizing, and editing.
- *
- * Credentials are always explicit: Pallet never consults environment
- * variables, shared config, or instance roles for an S3 connection.
- */
 import type { ConnectProfile, S3ConnectionOptions } from "@shared/sftp/sftp.types";
 import { S3Client, type S3ClientConfig } from "@aws-sdk/client-s3";
 

@@ -1,7 +1,3 @@
-/**
- * Host keys are stored per (host, port, key type), so a server that offers
- * more than one algorithm does not look like a changed fingerprint.
- */
 import { afterAll, beforeAll, expect, mock, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import Database from "better-sqlite3";
@@ -16,7 +12,6 @@ let initializeDatabase: typeof import("../src/main/services/database-schema").in
 let store: typeof import("../src/main/services/sftp/host-key-store");
 
 beforeAll(async () => {
-  // A database from before the migration: one row per host and port.
   db = new Database(databaseFile);
   db.exec(`
     CREATE TABLE host_keys (

@@ -30,7 +30,6 @@ export function ConnectDialog(): React.JSX.Element {
             </div>
           </div>
         </DialogHeader>
-        {/* Keyed so a favorite prefill reseeds the fields. */}
         <ConnectForm
           key={prefill?.id ?? "new"}
           editing={null}

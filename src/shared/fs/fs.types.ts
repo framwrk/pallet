@@ -1,11 +1,3 @@
-/**
- * Filesystem shapes shared across main, preload, and renderer — the same
- * types describe a local directory and a remote one, which is what lets a
- * pane switch backends without the UI knowing.
- *
- * This file must stay dependency-free: no Node imports, no Electron imports.
- */
-
 export type EntryKind = "file" | "dir" | "symlink";
 
 export interface Entry {

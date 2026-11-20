@@ -1,14 +1,3 @@
-/**
- * Update check: GitHub Releases, on launch + daily when automatic checks are
- * enabled, honoring the "receive prerelease updates" preference. Manual checks
- * run regardless. Non-blocking: failures are logged and swallowed; the renderer
- * only ever sees a toast.
- *
- * Pallet versions are strictly MAJOR.MINOR.PATCH, so a release whose tag
- * isn't that shape is ignored outright rather than guessed at. "Prerelease"
- * here is GitHub's own flag on a release — it is not encoded in the version
- * string, which never carries a suffix.
- */
 import { compareVersions, parseVersion } from "@shared/version/version.utils";
 import { getPreferences, setPreferenceRow } from "./prefs-store";
 import type { UpdateInfo } from "@shared/update/update.types";
@@ -39,9 +28,6 @@ export async function checkForUpdate(): Promise<UpdateInfo | null> {
   const releases = Array.isArray(body) ? body : [body];
   setPreferenceRow("updates.lastCheck", String(Date.now()));
 
-  // Pick the highest version, not merely the most recently published: a patch
-  // to an older line can be released after a newer minor. Tags that aren't
-  // MAJOR.MINOR.PATCH are dropped rather than compared.
   const current = app.getVersion();
   let best: { release: GithubRelease; version: string } | null = null;
   for (const release of releases) {
@@ -59,8 +45,6 @@ export async function checkForUpdate(): Promise<UpdateInfo | null> {
     version: best.version,
     url: best.release.html_url,
     prerelease: best.release.prerelease,
-    // electron-builder's dmg.artifactName is ${name}-${version}.${ext}; match
-    // loosely on extension so a rename upstream degrades to the web flow.
     dmgUrl: best.release.assets?.find((a) => a.name.endsWith(".dmg"))?.browser_download_url ?? null,
   };
 }

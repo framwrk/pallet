@@ -1,4 +1,3 @@
-/** Favorites CRUD + connect-by-favorite (M4). */
 import type { Favorite, FavoriteInput, FavoriteSecret } from "@shared/favorite/favorite.types";
 import {
   type PaneId,
@@ -98,7 +97,6 @@ export async function connectFavorite(favoriteId: string, paneId: PaneId = "righ
         : {}),
     });
     setActive(paneId);
-    // The session is live, so the progress toast can go before the listing loads.
     dismissConnectionToast();
     await navigate(paneId, result.initialPath, "replace");
     await closeIfCancelled(attemptId, paneId);
@@ -106,13 +104,12 @@ export async function connectFavorite(favoriteId: string, paneId: PaneId = "righ
     if (paneId === "right" && result.favorite.localPath && getState().panes.left.backend.kind === "local") {
       await navigate("left", expandHome(result.favorite.localPath, await window.pallet.fs.homeDir()));
     }
-    await loadFavorites(); // last-used ordering may have changed
+    await loadFavorites();
   } catch (err) {
     const e = err as Error & { code?: string };
     if (!isCurrentConnection(attemptId)) {
       // The user asked for this; nothing to report.
     } else if (e.code === "ENOSECRET") {
-      // No stored secret: show Quick Connect prefilled so the user can type it.
       needsSecret = true;
     } else {
       pushToast(e.message);

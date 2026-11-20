@@ -2,7 +2,6 @@ import { type SpeedSample, downsampleSpeedHistory, speedStatsFromSamples } from 
 import { describe, expect, test } from "bun:test";
 import { SPEED_STATS_WINDOW_MS } from "../src/shared/transfer/transfer.constants";
 
-/** Build one-second samples at the given bytes-per-second rates. */
 function samplesFromRates(rates: readonly number[], startBytes = 0): SpeedSample[] {
   const samples: SpeedSample[] = [{ bytes: startBytes, activeMs: 0 }];
   let bytes = startBytes;

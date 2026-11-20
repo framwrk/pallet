@@ -1,8 +1,3 @@
-/**
- * "Edit in external editor" (M6): download the remote file to a temp path,
- * open it with the default app, poll for changes, and re-upload through the
- * same .pallet-part staging the transfer queue uses.
- */
 import { type TransferEndpoint, makeEndpoint } from "./transfer/transfer-endpoint";
 import { app, shell } from "electron";
 import { createReadStream, createWriteStream, promises as fs } from "fs";
@@ -19,10 +14,8 @@ export interface EditEvent {
   message?: string;
 }
 
-/** Wait for the writer to settle before reading the file back. */
 const DEFAULT_SAVE_DEBOUNCE_MS = 800;
 const DEFAULT_POLL_INTERVAL_MS = 1000;
-/** A dead channel must not leave `uploading` stuck forever. */
 const DEFAULT_UPLOAD_TIMEOUT_MS = 60_000;
 
 export interface EditSessionsOptions {
@@ -41,14 +34,10 @@ interface EditSession {
   uploading: boolean;
   dirty: boolean;
   closed: boolean;
-  /** Serialized polling starts from the downloaded file's state. */
   pollTimer: NodeJS.Timeout | null;
-  /** Debounce timer for the next upload. */
   saveTimer: NodeJS.Timeout | null;
-  /** Last size/mtime observed by polling, to confirm the file settled. */
   pendingSize: number;
   pendingMtimeMs: number;
-  /** Aborts an upload that stalls; also cleared on close. */
   abort: AbortController | null;
 }
 
@@ -147,10 +136,6 @@ export class EditSessions {
     }
   }
 
-  /**
-   * Reset the debounce on every change so an in-place editor that writes for
-   * longer than the poll interval is never caught mid-write.
-   */
   private scheduleUpload(edit: EditSession, size: number, mtimeMs: number): void {
     if (edit.closed) return;
     edit.pendingSize = size;
@@ -162,7 +147,6 @@ export class EditSessions {
     }, this.saveDebounceMs);
   }
 
-  /** A change may land between the last poll and the debounce firing. */
   private async uploadIfSettled(edit: EditSession): Promise<void> {
     if (edit.closed) return;
     let stat;

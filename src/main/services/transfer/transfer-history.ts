@@ -1,8 +1,3 @@
-/**
- * Diagnostic transfer history. Rows are written once a job reaches a terminal
- * state; the Settings Advanced tab points users at the database rather than
- * rendering this table in the app.
- */
 import type { EndpointRef, TransferJobSnapshot, TransferRequest } from "@shared/transfer/transfer.types";
 import { getDb } from "../database";
 

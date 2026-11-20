@@ -20,7 +20,6 @@ import { formatBytes } from "@/lib/format.utils";
 import { toggleTerminal } from "@/store/terminal.store";
 import { visibleEntries } from "@/lib/entry.utils";
 
-/** Endpoint's host (including port), or the raw value when it cannot be parsed. */
 function endpointHost(endpoint: string): string {
   try {
     return new URL(endpoint).host || endpoint;
@@ -71,7 +70,6 @@ function Breadcrumbs({ paneId, cwd, backend }: { paneId: PaneId; cwd: string; ba
 
   const segments = useMemo(() => {
     const segs = lib.segments(cwd);
-    // Show at most the last 4 segments to keep the bar readable.
     return segs.length > 4 ? segs.slice(segs.length - 4) : segs;
   }, [cwd, lib]);
 
@@ -93,7 +91,6 @@ function Breadcrumbs({ paneId, cwd, backend }: { paneId: PaneId; cwd: string; ba
                 setEditing(false);
                 return;
               }
-              // Keep the editor open with the typed path so it can be corrected.
               setError(getState().panes[paneId].error?.message ?? "Couldn’t open that path");
             });
           }}
@@ -269,7 +266,6 @@ export function Pane({ paneId }: { paneId: PaneId }): React.JSX.Element {
 
       <div className={cn("relative flex min-h-0 flex-1 flex-col", terminalView && "hidden")}>
         {failed && !pane.cwd ? (
-          // No last-known listing to keep (e.g. first load failed): plain error state.
           <div className="flex flex-1 flex-col items-center justify-center gap-2 p-6 text-center">
             <AlertTriangle className="text-caution size-6" />
             <p className="text-muted-foreground text-sm">{failed.message}</p>

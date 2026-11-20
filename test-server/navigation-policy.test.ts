@@ -1,7 +1,3 @@
-/**
- * A window may only stay on the dev origin or its bundled entry document, and
- * external links only ever open http(s).
- */
 import { describe, expect, test } from "bun:test";
 import { isAllowedExternalUrl, isAllowedNavigation } from "../src/main/utils/navigation-policy";
 

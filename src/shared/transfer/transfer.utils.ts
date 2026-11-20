@@ -8,7 +8,6 @@ export function keepBothName(existing: ReadonlySet<string>, name: string): strin
   const isDotfile = dot <= 0;
   const stem = isDotfile ? name : name.slice(0, dot);
   const ext = isDotfile ? "" : name.slice(dot);
-  // "file (2)" stems keep counting from their base.
   const match = stem.match(/^(.*) \((\d+)\)$/);
   const base = match ? match[1] : stem;
   let n = match ? Number.parseInt(match[2], 10) + 1 : 2;

@@ -9,7 +9,6 @@ interface Call {
   input: Record<string, unknown>;
 }
 
-/** Minimal S3 for endpoint reads, copies, and deletes. */
 class FakeClient {
   readonly calls: Call[] = [];
   readonly objects = new Map<string, Buffer>();
@@ -245,9 +244,6 @@ test("aborting a write calls upload.abort()", async () => {
   controller.abort();
   await tick();
 
-  // The destroy hook also calls abort(), so a signal abort currently reaches
-  // upload.abort() twice. The contract only requires that it is aborted; the
-  // duplicate is reported to the implementation owner.
   expect(aborts).toBeGreaterThanOrEqual(1);
   expect(stream.destroyed).toBe(true);
 });

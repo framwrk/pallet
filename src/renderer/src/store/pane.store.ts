@@ -227,7 +227,6 @@ function setApp(patch: Partial<AppState>): void {
   emit();
 }
 
-// Guards against a slow listing overwriting a newer navigation.
 const generation: Record<PaneId, number> = { left: 0, right: 0 };
 
 export type NavigateMode = "push" | "replace" | "none";
@@ -239,7 +238,6 @@ export type NavigateMode = "push" | "replace" | "none";
  */
 export async function navigate(id: PaneId, path: string, mode: NavigateMode = "push", toIndex?: number): Promise<boolean> {
   const pane = state.panes[id];
-  // Nothing to list until the pane has a session.
   if (pane.backend.kind === "none") return false;
   const gen = ++generation[id];
   const samePath = pane.cwd === path;
@@ -277,8 +275,6 @@ export async function navigate(id: PaneId, path: string, mode: NavigateMode = "p
     return true;
   } catch (err) {
     if (gen !== generation[id]) return false;
-    // cwd, entries, and history stay on the last usable directory; the failed
-    // attempt is recorded so the UI can offer a retry at the same path.
     setPane(id, { loading: false, error: { path, message: (err as Error).message } });
     return false;
   }
@@ -292,8 +288,6 @@ export function isUsable(pane: PaneState): boolean {
 export function refresh(id: PaneId): void {
   const pane = state.panes[id];
   if (!pane.cwd) return;
-  // An explicit refresh is the one moment the user is telling us the directory
-  // has changed, so cached totals beneath it are the ones to drop.
   void window.pallet.folderSize.invalidate(sizeTarget(pane.backend), pane.cwd);
   void navigate(id, pane.cwd, "none");
 }
@@ -317,7 +311,6 @@ export function goUp(id: PaneId): void {
   const parent = lib.dirname(pane.cwd);
   const from = lib.basename(pane.cwd);
   void navigate(id, parent).then(() => {
-    // Land with the folder we came from focused, Finder-style.
     const p = state.panes[id];
     if (p.cwd === parent && p.entries.some((e) => e.name === from)) {
       setPane(id, { focused: from, anchor: from, selected: new Set([from]) });
@@ -334,8 +327,6 @@ export function otherPane(id: PaneId): PaneId {
 }
 
 export function switchPane(): void {
-  // No second pane exists until a session does; keep this pure so keyboard
-  // handlers can decide when Tab should fall through to native focus instead.
   if (state.panes.right.backend.kind === "none") return;
   setApp({ active: otherPane(state.active) });
 }
@@ -366,7 +357,6 @@ export function setSort(id: PaneId, key: SortKey): void {
 
 export function setShowHidden(show: boolean): void {
   setApp({ showHidden: show });
-  // Persisted so the preference survives relaunch.
   void window.pallet.prefs.set({ showHidden: show });
 }
 
@@ -409,7 +399,6 @@ export function openLocal(path: string): void {
   void navigate(paneId, path);
 }
 
-/** Connection progress toast, dismissed once the attempt connects or fails. */
 let connectionToastId: number | null = null;
 
 /** Claim the single remote-connection slot; returns the attempt id, or null while another one opens. */
@@ -516,8 +505,6 @@ export function updateSessionStatus(sessionId: string, status: SessionStatus, de
     if (backend.kind === "sftp" && backend.sessionId === sessionId) {
       setPane(id, { backend: { ...backend, status, statusDetail: detail } });
       if (status === "connected") refresh(id);
-      // Main closes the shell with the session; show the (dead) listing again
-      // so the reconnect overlay and its controls are reachable.
       if (status === "disconnected") setPane(id, { view: "files", terminalId: null });
     }
   }
@@ -553,7 +540,6 @@ export function pushToast(message: string, kind: Toast["kind"] = "error"): numbe
   return toast.id;
 }
 
-/** Pulls the toast out of the stack once its exit animation has finished. */
 function removeToast(id: number): void {
   setApp({ toasts: state.toasts.filter((t) => t.id !== id) });
 }
@@ -568,8 +554,6 @@ export function dismissToast(id: number): void {
   setApp({ toasts: state.toasts.map((t) => (t.id === id ? { ...t, exiting: true } : t)) });
   setTimeout(() => removeToast(id), 145);
 }
-
-// --- selection -------------------------------------------------------------
 
 export function selectOnly(id: PaneId, name: string): void {
   setPane(id, { selected: new Set([name]), focused: name, anchor: name });
@@ -623,8 +607,6 @@ export function moveFocus(id: PaneId, delta: number, extend: boolean, visible: r
   }
 }
 
-// --- boot ------------------------------------------------------------------
-
 export async function initApp(): Promise<void> {
   const [home, folders, vols, prefs] = await Promise.all([
     window.pallet.fs.homeDir(),
@@ -648,8 +630,6 @@ export async function initApp(): Promise<void> {
       transferPanelSide: next.transferPanelSide,
       defaultKeepaliveSeconds: next.defaultKeepaliveSeconds,
     });
-    // A changed default should be visible at once, but other preference edits
-    // must not clobber a sort the user picked in the pane.
     if (sortChanged) {
       setPane("left", { sortKey: next.defaultSortKey, sortDir: next.defaultSortDir });
       setPane("right", { sortKey: next.defaultSortKey, sortDir: next.defaultSortDir });
@@ -658,7 +638,6 @@ export async function initApp(): Promise<void> {
 
   setApp({ knownFolders: folders, volumes: vols });
   adoptPreferences(prefs);
-  // Keep in step with edits in Settings.
   window.pallet.prefs.onChange(adoptPreferences);
   await navigate("left", home, "replace");
 }
@@ -677,7 +656,6 @@ export async function ejectVolume(volume: VolumeInfo): Promise<void> {
     return;
   }
   pushToast(`Ejected “${volume.name}”`, "success");
-  // The listing belongs to a filesystem that no longer exists, so leave it.
   for (const id of ["left", "right"] as const) {
     const pane = state.panes[id];
     if (pane.backend.kind !== "local") continue;

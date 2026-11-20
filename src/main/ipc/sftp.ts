@@ -15,10 +15,6 @@ import { randomUUID } from "crypto";
 
 const pendingPrompts = new Map<string, (trust: boolean) => void>();
 
-/**
- * TOFU: silently accept a fingerprint matching the store; otherwise prompt
- * the renderer and block the handshake on the user's decision.
- */
 async function verifyHostKey(input: HostKeyDecisionInput): Promise<boolean> {
   const known = hostKeys.getKnownKey(input.host, input.port, input.keyType);
   if (known && known.fingerprint === input.fingerprint) {
@@ -67,8 +63,6 @@ export const sftpService = new SftpService(sessionManager);
 
 export const folderSizes = new FolderSizes(sessionManager);
 
-// Session ids are never reused, so cached sizes for a closed session are dead
-// weight; drop them rather than holding every folder the user ever looked at.
 onSessionStatus((event) => {
   if (event.status === "disconnected") folderSizes.forgetSession(event.sessionId);
 });
@@ -86,8 +80,6 @@ export const editSessions = new EditSessions(
   },
 );
 
-// A disconnected session can no longer upload; drop its temp copies now rather
-// than leaving them under pallet-edits until the app quits.
 onSessionStatus((event) => {
   if (event.status === "disconnected") void editSessions.closeSession(event.sessionId);
 });

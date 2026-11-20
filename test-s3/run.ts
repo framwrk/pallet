@@ -171,7 +171,6 @@ async function main(): Promise<void> {
 try {
   await main();
 } finally {
-  // Cleanup is limited to this run's unique prefix, never the bucket root.
   try {
     await removePath(client, target, root);
   } catch (err) {

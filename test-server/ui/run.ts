@@ -53,7 +53,6 @@ try {
   if (servers) console.error(servers.logs());
   console.error(`Last interaction: ${ui.lastAction}`);
   console.error(`FAIL ${current} (${passed} earlier cases passed)`);
-  // Error text may originate from a form assertion; scrub the fixture password.
   console.error(
     String(error)
       .split(servers?.password ?? "\u0000")

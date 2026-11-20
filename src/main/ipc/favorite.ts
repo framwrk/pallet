@@ -19,10 +19,6 @@ function handle<Args extends unknown[], T>(channel: string, fn: (...args: Args) 
   });
 }
 
-/**
- * Connect with the favorite's stored secret, entirely main-side: the secret
- * is decrypted here and goes straight into the ssh2 config.
- */
 async function connectFavorite(id: string, attemptId?: string): Promise<ConnectResult & { favorite: Favorite }> {
   const favorite = store.getFavorite(id);
   if (!favorite) throw new Error("Favorite not found");
@@ -119,11 +115,6 @@ async function connectFavorite(id: string, attemptId?: string): Promise<ConnectR
   return { ...result, favorite: store.getFavorite(id) ?? favorite };
 }
 
-/**
- * Validate connection details before a favorite is saved: dial once, then
- * close the session. Host-key verification still prompts through the normal
- * TOFU flow, so a first contact is the only extra interaction.
- */
 async function testConnection(profile: ConnectProfile): Promise<void> {
   const { sessionId } = await sessionManager.connect(profile);
   sessionManager.disconnect(sessionId);

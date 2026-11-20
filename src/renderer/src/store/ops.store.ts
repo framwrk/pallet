@@ -1,7 +1,3 @@
-/**
- * Local file operations driven from the UI (M2). Each op reports failures as
- * toasts and refreshes affected panes. Undo covers rename and move, per plan.
- */
 import {
   type PaneId,
   getState,
@@ -54,18 +50,12 @@ function fail(err: unknown): void {
   pushToast((err as Error).message);
 }
 
-/**
- * File ops act on the pane's listing, so they need one that is present and
- * neither pending nor failed; toolbar buttons and context menus disable on
- * the same rule (isUsable).
- */
 function requireUsable(id: PaneId): boolean {
   if (isUsable(getState().panes[id])) return true;
   pushToast("Folder is loading or unavailable", "info");
   return false;
 }
 
-/** M3: remote panes are read-only; mutations arrive in M5 (transfers) / M6 (ops). */
 function requireLocal(...ids: PaneId[]): boolean {
   for (const id of ids) {
     if (getState().panes[id].backend.kind !== "local") {
@@ -75,8 +65,6 @@ function requireLocal(...ids: PaneId[]): boolean {
   }
   return true;
 }
-
-// --- rename ----------------------------------------------------------------
 
 export function beginRename(id: PaneId): void {
   if (!requireUsable(id)) return;
@@ -116,8 +104,6 @@ export function cancelRename(id: PaneId): void {
   setRenaming(id, null);
 }
 
-// --- new folder ------------------------------------------------------------
-
 export async function newFolder(id: PaneId): Promise<void> {
   if (!requireUsable(id)) return;
   const pane = getState().panes[id];
@@ -136,15 +122,12 @@ export async function newFolder(id: PaneId): Promise<void> {
   }
 }
 
-// --- trash -----------------------------------------------------------------
-
 export async function trashSelection(id: PaneId): Promise<void> {
   if (!requireUsable(id)) return;
   const entries = selectedEntries(id);
   if (entries.length === 0) return;
   const pane = getState().panes[id];
   if (pane.backend.kind === "sftp") {
-    // Remote delete is permanent: always confirm (§4 keyboard model).
     setConfirmDelete({ paneId: id, names: entries.map((e) => e.name) });
     return;
   }
@@ -169,8 +152,6 @@ export async function confirmedRemoteDelete(id: PaneId, names: string[]): Promis
   }
   refreshBoth();
 }
-
-// --- copy / move -----------------------------------------------------------
 
 export function copySelection(id: PaneId): void {
   if (!requireUsable(id)) return;
@@ -218,7 +199,6 @@ export async function copyToOther(id: PaneId): Promise<void> {
 
 export async function moveToOther(id: PaneId): Promise<void> {
   if (!requireUsable(id)) return;
-  // Silent no-op: the destination pane currently shows a shell, not a listing.
   if (getState().panes[otherPane(id)].view === "terminal") return;
   if (getState().panes[id].backend.kind !== "local" || getState().panes[otherPane(id)].backend.kind !== "local") {
     pushToast("Remote moves are copy-only in the beta — use F5, then delete", "info");
@@ -246,8 +226,6 @@ export async function moveToOther(id: PaneId): Promise<void> {
   }
 }
 
-// --- undo ------------------------------------------------------------------
-
 export async function undo(): Promise<void> {
   const entry = undoStack.pop();
   if (!entry) return;
@@ -268,8 +246,6 @@ export async function undo(): Promise<void> {
     refreshBoth();
   }
 }
-
-// --- open / reveal ---------------------------------------------------------
 
 export function openEntry(id: PaneId, entry: Entry): void {
   if (isDirLike(entry)) {
@@ -299,8 +275,6 @@ export function revealSelection(id: PaneId): void {
 export function hasClipboard(): boolean {
   return clipboard !== null && clipboard.names.length > 0;
 }
-
-// --- context menu ----------------------------------------------------------
 
 export async function showRowContextMenu(id: PaneId, entry: Entry): Promise<void> {
   const pane = getState().panes[id];

@@ -1,3 +1,4 @@
+import { builtinModules } from "node:module";
 import { defineConfig } from "eslint/config";
 import tseslint from "@electron-toolkit/eslint-config-ts";
 import eslintConfigPrettier from "@electron-toolkit/eslint-config-prettier";
@@ -33,8 +34,6 @@ export default defineConfig(
       "sort-imports": "error",
     },
   },
-  // The renderer never constructs paths with Node's `path`, which cannot tell a
-  // remote path from a local one. Use @shared/paths (localPath / remotePath).
   {
     files: ["src/renderer/**/*.{ts,tsx}"],
     rules: {
@@ -46,6 +45,58 @@ export default defineConfig(
             name,
             message: "Renderer code must use localPath/remotePath from @shared/paths instead.",
           })),
+        },
+      ],
+    },
+  },
+  {
+    files: ["src/shared/**/*.ts"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          paths: ["electron", ...builtinModules].map((name) => ({
+            name,
+            message: "src/shared is imported by main, preload, renderer, and tests; keep it free of Electron and Node.",
+          })),
+          patterns: [{ group: ["node:*"], message: "src/shared must not import Node built-ins." }],
+        },
+      ],
+    },
+  },
+  {
+    files: [
+      "src/main/services/s3/s3-secret.ts",
+      "src/main/services/sftp/session-manager.ts",
+      "src/main/services/sftp/sftp.service.ts",
+      "src/main/services/ssh/terminal-sessions.ts",
+      "src/main/services/transfer/transfer-queue.ts",
+      "src/main/services/update-download.utils.ts",
+      "src/main/utils/navigation-policy.ts",
+    ],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          paths: [{ name: "electron", message: "This module is driven directly by Bun tests; keep it Electron-free." }],
+        },
+      ],
+    },
+  },
+  {
+    files: ["src/main/**/*.ts"],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector:
+            "Property[key.name='role'][value.value=/^(close|fileMenu|windowMenu|viewMenu|reload|zoomIn|zoomOut|resetZoom)$/]",
+          message: "Stock menu roles bind ⌘W to window close or ⌘R/zoom keys that Pallet owns. Spell the items out instead.",
+        },
+        {
+          selector:
+            "ObjectExpression:has(> Property[key.name='label'][value.value='Close Window']) > Property[key.name='accelerator']",
+          message: "⌘W belongs to the remote-pane disconnect; Close Window takes no accelerator.",
         },
       ],
     },

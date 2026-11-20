@@ -1,5 +1,3 @@
-/** Channel names for the window.pallet IPC surface. Single source of truth. */
-
 export const FsChannels = {
   list: "fs:list",
   stat: "fs:stat",

@@ -1,8 +1,3 @@
-/**
- * S3 credentials are a versioned JSON envelope inside the single encrypted
- * secret blob, so legacy plaintext or a future version must never be mistaken
- * for usable credentials.
- */
 import { S3_SECRET_VERSION, parseS3Secret, serializeS3Secret } from "../src/main/services/s3/s3-secret";
 import { describe, expect, test } from "bun:test";
 

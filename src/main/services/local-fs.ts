@@ -35,7 +35,6 @@ export async function listDir(dirPath: string): Promise<DirListing> {
     try {
       stats = await fs.stat(full);
     } catch {
-      // Broken symlink or entry deleted mid-listing; fall back to lstat.
       try {
         stats = await fs.lstat(full);
       } catch {

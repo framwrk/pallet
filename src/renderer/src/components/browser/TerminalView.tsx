@@ -12,7 +12,6 @@ import { WebLinksAddon } from "@xterm/addon-web-links";
  */
 const liveShells = new Set<string>();
 
-/** Resolve a design token to a color xterm can parse, via a 1×1 canvas. */
 function tokenColor(name: string, fallback: string): string {
   const raw = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
   const canvas = document.createElement("canvas");
@@ -108,7 +107,6 @@ export function TerminalView({
     const sink = (data: Uint8Array): void => term.write(data);
     registerTerminalSink(terminalId, sink);
 
-    // Recolor without re-creating the terminal when the appearance changes.
     const themeObserver = new MutationObserver(() => {
       term.options.theme = themeFromTokens();
     });
@@ -153,7 +151,6 @@ export function TerminalView({
         void window.pallet.terminal.close(terminalId).catch(() => {});
       }, 0);
     };
-    // The pane mounts one terminal per id; backend changes discard the pane.
   }, [paneId, terminalId]);
 
   useEffect(() => {

@@ -5,8 +5,6 @@ import { pipeline } from "node:stream/promises";
 import { randomBytes } from "node:crypto";
 import { spawnSync } from "node:child_process";
 
-// A separate container keeps this deterministic and leaves interactive sessions alone.
-// Require `bun run server` first so Compose has already built the test image.
 function docker(...args: string[]): string {
   const result = spawnSync("docker", args, { encoding: "utf8", timeout: 60_000 });
   if (result.error) throw result.error;
@@ -83,7 +81,6 @@ function shaping(device: string): {
   return rule;
 }
 
-// Bound stalled streams as well as connection handshakes.
 const deadline = setTimeout(() => {
   for (const client of clients) client.destroy();
 }, 90_000);
@@ -123,7 +120,6 @@ try {
   );
   const downloadMs = performance.now() - downloadStart;
   assert(Buffer.concat(chunks).equals(payload), "Throttled transfer corrupted the payload");
-  // Allow bursts/timer granularity, but reject an unrestricted localhost transfer.
   assert(uploadMs >= ((payload.length * 8) / 1000) * 0.75, `Upload bypassed rate limit: ${uploadMs}ms`);
   assert(downloadMs >= ((payload.length * 8) / 2000) * 0.75, `Download bypassed rate limit: ${downloadMs}ms`);
   console.log(`✓ 512 KiB round-trip: upload ${(uploadMs / 1000).toFixed(2)}s, download ${(downloadMs / 1000).toFixed(2)}s`);
@@ -146,7 +142,6 @@ try {
   assert.equal(shaping("pallet-up").options.rate.rate, 125_000, "Invalid settings changed the active shaper");
   console.log("✓ Both queues carry transfer data; invalid settings are rejected before changing the network");
 
-  // Read-only requests on the same session distinguish link latency from SSH startup.
   const delayedStart = performance.now();
   for (let i = 0; i < 3; i++) await read(channel, "/home/pallet/README.txt");
   const delayedMs = performance.now() - delayedStart;
@@ -165,7 +160,6 @@ try {
     completed = true;
     return data;
   });
-  // Observe rejection immediately even if a broken connection fails before restoration.
   void pending.catch(() => {});
   await new Promise((resolve) => setTimeout(resolve, 500));
   assert(!completed, "Existing session bypassed the outage");

@@ -48,7 +48,6 @@ async function form(ui: ElectronUI, s: Servers, p: Protocol, auth = "password"):
   } else await ui.button("SSH Agent");
   await ui.button("Connection options");
   await ui.fill(field("Remote Path"), s.remote(p));
-  // Two channels keep item-control cases deterministic without exhausting the server.
   await ui.fill(field("Concurrency"), "2");
 }
 async function finishConnect(ui: ElectronUI, id = "right"): Promise<void> {
@@ -69,7 +68,6 @@ async function connect(ui: ElectronUI, s: Servers, p: Protocol, id = "right", au
   await finishConnect(ui, id);
 }
 async function clear(ui: ElectronUI): Promise<void> {
-  // Clear lives in the expanded panel's header.
   if (await ui.read(`!!(${button("Expand transfers")})`)) await ui.button("Expand transfers");
   if (await ui.read(`!!(${button("Clear")})`)) await ui.button("Clear");
   await ui.wait("document.querySelectorAll('#transfer-panel-jobs > [role=listitem]').length===0", "empty queue");
@@ -99,7 +97,6 @@ async function retry(ui: ElectronUI): Promise<void> {
     `!!document.querySelector('[role=dialog]') || !(${job}).querySelector('[aria-label="Retry transfer"]')`,
     "retry starts",
   );
-  // Existing destination is deliberately retained by failed/canceled replacement tests.
   await conflict(ui, "Replace");
   await terminal(ui);
 }
@@ -137,7 +134,6 @@ async function inFlight(ui: ElectronUI, dir: string): Promise<void> {
 async function nativeFavorite(ui: ElectronUI, name: string, action: string): Promise<void> {
   ui.native("get name");
   await ui.click(favorite(name), 1, 0, "right");
-  // Native menu accessibility, scoped to the owned Electron PID. No IPC or fabricated menu results.
   execFileSync("swift", ["test-server/ui/native-menu.swift", String(ui.child!.pid), action], { stdio: "pipe", timeout: 30000 });
 }
 export function integrationCases(root: string, s: Servers): Case[] {
@@ -173,7 +169,6 @@ export function integrationCases(root: string, s: Servers): Case[] {
         await finishConnect(ui);
         await ui.close();
         await ui.start();
-        // connect() would accept Unknown Host; this check intentionally must not.
         await ui.key("k", 4);
         await form(ui, s, "sftp");
         await ui.button("Connect");
@@ -236,7 +231,6 @@ export function integrationCases(root: string, s: Servers): Case[] {
         const secrets = await readdir(join(ui.profile, "secrets"));
         assert.equal(secrets.length, 1);
         assert.equal((await stat(join(ui.profile, "secrets", secrets[0]))).mode & 0o777, 0o600);
-        // Independent raw-byte checks include database/WAL and encrypted blobs, while the app is open.
         for (const name of (await readdir(ui.profile)).filter((n) => n.startsWith("pallet.db")))
           assert.equal((await readFile(join(ui.profile, name))).includes(Buffer.from(s.password)), false);
         assert.equal((await readFile(join(ui.profile, "secrets", secrets[0]))).includes(Buffer.from(s.password)), false);
@@ -256,7 +250,6 @@ export function integrationCases(root: string, s: Servers): Case[] {
     [
       "Settings favorites: test connection before saving, reject bad credentials",
       async (ui) => {
-        // Settings stays open behind the add/edit form, so target the topmost dialog.
         const dialog = "[...document.querySelectorAll('[role=dialog]')].at(-1)";
         async function openAdd(): Promise<void> {
           await ui.button("Add Favorite…", dialog);
@@ -288,7 +281,6 @@ export function integrationCases(root: string, s: Servers): Case[] {
         );
         assert.equal(await ui.read(connected()), false, "saving did not connect a pane");
 
-        // Editing from the tab returns to it when the form is dismissed.
         await ui.button("Edit Settings Favorite", dialog);
         await ui.wait(`${dialog}?.innerText.includes('Edit Favorite')`, "edit favorite form");
         await ui.key("Escape");
@@ -308,7 +300,6 @@ export function integrationCases(root: string, s: Servers): Case[] {
         assert.equal(await ui.read(`!!(${favorite("Rejected Favorite")})`), false, "failed test did not save");
         await ui.wait(`!!(${button("Save Anyway", dialog)})`, "save anyway offered");
 
-        // Changing the credentials invalidates the failure, so Save retests.
         await ui.fill(field("Password"), "another incorrect synthetic password");
         await ui.wait(`!!(${button("Save", dialog)}) && !(${button("Save Anyway", dialog)})`, "save retests after an edit");
         await ui.button("Save", dialog);
@@ -326,7 +317,6 @@ export function integrationCases(root: string, s: Servers): Case[] {
           await ui.click(`[...${dialog}.querySelectorAll('button')].find(e => e.innerText.trim() === 'Delete')`);
           await ui.wait(`!(${favorite(name)})`, `${name} deleted`);
         }
-        // Leave the modal closed so the next case's connect() is not blocked.
         await ui.key("Escape");
         await ui.wait("!document.querySelector('[role=dialog]')", "settings closed");
       },
@@ -387,7 +377,6 @@ export function integrationCases(root: string, s: Servers): Case[] {
           "terminal returns with scrollback",
         );
 
-        // A terminal-view pane is not a transfer destination: F5 enqueues nothing.
         await clear(ui);
         const name = "terminal-f5.txt";
         await writeFile(join(source, name), "no transfer");
@@ -432,7 +421,6 @@ export function integrationCases(root: string, s: Servers): Case[] {
         await copy(ui, name);
         await terminal(ui);
         assert.equal(await hash(join(remote, name)), await hash(join(source, name)));
-        // The floating panel opens for a transfer and collapses to a short card that stays in its corner.
         assert.equal(await ui.read(panelExpanded), true, "a new transfer opens the panel");
         await ui.button("Collapse transfers");
         await ui.wait(
@@ -471,7 +459,6 @@ export function integrationCases(root: string, s: Servers): Case[] {
         await writeFile(join(batch, "quote' space ü.txt"), "unicode\n");
         await writeFile(join(batch, "nested", "child"), "child\n");
         for (let i = 0; i < 40; i++) await writeFile(join(batch, `item${i}.txt`), `item ${i}`);
-        // Select All exercises a multiple-item queue, not just one recursive source folder.
         await ui.go(batch);
         await clear(ui);
         await ui.key("a", 4);
@@ -483,7 +470,6 @@ export function integrationCases(root: string, s: Servers): Case[] {
         const batchDownload = join(download, `batch-${p}`);
         await mkdir(batchDownload);
         await ui.go(batchDownload);
-        // Download the nested folder through the remote UI, independently checking empty directories.
         await copy(ui, "nested", "right");
         await terminal(ui);
         assert.deepEqual(await tree(join(batchDownload, "nested")), await tree(join(batch, "nested")));
@@ -560,7 +546,6 @@ export function integrationCases(root: string, s: Servers): Case[] {
         await copy(ui, name);
         await inFlight(ui, remote);
         s.docker(["stop", "-t", "0", s.containers.get(p)!]);
-        // The container is genuinely stopped. Verify that before bringing back this same fixture.
         assert.equal(s.docker(["inspect", "--format", "{{.State.Running}}", s.containers.get(p)!]).trim(), "false");
         s.docker(["start", s.containers.get(p)!]);
         await s.ready(p);
@@ -717,7 +702,6 @@ export function integrationCases(root: string, s: Servers): Case[] {
           if (id === "left") await ui.button("Restore Local Pane");
           else await ui.button("Disconnect", pane(id));
           await ui.wait(`!(${connected(id)})`, "remote backend removed");
-          // Assert throughout the response window, rather than treating an immediate removal as success.
           const deadline = Date.now() + 4500;
           await until(
             async () => {

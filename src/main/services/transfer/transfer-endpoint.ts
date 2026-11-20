@@ -1,10 +1,3 @@
-/**
- * TransferEndpoint: the minimal filesystem surface the queue needs, provided
- * by both the local disk and an SFTP session so every transfer direction
- * (upload, download, local↔local, remote↔remote) is one code path.
- *
- * Paths are POSIX on both sides (macOS local paths are POSIX).
- */
 import { type FileInfo, FileType, type Client as FtpClient } from "basic-ftp";
 import { PassThrough, type Readable, Writable } from "stream";
 import { createPipelinedReadStream, createPipelinedWriteStream } from "../sftp/pipelined-streams";
@@ -71,8 +64,6 @@ function join(dir: string, name: string): string {
   return dir === "/" ? `/${name}` : `${dir}/${name}`;
 }
 export const joinPath = join;
-
-// --- local ------------------------------------------------------------------
 
 class LocalEndpoint implements TransferEndpoint {
   supportsRanges = true;
@@ -150,8 +141,6 @@ class LocalEndpoint implements TransferEndpoint {
   }
 }
 
-// --- sftp -------------------------------------------------------------------
-
 const META_TIMEOUT_MS = 20_000;
 
 function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
@@ -174,10 +163,6 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   });
 }
 
-/**
- * SFTP endpoint over the session's transfer-channel pool. Metadata leases
- * last only for their operation; each concurrent stream leases its own.
- */
 class SftpEndpoint implements TransferEndpoint {
   kind = "sftp" as const;
   supportsRanges = true;
@@ -195,7 +180,6 @@ class SftpEndpoint implements TransferEndpoint {
       lease.release();
       return result;
     } catch (err) {
-      // Never return a channel with an outstanding/timed-out request to the pool.
       lease.release(true);
       throw err;
     }
@@ -265,7 +249,6 @@ class SftpEndpoint implements TransferEndpoint {
         new Promise<void>((resolve, reject) =>
           sftp.mkdir(p, (err) => {
             if (!err) return resolve();
-            // Lost a race with a concurrent mkdir: fine if it exists now.
             sftp.stat(p, (statErr, stats) => {
               if (!statErr && isDirMode(stats.mode)) resolve();
               else reject(err);
@@ -358,8 +341,6 @@ class SftpEndpoint implements TransferEndpoint {
           sftp.ext_openssh_rename(from, to, (err) => (err ? reject(err) : resolve())),
         );
       } catch (err) {
-        // Standard rename is safe for new files. Never unlink an existing file
-        // to work around a server lacking atomic replacement support.
         if ((err as { code?: number }).code !== 8 && !/unsupported|not support/i.test((err as Error).message)) throw err;
         await new Promise<void>((resolve, reject) => sftp.rename(from, to, (error) => (error ? reject(error) : resolve())));
       }
@@ -379,8 +360,6 @@ class SftpEndpoint implements TransferEndpoint {
     // Each operation releases its own lease.
   }
 }
-
-// --- ftp / explicit ftps ----------------------------------------------------
 
 function ftpEndpointStat(info: FileInfo): EndpointStat {
   const type = info.type === FileType.Directory ? 0o040000 : info.type === FileType.SymbolicLink ? 0o120000 : 0o100000;
@@ -611,7 +590,6 @@ class FtpEndpoint implements TransferEndpoint {
     checkFtpPath(from);
     checkFtpPath(to);
     return this.withMeta(async (ftp) => {
-      // Let the server replace with RNTO; never delete the original first.
       await ftp.rename(from, to);
     });
   }

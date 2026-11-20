@@ -81,22 +81,12 @@ const TABS: { id: TabId; label: string; icon: LucideIcon }[] = [
   { id: "about", label: "About", icon: Info },
 ];
 
-/**
- * Sidebar order, T3 Code-style: the everyday sections lead unheaded, the
- * upkeep sections get a heading, and the reference section trails set apart
- * by space alone.
- */
 const SETTINGS_NAV_GROUPS: { heading: string | null; tabs: TabId[] }[] = [
   { heading: null, tabs: ["general", "appearance", "favorites", "transfers", "keybindings"] },
   { heading: "Maintenance", tabs: ["updates", "advanced"] },
   { heading: null, tabs: ["about"] },
 ];
 
-/**
- * Shared class for one nav row, on T3's `SidebarMenuButton`: T3 geometry (8px
- * radius, 10px inset, control gap), the muted row color, and the icon two
- * steps dimmer unless the row is hovered or selected.
- */
 function navRow(active: boolean): string {
   return cn(
     "flex h-8 w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-inset [&>svg]:text-sidebar-icon [&>svg]:shrink-0",
@@ -153,12 +143,6 @@ const SPEED_WINDOW_OPTIONS: Record<string, string> = Object.fromEntries(
   SPEED_STATS_WINDOW_OPTIONS.map((seconds) => [String(seconds), `Last ${seconds} seconds`]),
 );
 
-/** One inset group of rows, with the footnote that explains them below it. */
-/**
- * A labelled section inside a tab: T3's `SettingsSection` — a heading over an
- * inset card, tight together (space-y-2.5). The heading is 16px semibold with
- * the card inset's padding, as in the reference design.
- */
 function Section({ title, children }: { title: string; children: React.ReactNode }): React.JSX.Element {
   return (
     <section className="flex flex-col gap-2.5">
@@ -170,7 +154,6 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-/** One inset card of rows (T3's `SettingsGroup`, "grouped" variant). */
 function Group({ children }: { children: React.ReactNode }): React.JSX.Element {
   return <div>{children}</div>;
 }
@@ -194,12 +177,9 @@ function Row({
   children,
 }: {
   label: string;
-  /** One-line explanation under the title. */
   description?: string;
-  /** Overrides the description's DOM id when a control wants `aria-describedby`. */
   descriptionId?: string;
   indent?: boolean;
-  /** A peer row below the first one: separated, but not visually subordinate. */
   separated?: boolean;
   htmlFor?: string;
   children?: React.ReactNode;
@@ -232,7 +212,6 @@ function Row({
   );
 }
 
-/** A whole-row external link; the row itself is the affordance. */
 function LinkRow({
   label,
   description,
@@ -265,7 +244,6 @@ function LinkRow({
   );
 }
 
-/** AppKit-style stepper: two stacked halves that clamp at the bounds. */
 function Stepper({
   onStep,
   canDecrement,
@@ -275,7 +253,6 @@ function Stepper({
   onStep: (delta: number) => void;
   canDecrement: boolean;
   canIncrement: boolean;
-  /** Names the value in the button labels; "Increase" alone is anonymous. */
   subject: string;
 }): React.JSX.Element {
   const half =
@@ -311,10 +288,6 @@ function Stepper({
   );
 }
 
-/**
- * Numeric row control. Text is held locally so a half-typed number doesn't
- * fight the stored value; only in-range values are committed as you type.
- */
 function NumberField({
   id,
   value,
@@ -336,8 +309,6 @@ function NumberField({
 }): React.JSX.Element {
   const [text, setText] = useState(String(value));
   const [lastValue, setLastValue] = useState(value);
-  // Adopt a value that changed outside this field (stepper or settings reload)
-  // without an effect; a half-typed value keeps its own text until then.
   if (value !== lastValue) {
     setLastValue(value);
     setText(String(value));
@@ -554,8 +525,6 @@ function AppearancePanel({
               value={prefs.appearance}
               onValueChange={(value) => save({ appearance: value as Appearance })}
             >
-              {/* The size variant sets its own height, so the override has to
-                  match that variant to win. */}
               <SelectTrigger
                 id="pref-appearance"
                 aria-describedby="pref-appearance-desc"
@@ -640,7 +609,6 @@ const PROTOCOL_LABELS: Record<Favorite["protocol"], string> = {
   s3: "S3",
 };
 
-/** The identity line under a favorite: what the row would connect to. */
 function favoriteEndpoint(favorite: Favorite): string {
   if (favorite.protocol === "s3") {
     const bucket = favorite.s3Bucket ?? favorite.host;
@@ -665,7 +633,6 @@ function FavoriteRow({
   favorite: Favorite;
   index: number;
   total: number;
-  /** This favorite is the connection currently opening. */
   connecting: boolean;
   confirming: boolean;
   onConnect: () => void;
@@ -779,17 +746,11 @@ function FavoriteRow({
   );
 }
 
-/**
- * Manage saved connections without leaving Settings: add, connect, edit,
- * reorder, and delete. A new favorite is tested by the main process before it
- * is written, so a bad host or secret never lands in the list.
- */
 function FavoritesPanel(): React.JSX.Element {
   const { favorites, connecting } = useAppState();
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
 
   function addFavorite(): void {
-    // Opens above Settings, which stays open so dismissing the form returns here.
     setAddingFavorite(true);
   }
 
@@ -799,7 +760,6 @@ function FavoritesPanel(): React.JSX.Element {
   }
 
   function editFavorite(favorite: Favorite): void {
-    // Opens above Settings, which stays open so dismissing the form returns here.
     setEditingFavorite(favorite);
   }
 
@@ -883,7 +843,6 @@ function TransfersPanel({
   prefs: Preferences;
   save: (patch: Partial<Preferences>) => void;
   concurrencyText: string;
-  /** Held separately so a half-typed number doesn't fight the stored value. */
   onConcurrencyChange: (value: string) => void;
   setConcurrencyText: (value: string) => void;
   stepConcurrency: (delta: number) => void;
@@ -1316,8 +1275,6 @@ function AboutPanel({
 
       <Section title="Update check">
         <Group>
-          {/* updateNote is the live status when a check runs, so it doubles as
-              the row description; the button keeps its own reference to it. */}
           <Row
             label="Check for updates"
             description={updateNote}
@@ -1332,7 +1289,6 @@ function AboutPanel({
                 if (updateCheck.status !== "available") {
                   void checkNow();
                 } else if (updateCheck.info.dmgUrl === null) {
-                  // No DMG on the release: keep the web fallback.
                   void window.pallet.app.openExternal(updateCheck.info.url);
                 } else {
                   startUpdate(updateCheck.info);
@@ -1427,7 +1383,6 @@ function AboutPanel({
   );
 }
 
-/** Keeps the highlighted search result visible as the selection moves. */
 function scrollRowIntoView(row: HTMLElement | null): void {
   row?.scrollIntoView({ block: "nearest" });
 }
@@ -1435,7 +1390,6 @@ function scrollRowIntoView(row: HTMLElement | null): void {
 const KEY_CHIP =
   "bg-foreground/[0.075] text-foreground/85 inline-flex h-6 min-w-6 items-center justify-center rounded-md px-1.5 font-mono text-[11px] leading-none";
 
-/** One binding's chips: separate keycaps with a small, even gap. */
 const KEY_GROUP = "inline-flex items-center gap-1";
 
 function KeyChips({ keys }: { keys: string[] }): React.JSX.Element {
@@ -1466,10 +1420,6 @@ function modifierPreview(event: KeyboardEvent): string | null {
   return parts.length > 0 ? parts.join("") : null;
 }
 
-/**
- * One Settings group per registry group: every command title with its key
- * chips. Chips record, `+` appends, `×` removes, and customized rows reset.
- */
 function KeybindingsPanel(): React.JSX.Element {
   const bindings = useKeybindings();
   const [query, setQuery] = useState("");
@@ -1502,7 +1452,6 @@ function KeybindingsPanel(): React.JSX.Element {
     function onKeyDown(event: KeyboardEvent): void {
       event.preventDefault();
       event.stopPropagation();
-      // Escape always cancels and can never be recorded from the UI.
       if (event.code === "Escape") {
         cancelRecorder();
         return;
@@ -1549,8 +1498,6 @@ function KeybindingsPanel(): React.JSX.Element {
     };
   }, [bindings.effective, cancelRecorder, recorder]);
 
-  // Keep main's menu suspension tied to whether a recorder is open, not to the
-  // effect re-running for a different row or a bindings broadcast.
   useEffect(() => {
     setKeybindingRecording(recordingActive);
     return () => {
@@ -1857,12 +1804,6 @@ function KeybindingsPanel(): React.JSX.Element {
   );
 }
 
-/**
- * T3 Code's section nav: the search field leads ("/" or ⌘F to focus it), then
- * the groups. While searching, the list collapses to matching sections with a
- * keyboard highlight; Escape there clears the query instead of closing the
- * modal.
- */
 function SettingsSidebarNav({ tab, onSelect }: { tab: TabId; onSelect: (tab: TabId) => void }): React.JSX.Element {
   const searchInputRef = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState("");
@@ -1872,7 +1813,6 @@ function SettingsSidebarNav({ tab, onSelect }: { tab: TabId; onSelect: (tab: Tab
   const searching = trimmed.length > 0;
   const results = searching ? TABS.filter((t) => t.label.toLowerCase().includes(trimmed)) : [];
   const maxResultIndex = Math.max(results.length - 1, 0);
-  // A shrink-then-recover of results keeps the clamped highlight.
   if (activeResultIndex > maxResultIndex) {
     setActiveResultIndex(maxResultIndex);
   }
@@ -1887,9 +1827,6 @@ function SettingsSidebarNav({ tab, onSelect }: { tab: TabId; onSelect: (tab: Tab
     clearSearch();
   }
 
-  // '/' and ⌘F focus the search from anywhere the modal owns (T3 Code).
-  // Editable targets and open popup layers keep their keys: typing "/" in a
-  // number field must not steal focus.
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent): void {
       if (event.defaultPrevented || event.isComposing) return;
@@ -2087,7 +2024,6 @@ export function SettingsDialog(): React.JSX.Element {
   const { settingsOpen } = useAppState();
   const [tab, setTab] = useState<TabId>("general");
   const [prefs, setPrefs] = useState<Preferences | null>(null);
-  // Held separately so a half-typed number doesn't fight the stored value.
   const [concurrencyText, setConcurrencyText] = useState("");
   const [dbPath, setDbPath] = useState<string | null>(null);
   const [dbPathFailed, setDbPathFailed] = useState(false);
@@ -2097,7 +2033,6 @@ export function SettingsDialog(): React.JSX.Element {
   const [updateDownload, setUpdateDownload] = useState<UpdateDownloadState | null>(null);
   const [copiedInfo, setCopiedInfo] = useState(false);
   const popupRef = useRef<HTMLDivElement>(null);
-  // Text selection that ends on the backdrop is not a dismissal.
   const backdropPressRef = useRef(false);
 
   useEffect(() => {
@@ -2106,7 +2041,6 @@ export function SettingsDialog(): React.JSX.Element {
       setConcurrencyText(String(next.defaultConcurrency));
     }
     void window.pallet.prefs.get().then(adopt);
-    // The main handler can't fail, but a rejected invoke beats a silently empty row.
     void window.pallet.app
       .databasePath()
       .then(setDbPath)
@@ -2116,8 +2050,6 @@ export function SettingsDialog(): React.JSX.Element {
       .then(setAppInfo)
       .catch(() => setAppInfo(null));
     const offPrefs = window.pallet.prefs.onChange(adopt);
-    // Same progress the launch toast listens to, so the About row can show
-    // the in-place download advancing.
     const offDownload = window.pallet.app.onUpdateDownloadState(setUpdateDownload);
     return () => {
       offPrefs();
@@ -2125,8 +2057,6 @@ export function SettingsDialog(): React.JSX.Element {
     };
   }, []);
 
-  // Focus the surface, not its first control: no stray focus ring, no phone
-  // keyboard. On close, leave focus alone; returning it would paint a ring.
   function requestSettingsClose(): void {
     // Closing unmounts a focused field without a blur, so commit-on-blur rows
     // would drop what was typed. Blur first so they commit.
@@ -2164,7 +2094,6 @@ export function SettingsDialog(): React.JSX.Element {
     }
   }
 
-  /** Same main-process path as the launch toast: download, verify, mount, quit. */
   function startUpdate(info: UpdateInfo): void {
     setUpdateDownload({ status: "downloading", version: info.version, receivedBytes: 0, totalBytes: 0 });
     void window.pallet.app.downloadUpdate(info).catch((err: unknown) => {
@@ -2194,8 +2123,6 @@ export function SettingsDialog(): React.JSX.Element {
     save({ defaultConcurrency: next });
   }
 
-  // Progress for the version this row is offering; states from another
-  // version (for example a toast download) stay out of this row.
   const downloadState =
     updateCheck.status === "available" && updateDownload?.version === updateCheck.info.version ? updateDownload : null;
   const updateDownloading = downloadState?.status === "downloading";
@@ -2240,8 +2167,6 @@ export function SettingsDialog(): React.JSX.Element {
   return (
     <DialogPrimitive.Root
       open={settingsOpen}
-      // Portaled layers outside this tree (toasts, Select popups) are not
-      // backdrop presses; dismissal goes through the viewport handlers below.
       disablePointerDismissal
       onOpenChange={(open) => {
         if (!open) requestSettingsClose();
@@ -2255,8 +2180,6 @@ export function SettingsDialog(): React.JSX.Element {
         <DialogPrimitive.Viewport
           className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 lg:p-10"
           onPointerDown={(event) => {
-            // A dismissal is a press that both starts and ends on the
-            // backdrop; a selection ending there is not one.
             backdropPressRef.current = event.target === event.currentTarget;
           }}
           onClick={(event) => {

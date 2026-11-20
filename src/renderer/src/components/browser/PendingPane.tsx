@@ -6,7 +6,6 @@ import { ROW_HEIGHTS } from "@shared/prefs/prefs.constants";
 import { cancelConnection } from "@/store/sftp.store";
 import { cn } from "@/lib/utils";
 
-/** Deterministic name-length variety so the placeholder reads as a listing. */
 const NAME_WIDTHS = [72, 54, 88, 63, 79, 45, 95, 58, 70, 84, 50, 67, 91, 61, 77, 56];
 
 /**

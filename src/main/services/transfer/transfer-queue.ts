@@ -1,15 +1,3 @@
-/**
- * TransferQueue: bounded folder transfers, unique staging files verified before
- * replacement, checkpointed local/SFTP copies, and pause/cancel/retry recovery.
- *
- * Large files stream through a single read/write pair per attempt. SFTP
- * streams pipeline requests, so throughput is not one round trip per chunk,
- * and checkpoints advance from destination-confirmed offsets instead of
- * re-opening the file every 8 MiB. A failure resumes from the last confirmed
- * offset (see the endpoint's confirmedBytes).
- *
- * Electron-free so the Docker integration tests can drive it directly.
- */
 import type {
   ConflictAction,
   ConflictPrompt,
@@ -56,27 +44,13 @@ import { randomUUID } from "crypto";
  * Sitting above it keeps ordinary drops on the auto-pause path.
  */
 const STALL_TIMEOUT_MS = 60_000;
-/** Guard against retrying one file forever when its channel keeps dying. */
 const MAX_CHANNEL_RETRIES = 5;
-/**
- * Live-progress cadence: the queue's own emits are throttled and bursty, so a
- * ticker re-broadcasts every running job at this interval with the true
- * counters — the bar tracks bytes actually transferred, not chunk bursts.
- */
 const PROGRESS_TICK_MS = 100;
-/** Cadence of the trailing average/median speed statistics. */
 const SPEED_SAMPLE_MS = 1_000;
-/** Ignore a tail interval shorter than this; it only adds noise. */
 const SPEED_MIN_SAMPLE_MS = 100;
-/** Files at least this large are streamed with resume checkpoints. */
 const CHUNK_THRESHOLD = 16 * 1024 * 1024;
-/**
- * Upper bound on quit-time cleanup. A remote destination can stop answering a
- * remove request, and quitting must still finish instead of hanging on it.
- */
 const SHUTDOWN_TIMEOUT_MS = 5_000;
 
-/** One selected file or folder, tracked so the transfer panel can show a row per item. */
 interface PlanItem {
   name: string;
   totalFiles: number;
@@ -86,15 +60,10 @@ interface PlanItem {
   skippedSymlinks: number;
   totalBytes: number;
   doneBytes: number;
-  /** Bytes of skipped or canceled files that will never move; left out of the reported total. */
   excludedBytes: number;
-  /** Files of this item currently streaming; drives live per-item sampling. */
   runningFiles: number;
-  /** This item's files still waiting for a worker. */
   queue: PlanFile[];
-  /** Paused by the user; its files wait while other items keep transferring. */
   userPaused: boolean;
-  /** Canceled by the user; its remaining files are never transferred. */
   canceled: boolean;
   errors: string[];
   startedAt?: number;
@@ -102,7 +71,6 @@ interface PlanItem {
   samples: { t: number; bytes: number }[];
   speedSamples: SpeedSample[];
   speedHistory: TransferSpeedPoint[];
-  /** When the first speed sample was taken, for graph elapsed times. */
   speedStartedAt: number;
   speedStats: TransferSpeedStats;
   lastSpeedSampleAt: number;
@@ -110,29 +78,21 @@ interface PlanItem {
 
 interface PlanFile {
   relPath: string;
-  /** Selected item this file belongs to. */
   item: PlanItem;
   size: number;
   mtimeMs: number;
-  /** Enumeration timestamp; unlike mtimeMs it is never replaced by a precise re-stat. */
   scanMtimeMs: number;
   mode: number;
   checkpoint: number;
   versionCaptured?: boolean;
-  /** Opaque version token from fileVersion (S3 ETag), compared for stability. */
   versionToken?: string;
   target?: { finalPath: string; partPath: string };
-  /** Committed to the destination; a retry may keep it instead of copying again. */
   completed?: boolean;
-  /** Counted as skipped after its item was canceled. */
   canceled?: boolean;
-  /** Its bytes left the reported totals; never excluded twice. */
   excluded?: boolean;
-  /** Failed for good; an item cancel must not count it again. */
   failed?: boolean;
 }
 
-/** Shared shape for job- and item-level speed sampling. */
 interface SpeedTracked {
   speedSamples: SpeedSample[];
   speedHistory: TransferSpeedPoint[];
@@ -151,15 +111,12 @@ interface Conflict {
 interface InFlight {
   verification?: TransferVerificationProgress;
   relPath: string;
-  /** Selected item this file belongs to, for item-level controls. */
   item: PlanItem;
   src: Readable | null;
   dst: TransferWriteStream | null;
   partPath: string | null;
-  /** Force-fails the transfer promise; stream destroy alone can hang on a dead channel. */
   abort: ((err: Error) => void) | null;
   controller: AbortController;
-  /** Aborted by a pause; the file is requeued even if the pause clears first. */
   paused: boolean;
 }
 
@@ -182,17 +139,12 @@ export interface TransferQueueOptions {
 /** Seam for tests: swap in in-memory endpoints instead of disk/SFTP. */
 export type EndpointFactory = (sessions: SessionManager, ref: TransferRequest["from"]) => TransferEndpoint;
 
-/** Trailing window for the live rate shown in rows and the transfer panel header. */
 const LIVE_RATE_WINDOW_MS = 3000;
-/** Chunks closer together than this update one sample instead of adding one. */
 const LIVE_RATE_SAMPLE_MS = 100;
-/** Shortest span the live rate divides by. */
 const LIVE_RATE_MIN_SPAN_MS = 250;
 
 class Job {
-  /** Enqueue time, so history rows have a real transfer start. */
   startedAt = Date.now();
-  /** Set once the job settles, so the transfer panel can report a fixed elapsed time. */
   finishedAt?: number;
   state: TransferState = "queued";
   autoPaused = false;
@@ -200,28 +152,21 @@ class Job {
   canceled = false;
   planDirs: string[] = [];
   planFiles: PlanFile[] = [];
-  /** Selected items in request order; each owns the files beneath it. */
   items: PlanItem[] = [];
   skippedSymlinks = 0;
   conflicts = new Map<string, Conflict>();
-  /** Files committed by the job this retry replaces, keyed by relative path. */
   previousCompleted = new Map<string, { size: number; scanMtimeMs: number }>();
-  /** Files the retry kept from the previous attempt instead of copying again. */
   alreadyDone = new Set<string>();
   inFlight = new Map<string, InFlight>();
   doneFiles = 0;
   skippedFiles = 0;
   doneBytes = 0;
   totalBytes = 0;
-  /** Bytes of skipped or canceled files that will never move; left out of the reported total. */
   excludedBytes = 0;
   errors: TransferError[] = [];
-  /** Names already produced per destination directory (keep-both bookkeeping). */
   destNames = new Map<string, Set<string>>();
-  /** Per-file count of retries after a dead channel, capped so it can't spin. */
   retries = new Map<string, number>();
   samples: { t: number; bytes: number }[] = [];
-  /** One-second confirmed-progress samples for the expanded row's stats. */
   speedSamples: SpeedSample[] = [];
   speedHistory: TransferSpeedPoint[] = [];
   speedStartedAt = 0;
@@ -229,11 +174,9 @@ class Job {
   lastSpeedSampleAt = 0;
   lastEmit = 0;
   resumeWaiters: (() => void)[] = [];
-  /** Workers waiting for a paused item to resume or be canceled. */
   itemWaiters: (() => void)[] = [];
   conflictWaiter: (() => void) | null = null;
   settled: Promise<void> = Promise.resolve();
-  /** One-deep stream pipeline; off for same-session copies that share a pool. */
   pipeline = true;
   from!: TransferEndpoint;
   to!: TransferEndpoint;
@@ -255,15 +198,12 @@ export class TransferQueue {
   private seq = 0;
   private activeSessions = new Set<string>();
   private slotWaiters: (() => void)[] = [];
-  /** Run promises still settling, including their staging cleanup. */
   private unsettled = new Set<Promise<void>>();
-  /** Re-broadcasts running jobs at PROGRESS_TICK_MS; lives while any job is running. */
   private ticker: NodeJS.Timeout | null = null;
 
   constructor(
     private sessions: SessionManager,
     private hooks: QueueHooks,
-    /** Streams per job; capped so sftp meta ops always have a channel. */
     private concurrency = 7,
     private endpointFactory: EndpointFactory = makeEndpoint,
     private getOptions: () => TransferQueueOptions = () => ({}),
@@ -314,7 +254,6 @@ export class TransferQueue {
 
   private itemState(job: Job, item: PlanItem): TransferItemState {
     if (item.canceled) return "canceled";
-    // An item with a failed file keeps running its other files; it reads as failed once settled.
     if (item.errors.length > 0 && (item.finishedAt || TERMINAL_TRANSFER_STATES.includes(job.state))) return "failed";
     if (item.totalFiles > 0 && item.doneFiles + item.skippedFiles >= item.totalFiles) {
       return item.doneFiles > 0 ? "completed" : "skipped";
@@ -336,7 +275,6 @@ export class TransferQueue {
       totalFiles: item.totalFiles,
       doneFiles: item.doneFiles,
       skippedFiles: item.skippedFiles + item.skippedSymlinks,
-      // A canceled item keeps its full size, so it reads as partly done rather than finished.
       totalBytes: item.canceled ? item.totalBytes : item.totalBytes - item.excludedBytes,
       doneBytes: item.doneBytes,
       bytesPerSec: this.bytesPerSecOfSamples(item.samples),
@@ -351,24 +289,15 @@ export class TransferQueue {
     };
   }
 
-  /**
-   * Bytes/second over the trailing 3 s sample window, measured to now so a
-   * stall decays instead of holding the last burst's rate.
-   */
   private bytesPerSecOfSamples(samples: { t: number; bytes: number }[]): number {
     const now = Date.now();
     const windowStart = now - LIVE_RATE_WINDOW_MS;
     const recent = samples.filter((s) => s.t >= windowStart);
     if (recent.length < 2) return 0;
-    // A floor on the span keeps a same-millisecond burst from reading as GB/s.
     const span = Math.max(LIVE_RATE_MIN_SPAN_MS, now - recent[0].t);
     return Math.max(0, ((recent[recent.length - 1].bytes - recent[0].bytes) / span) * 1000);
   }
 
-  /**
-   * Run a counter rollback without it reading as negative throughput: shift the
-   * live-rate history by what was given back, so the rate keeps its smoothing.
-   */
   private keepRateThrough(job: Job, item: PlanItem, giveBack: () => void): void {
     const jobBefore = job.doneBytes;
     const itemBefore = item.doneBytes;
@@ -377,9 +306,7 @@ export class TransferQueue {
     for (const sample of item.samples) sample.bytes -= itemBefore - item.doneBytes;
   }
 
-  /** Record a live-rate sample: one per LIVE_RATE_SAMPLE_MS, pruned by age rather than count. */
   private pushRateSample(samples: { t: number; bytes: number }[], now: number, bytes: number): void {
-    // The newest sample tracks the latest chunk until it is a full step past the one before it.
     const prev = samples[samples.length - 2];
     const last = samples[samples.length - 1];
     if (prev && last && now - prev.t < LIVE_RATE_SAMPLE_MS) {
@@ -431,12 +358,6 @@ export class TransferQueue {
     else this.maybeStopProgressTicker();
   }
 
-  /**
-   * Re-broadcast every running job at PROGRESS_TICK_MS with the true counters,
-   * so the bar tracks bytes actually transferred instead of the chunk bursts
-   * the throttled emits produce. No estimation: if 4 MB of 100 MB have been
-   * written, the bar shows 4%.
-   */
   private startProgressTicker(): void {
     if (this.ticker) return;
     const tick = (): void => {
@@ -455,22 +376,15 @@ export class TransferQueue {
     this.ticker.unref?.();
   }
 
-  /** Stop the ticker unless a state flip in this tick revived a running job. */
   private maybeStopProgressTicker(): void {
     if (!this.ticker || [...this.jobs.values()].some((j) => j.state === "running")) return;
     clearInterval(this.ticker);
     this.ticker = null;
   }
 
-  /**
-   * One confirmed-progress sample per second while running. A zero-duration
-   * sample marks a discontinuity (first sample, pause, or a long ticker gap)
-   * so later intervals measure only progress since that boundary.
-   */
   private sampleSpeed(target: SpeedTracked, doneBytes: number, now: number): void {
     if (target.lastSpeedSampleAt === 0) {
       target.lastSpeedSampleAt = now;
-      // A pause resumes sampling at a new boundary; keep the graph's origin.
       if (target.speedStartedAt === 0) {
         target.speedStartedAt = now;
         target.speedHistory.push({ elapsedMs: 0, bytesPerSec: 0 });
@@ -491,7 +405,6 @@ export class TransferQueue {
     target.speedStats = speedStatsFromSamples(target.speedSamples, this.speedStatsWindowMs);
   }
 
-  /** Capture the final partial interval so short transfers still report stats. */
   private flushSpeedSample(target: SpeedTracked, doneBytes: number, now = Date.now()): void {
     if (target.lastSpeedSampleAt === 0) return;
     const activeMs = now - target.lastSpeedSampleAt;
@@ -503,13 +416,10 @@ export class TransferQueue {
     target.speedStats = speedStatsFromSamples(target.speedSamples, this.speedStatsWindowMs);
   }
 
-  /** Keep the whole transfer, downsampling only once it outgrows the graph. */
   private recordSpeedPoint(target: SpeedTracked, bytes: number, activeMs: number, now: number): void {
     if (activeMs <= 0) return;
     target.speedHistory.push({
       elapsedMs: Math.max(0, now - target.speedStartedAt),
-      // A retry can roll progress back between samples; graph the positive bytes
-      // so the line does not dive below zero.
       bytesPerSec: (Math.max(0, bytes) / activeMs) * 1000,
     });
     if (target.speedHistory.length > SPEED_GRAPH_MAX_POINTS * 2) {
@@ -517,7 +427,6 @@ export class TransferQueue {
     }
   }
 
-  /** Flush running item samples; pausing also resets their measurement boundary. */
   private flushItemSpeeds(job: Job, reset: boolean): void {
     for (const item of job.items) {
       if (item.lastSpeedSampleAt === 0) continue;
@@ -538,18 +447,15 @@ export class TransferQueue {
     return job.id;
   }
 
-  /** Track a job through its cleanup so shutdown can wait for it. */
   private track(settled: Promise<void>): void {
     this.unsettled.add(settled);
     const done = (): void => void this.unsettled.delete(settled);
     void settled.then(done, done);
   }
 
-  /** Reserve all sessions together so opposite-direction jobs cannot deadlock. */
   private async acquireJobSlot(job: Job): Promise<() => void> {
     const ids = [...new Set([job.request.from, job.request.to].flatMap((ref) => (ref.kind === "sftp" ? [ref.sessionId] : [])))];
     while (!job.canceled && ids.some((id) => this.activeSessions.has(id))) {
-      // Show the row while it waits; an uncontended job goes straight to scanning.
       this.emit(job, true);
       await new Promise<void>((resolve) => this.slotWaiters.push(resolve));
     }
@@ -596,9 +502,6 @@ export class TransferQueue {
         job.state = "failed";
       }
     } finally {
-      // Cleanup only this job's unique staging files, after all writers stopped.
-      // Remove them together: a remote destination would otherwise spend one
-      // round trip per stopped file, delaying a canceled job from settling.
       if (job.to) {
         await Promise.allSettled(
           job.planFiles.filter((file) => file.target).map((file) => job.to.removeFile(file.target!.partPath)),
@@ -624,7 +527,6 @@ export class TransferQueue {
     throw new Error("Transfer canceled");
   }
 
-  /** Retry metadata too: outages during a large folder scan must not lose the job. */
   private async operation<T>(job: Job, fn: () => Promise<T>): Promise<T> {
     for (let attempt = 0; ; attempt++) {
       await this.ready(job);
@@ -642,7 +544,6 @@ export class TransferQueue {
     }
   }
 
-  /** §3.4: enumerate everything before moving a byte. */
   private async enumerate(job: Job): Promise<void> {
     const { sourceBase, names } = job.request;
     const walk = async (item: PlanItem, relPath: string, knownStat?: EndpointStat): Promise<void> => {
@@ -653,7 +554,6 @@ export class TransferQueue {
       if (item.canceled) return;
       if (!stat) throw new Error(`Source disappeared: ${relPath}`);
       if (stat.isSymlink) {
-        // §6: symlinks are never followed during recursive operations.
         job.skippedSymlinks++;
         item.skippedSymlinks++;
         return;
@@ -692,17 +592,13 @@ export class TransferQueue {
     }
   }
 
-  /** One readdir per destination directory, then set-membership checks. */
   private async detectConflicts(job: Job): Promise<void> {
     await this.operation(job, () => job.to.mkdirp(job.request.destDir));
     const listings = new Map<string, Map<string, EndpointStat>>();
     const list = async (dir: string): Promise<Map<string, EndpointStat>> =>
       new Map((await this.operation(job, () => job.to.listEntries(dir))).map((entry) => [entry.name, entry.stat]));
     listings.set(job.request.destDir, await list(job.request.destDir));
-    // Parents precede children. Absent directories need no remote listing.
     for (const rel of job.planDirs) {
-      // A remote destination can make this loop thousands of listings deep;
-      // cancellation must stop it instead of finishing a scan nobody wants.
       if (job.canceled) return;
       const dir = joinPath(job.request.destDir, rel);
       const slash = rel.lastIndexOf("/");
@@ -719,10 +615,6 @@ export class TransferQueue {
       const dir = slash === -1 ? job.request.destDir : joinPath(job.request.destDir, file.relPath.slice(0, slash));
       const name = file.relPath.slice(slash + 1);
       const st = listings.get(dir)?.get(name);
-      // A retry re-scans the source, then keeps files the previous attempt
-      // already committed. Only skip when the source is unchanged (same size
-      // and mtime) and the destination still holds that exact file; anything
-      // else is copied again and goes through conflict detection as usual.
       const previous = job.previousCompleted.get(file.relPath);
       if (
         previous &&
@@ -755,7 +647,6 @@ export class TransferQueue {
         action: st.isDir ? "skip" : null,
       });
     }
-    // Include planned names as well as existing names when allocating keep-both.
     for (const file of job.planFiles) {
       if (job.canceled) return;
       if (file.canceled || file.item.canceled) continue;
@@ -767,7 +658,6 @@ export class TransferQueue {
     }
   }
 
-  /** Ask the renderer, one prompt at a time; apply-to-all answers the rest. */
   private async promptConflicts(job: Job): Promise<void> {
     for (;;) {
       if (job.canceled) return;
@@ -775,8 +665,6 @@ export class TransferQueue {
       if (!next) return;
       const remaining = [...job.conflicts.values()].filter((c) => c.action === null).length;
       const file = job.planFiles.find((f) => f.relPath === next.relPath);
-      // Waiter must exist before the hook fires: a listener may respond
-      // synchronously (the integration tests do).
       const answered = new Promise<void>((resolve) => {
         job.conflictWaiter = resolve;
       });
@@ -805,7 +693,6 @@ export class TransferQueue {
   }
 
   private async execute(job: Job): Promise<void> {
-    // Directories first, shallowest first, so parents exist.
     const dirs = [...job.planDirs].sort((a, b) => a.split("/").length - b.split("/").length);
     await this.operation(job, () => job.to.mkdirp(job.request.destDir));
     for (const dir of dirs) {
@@ -814,16 +701,12 @@ export class TransferQueue {
     }
     if (job.canceled) return;
 
-    // Each item owns its own queue so pausing one never stalls the others.
     for (const file of job.planFiles) {
       if (job.alreadyDone.has(file.relPath) || file.canceled || file.item.canceled) continue;
       file.item.queue.push(file);
     }
     const queued = job.items.reduce((total, item) => total + item.queue.length, 0);
     const refs = [job.request.from, job.request.to].filter((ref) => ref.kind === "sftp");
-    // A same-session copy needs one read and one write channel per file. A
-    // worker that pipelines two files could hold a read channel while waiting
-    // for a write channel and deadlock the shared pool, so keep it serial.
     const sameSession = refs.length === 2 && refs[0].sessionId === refs[1].sessionId;
     job.pipeline = !sameSession;
     let limit = Math.max(1, Math.floor(this.concurrency));
@@ -835,13 +718,6 @@ export class TransferQueue {
     await Promise.all(workers);
   }
 
-  /**
-   * One worker's file loop. The next file starts streaming before the previous
-   * file's verify/setMeta/rename settle, so the commit latency of file N
-   * overlaps the data transfer of file N+1 instead of stalling the worker for
-   * one commit per file. transferFile owns its own retry/unshift behavior, so a
-   * one-deep pipeline keeps the same per-file failure semantics.
-   */
   private async worker(job: Job): Promise<void> {
     let inflight: Promise<void> | null = null;
     for (;;) {
@@ -853,7 +729,6 @@ export class TransferQueue {
       }
       const file = this.nextFile(job);
       if (!file) {
-        // A paused item can hold every remaining file; wait for a resume or cancel.
         if (!inflight) {
           if (this.hasQueuedFiles(job) && !job.canceled) {
             await this.waitForItem(job);
@@ -861,8 +736,6 @@ export class TransferQueue {
           }
           break;
         }
-        // The queue looks drained, but the in-flight file can still re-queue
-        // itself on a retriable failure. Settle it, then look again.
         const settling = inflight;
         inflight = null;
         await settling;
@@ -879,7 +752,6 @@ export class TransferQueue {
     await inflight;
   }
 
-  /** Next file from the first item that is neither paused nor canceled. */
   private nextFile(job: Job): PlanFile | undefined {
     for (const item of job.items) {
       if (item.userPaused || item.canceled) continue;
@@ -921,7 +793,6 @@ export class TransferQueue {
     return file.target;
   }
 
-  /** Drop a file that will never move from the reported totals; bytes it already confirmed stay counted. */
   private excludeFileBytes(job: Job, file: PlanFile): void {
     if (file.excluded) return;
     file.excluded = true;
@@ -930,7 +801,6 @@ export class TransferQueue {
     file.item.excludedBytes += bytes;
   }
 
-  /** Count a file its item had canceled exactly once, so job totals still add up. */
   private skipCanceledFile(job: Job, file: PlanFile): void {
     if (file.completed || file.canceled) return;
     file.canceled = true;
@@ -942,8 +812,6 @@ export class TransferQueue {
   }
 
   private async transferFile(job: Job, file: PlanFile): Promise<void> {
-    // A cancel can land between a worker's loop check and this call. Refuse
-    // before allocating a target so no new file starts after cancellation.
     if (job.canceled) return;
     const item = file.item;
     if (item.canceled) {
@@ -996,13 +864,6 @@ export class TransferQueue {
     };
     const checkpointed = !!(job.from.supportsRanges && job.to.supportsRanges && file.size >= CHUNK_THRESHOLD);
     const sourcePath = joinPath(job.request.sourceBase, file.relPath);
-    /**
-     * Bytes credited to job.doneBytes for this file that the destination has
-     * not confirmed. Destination streams report their confirmed offset (SFTP
-     * write acks, fs.WriteStream.bytesWritten) while an attempt runs; a failed
-     * attempt rolls the unconfirmed portion back so the retry resumes from the
-     * last byte the destination actually applied.
-     */
     let uncredited = 0;
     const credit = (bytes: number): void => {
       if (bytes <= 0) return;
@@ -1060,29 +921,18 @@ export class TransferQueue {
       await Promise.race([checkSource(), aborted]);
       if (file.checkpoint > 0) {
         const part = await Promise.race([job.to.statOrNull(partPath), aborted]);
-        // Never resume from the part file's size: a killed stream can leave
-        // holes below its end (queued writes dropped at CLOSE), so only the
-        // destination-acknowledged frontier is a safe resume point.
         if (!part || part.isDir || part.isSymlink || part.size < file.checkpoint || part.size > file.size) {
           discard();
         }
       }
-      // One read/write pair per attempt. The SFTP streams pipeline requests
-      // internally and the checkpoint advances from destination confirmations,
-      // so there is no stop-and-go at arbitrary chunk boundaries.
       const offset = file.checkpoint;
       controller.signal.throwIfAborted();
       armStall();
       let confirmedSize: number | undefined = offset === file.size && checkpointed ? file.size : undefined;
-      // A pause/drop during read-back can leave the entire staged file confirmed.
-      // Resume by hashing it again, without opening an invalid empty range.
       if (offset < file.size || !checkpointed) {
         const src = await Promise.race([
           job.from
             .createReadStream(sourcePath, {
-              // Bound every read to the enumerated size. A small non-checkpointed
-              // read otherwise runs to EOF, costing an extra probe round trip;
-              // a grown source is still caught by the post-copy checkSource.
               ...(file.size > 0 ? { start: offset, end: file.size - 1 } : {}),
               signal: controller.signal,
             })
@@ -1099,8 +949,6 @@ export class TransferQueue {
             .createWriteStream(partPath, verify ? 0o600 : file.mode, {
               start: offset,
               signal: controller.signal,
-              // SFTP applies mode/mtime on the open handle at close, so the
-              // staged file is already finalized when the pipeline ends.
               ...(job.to.writesMeta && !verify ? { meta: { mtimeMs: file.mtimeMs, mode: file.mode } } : {}),
             })
             .then((stream) => {
@@ -1134,9 +982,6 @@ export class TransferQueue {
         else clearTimeout(timer);
         controller.signal.throwIfAborted();
         if (bytes !== file.size - offset) throw new Error(`Source ended early: ${file.relPath}`);
-        // The pipeline only finishes after every write and the final CLOSE were
-        // acknowledged, so the whole file is confirmed now. Files below the
-        // checkpoint threshold keep no resume offset: their retries start over.
         if (checkpointed) confirm(file.size);
         flight.src = null;
         flight.dst = null;
@@ -1144,10 +989,6 @@ export class TransferQueue {
       }
 
       await Promise.race([checkSource(), aborted]);
-      // A stream that confirmed the whole file needs no extra stat: SFTP write
-      // acks, fs write callbacks, and ftp's 226 are the same contract the
-      // resume checkpoints trust. Endpoints that cannot report stay verified
-      // by stat/SIZE.
       const writtenSize = await Promise.race([
         (async () =>
           confirmedSize === file.size
@@ -1183,13 +1024,10 @@ export class TransferQueue {
         await Promise.race([checkSource(), aborted]);
       }
       controller.signal.throwIfAborted();
-      // SFTP folds mode/mtime into close; other endpoints need a separate
-      // metadata request after the stream is committed.
       if (!job.to.writesMeta || verify) {
         await Promise.race([job.to.setMeta(partPath, { mtimeMs: file.mtimeMs, mode: file.mode }), aborted]);
         controller.signal.throwIfAborted();
       }
-      // Do not retry an ambiguous rename: the server may already have committed it.
       committing = true;
       await job.to.renameReplacing(partPath, finalPath);
       job.doneFiles++;
@@ -1202,11 +1040,7 @@ export class TransferQueue {
       controller.abort();
       flight.src?.destroy();
       flight.dst?.destroy();
-      // Writes acknowledged after the last progress poll still count: take the
-      // final destination frontier before rolling unconfirmed bytes back.
       if (checkpointed) confirm(flight.dst?.confirmedBytes?.() ?? file.checkpoint);
-      // Roll back only this attempt's unconfirmed bytes; other workers keep
-      // theirs, and a resume starts at the last confirmed offset.
       this.keepRateThrough(job, item, rollback);
       let retry = false;
       if (!job.canceled && !item.canceled && !committing && !(err instanceof TransferIntegrityError)) {
@@ -1247,7 +1081,6 @@ export class TransferQueue {
     }
   }
 
-  /** True while a session this job depends on is not usable. */
   private sessionDown(job: Job): boolean {
     const sftpRefs = [job.request.from, job.request.to].filter((r) => r.kind === "sftp");
     if (sftpRefs.length === 0) return false;
@@ -1260,7 +1093,6 @@ export class TransferQueue {
     });
   }
 
-  /** "The channel is gone", as opposed to "this file cannot be transferred". */
   private isChannelError(err: unknown): boolean {
     const code = (err as NodeJS.ErrnoException).code;
     return (
@@ -1347,7 +1179,6 @@ export class TransferQueue {
     item.userPaused = true;
     this.flushSpeedSample(item, item.doneBytes);
     item.lastSpeedSampleAt = 0;
-    // Destroy this item's streams; its workers requeue the files and move on.
     this.abortItemInFlight(job, item);
     this.emit(job, true);
   }
@@ -1357,7 +1188,6 @@ export class TransferQueue {
     const item = job?.items.find((candidate) => candidate.name === name);
     if (!job || !item || !item.userPaused) return;
     item.userPaused = false;
-    // Workers may be parked because every remaining file belongs to this item.
     this.wakeItemWaiters(job);
     this.emit(job, true);
   }
@@ -1370,8 +1200,6 @@ export class TransferQueue {
     item.canceled = true;
     item.userPaused = false;
     item.finishedAt ??= Date.now();
-    // Count waiting files as skipped now. In-flight files settle in their own
-    // catch path, so a file that commits during the abort is not double-counted.
     for (const file of job.planFiles) {
       if (
         file.item !== item ||
@@ -1389,7 +1217,6 @@ export class TransferQueue {
       this.excludeFileBytes(job, file);
     }
     item.queue = [];
-    // A conflict prompt for this item must not block the rest of the job.
     for (const conflict of job.conflicts.values()) {
       if (conflict.action !== null) continue;
       const file = job.planFiles.find((candidate) => candidate.relPath === conflict.relPath);
@@ -1409,13 +1236,11 @@ export class TransferQueue {
     job.state = "canceled";
     job.finishedAt ??= Date.now();
     this.abortInFlight(job);
-    // Unstick any waiters so workers can observe cancellation.
     job.conflictWaiter?.();
     for (const wake of this.slotWaiters.splice(0)) wake();
     const waiters = job.resumeWaiters.splice(0);
     for (const w of waiters) w();
     this.wakeItemWaiters(job);
-    // A removed job's row is already gone; a canceled snapshot would re-add it.
     if (!silent) this.emit(job, true);
   }
 
@@ -1457,7 +1282,6 @@ export class TransferQueue {
     if (!old || !["failed", "canceled"].includes(old.state)) return;
     const job = new Job(jobId, old.request);
     this.jobs.set(jobId, job);
-    // Replace the failed row at once; the rerun may wait for the old cleanup or a session slot.
     this.emit(job, true);
     job.settled = old.settled.then(() => {
       for (const file of old.planFiles) {

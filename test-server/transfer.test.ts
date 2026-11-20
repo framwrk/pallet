@@ -20,7 +20,6 @@ function wrap(endpoint: TransferEndpoint, overrides: Partial<TransferEndpoint>):
     },
   });
 }
-/** Models the SFTP channel pool: a stream holds one channel until it closes. */
 function withChannelPool(endpoint: TransferEndpoint, capacity: number): TransferEndpoint {
   let used = 0;
   const waiters: (() => void)[] = [];
@@ -118,10 +117,6 @@ function harness(
   };
 }
 
-/**
- * Remote-to-remote harness: two distinct sessions and endpoints, so the queue
- * exercises the same path as copying between two servers.
- */
 function remoteHarness(
   source: TransferEndpoint,
   dest: TransferEndpoint,
@@ -158,7 +153,6 @@ function remoteHarness(
   };
 }
 
-// Filesystem tests intentionally use the actual endpoints, streams and staging/rename path.
 test("2,100 mixed files, empty folders, duplicate selection and symlinks", { timeout: 30000 }, async () => {
   const f = await fixture();
   try {
@@ -257,8 +251,6 @@ test("large-file retry resumes at the last acknowledged offset, and keep-both na
       createReadStream: async (p, options) => {
         starts.push(options?.start ?? 0);
         if (starts.length === 1) {
-          // Fail after enough real data has flowed for the destination to have
-          // confirmed part of it, so the retry must resume at that offset.
           const inner = await f.local.createReadStream(p, options);
           return Readable.from(
             (async function* () {
@@ -633,7 +625,6 @@ test("small-file reads are bounded to the enumerated size", async () => {
     });
     const result = await harness(source, f.local).run(f.source, f.dest, ["a"]);
     assert.equal(result.state, "completed", JSON.stringify(result.errors));
-    // Without the bound the SFTP reader probes EOF at offset size, a wasted RTT.
     assert.deepEqual(ends, [payload.length - 1]);
     assert.deepEqual(await fs.readFile(`${f.dest}/a`), payload);
   } finally {
@@ -654,7 +645,6 @@ test("a worker starts the next file before the previous commit finishes", { time
     });
     const dest = wrap(f.local, {
       setMeta: async (p, meta) => {
-        // Block the first commit until the second file is already streaming.
         if (commits++ === 0) await secondWriteStarted;
         return f.local.setMeta(p, meta);
       },
@@ -664,7 +654,6 @@ test("a worker starts the next file before the previous commit finishes", { time
         return stream;
       },
     });
-    // One worker: only the one-deep pipeline can overlap the second file.
     const h = harness(f.local, dest, "replace", undefined, 1);
     const result = await h.run(f.source, f.dest, ["a", "b"]);
     assert.equal(result.state, "completed", JSON.stringify(result.errors));
@@ -681,8 +670,6 @@ for (const verification of ["metadata", "sha256"] as const) {
     try {
       await fs.writeFile(`${f.source}/a`, Buffer.alloc(4096, 1));
       await fs.writeFile(`${f.source}/b`, Buffer.alloc(4096, 2));
-      // Pool fits exactly one file's read + write pair. Pipelining a second file
-      // would hold both reads and wait forever for the writes.
       const pooled = withChannelPool(f.local, 2);
       const waiters = new Map<string, (s: TransferJobSnapshot) => void>();
       const queue = new TransferQueue(
@@ -720,7 +707,6 @@ test("remote-to-remote transfers report live progress and complete", { timeout: 
     const source = wrap(f.local, {
       createReadStream: async (p, options) => {
         const read = await f.local.createReadStream(p, options);
-        // Pace the reads so several 100 ms progress ticks land mid-file.
         return Readable.from(
           (async function* () {
             for await (const chunk of read) {
@@ -819,14 +805,12 @@ test("remote-to-remote cancel stops conflict detection instead of scanning every
     for (const name of ["a", "b", "c"]) {
       await fs.mkdir(`${f.source}/tree/${name}`, { recursive: true });
       await fs.writeFile(`${f.source}/tree/${name}/file`, name);
-      // Existing destination folders get listed during conflict detection.
       await fs.mkdir(`${f.dest}/tree/${name}`, { recursive: true });
     }
     let destLists = 0;
     const dest = wrap(f.local, {
       listEntries: async (p) => {
         destLists++;
-        // dest root, then "tree", then "tree/a": cancel partway through.
         if (destLists === 3) h.queue.cancel(h.queue.snapshots()[0].id);
         return f.local.listEntries(p);
       },
@@ -854,7 +838,6 @@ test("remote-to-remote cancel during scan reports partial progress and stops sca
     const source = wrap(f.local, {
       listEntries: async (p) => {
         const entries = await f.local.listEntries(p);
-        // The root listing completes first; cancel while scanning "tree".
         if (++sourceLists === 2) h.queue.cancel(h.queue.snapshots()[0].id);
         return entries;
       },
@@ -889,8 +872,6 @@ test("remote-to-remote cancel after a completed file reports partial byte progre
         const read = await f.local.createReadStream(p, options);
         if (!p.endsWith("/b") || canceled) return read;
         canceled = true;
-        // "b" may start pipelining before "a" commits. Wait for that commit so
-        // the canceled snapshot has completed progress to report.
         for (let i = 0; i < 500 && h.queue.snapshots()[0].doneFiles === 0; i++)
           await new Promise((resolve) => setTimeout(resolve, 10));
         return Readable.from(
@@ -939,7 +920,6 @@ test(
           const read = await f.local.createReadStream(p, options);
           if (!p.endsWith("/b") || canceled) return read;
           canceled = true;
-          // Wait for "a" to commit so the canceled job has finished work to keep.
           for (let i = 0; i < 500 && h.queue.snapshots()[0].doneFiles === 0; i++)
             await new Promise((resolve) => setTimeout(resolve, 10));
           return Readable.from(
@@ -957,8 +937,6 @@ test(
           );
         },
       });
-      // keepBoth would duplicate "a" if the retry copied it again and treated it
-      // as an ordinary conflict.
       const h = remoteHarness(source, f.local, "keepBoth");
       const canceledSnapshot = await h.run(f.source, f.dest, ["a", "b"]);
       assert.equal(canceledSnapshot.state, "canceled");
@@ -1078,12 +1056,9 @@ test("remote-to-remote partial failure keeps completed files and removes staging
 test("running jobs are re-broadcast with live true-counter progress", { timeout: 15000 }, async () => {
   const f = await fixture();
   try {
-    // Local copies finish inside one 100 ms tick, so throttle the source:
-    // 512 KiB every 50 ms keeps the job "running" across several ticks.
     await fs.writeFile(`${f.source}/a`, Buffer.alloc(8 * 1024 * 1024, 33));
     const source = wrap(f.local, {
       createReadStream: async () =>
-        // Synthetic 512 KiB reads every 50 ms. Content matches the source fill (0x21).
         Readable.from(
           (async function* () {
             for (let i = 0; i < 16; i++) {
@@ -1099,22 +1074,14 @@ test("running jobs are re-broadcast with live true-counter progress", { timeout:
     });
     const result = await h.run(f.source, f.dest, ["a"]);
     assert.equal(result.state, "completed", JSON.stringify(result.errors));
-    // The view must carry the real counter at sub-chunk granularity: the
-    // throttled emits alone would only ever step by whole chunks.
     const deltas = updates.slice(1).map((s, i) => s.doneBytes - updates[i].doneBytes);
     assert(
       deltas.some((d) => d > 0 && d < CHUNK),
       "expected progress steps smaller than one 8 MiB chunk",
     );
-    // The bar shows bytes actually transferred: never backwards, never past
-    // the total, and it must spend most of the run below 100%. The counter
-    // legitimately reaches totalBytes during the brief commit phase (verify,
-    // setMeta, rename) while state is still "running", so allow a tick or two
-    // of that — but the overshoot bug sat at 100% for the entire upload.
     const atTotal = updates.filter((s) => s.doneBytes >= s.totalBytes).length;
     assert(atTotal <= 2, `bar sat at 100% for ${atTotal} ticks while bytes remained`);
     assert(updates.length - atTotal >= 3, "expected mostly partial progress");
-    // Terminal record shows the true final counters.
     const record = h.records[0];
     assert.equal(record.doneBytes, result.totalBytes);
   } finally {

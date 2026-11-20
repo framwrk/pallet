@@ -1,7 +1,3 @@
-/**
- * Transfer history should carry the real enqueue/terminal timestamps plus
- * structured endpoints, instead of two Date.now() calls and a human label.
- */
 import { afterAll, beforeAll, expect, mock, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import Database from "better-sqlite3";
@@ -37,7 +33,6 @@ afterAll(() => {
   mock.restore();
 });
 
-/** Pace the first chunk so the job takes measurable time to finish. */
 function pacedSource(local: TransferEndpoint): TransferEndpoint {
   let paced = false;
   return wrap(local, {
@@ -58,7 +53,6 @@ function pacedSource(local: TransferEndpoint): TransferEndpoint {
   });
 }
 
-/** Let one method be overridden while the rest of the endpoint keeps its prototype. */
 function wrap(endpoint: TransferEndpoint, overrides: Partial<TransferEndpoint>): TransferEndpoint {
   return new Proxy(endpoint, {
     get(target, key) {

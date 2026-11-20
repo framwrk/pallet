@@ -1,9 +1,3 @@
-/**
- * Edit sessions poll the local copy and re-upload through a staging file. These
- * tests use a fake endpoint and a slow in-place writer to prove that only the
- * settled content is uploaded, that a stalled channel times out instead of
- * wedging `uploading`, and that close/disconnect removes the temp directory.
- */
 import type { EditEvent, EditSessions as EditSessionsClass } from "../src/main/services/edit-sessions";
 import {
   type EndpointStat,
@@ -60,7 +54,6 @@ class FakeEndpoint implements TransferEndpoint {
     this.writeStarts += 1;
     if (this.stallNextWrite) {
       this.stallNextWrite = false;
-      // A dead channel: the write callback is never called.
       return new Writable({
         write() {
           // Deliberately never calls back.

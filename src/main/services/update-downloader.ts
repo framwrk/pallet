@@ -32,10 +32,8 @@ import { shell } from "electron";
 
 const BROADCAST_INTERVAL_MS = 100;
 
-/** Grace period before quitting, so Finder can paint the drag-to-Applications window. */
 const QUIT_DELAY_MS = 250;
 
-/** How long to wait for the disk image to open before treating it as failed. */
 const OPEN_TIMEOUT_MS = 10_000;
 
 let active: Promise<string> | null = null;
@@ -86,7 +84,6 @@ async function openDiskImage(dest: string): Promise<void> {
   if ("error" in result) throw new Error(`Could not open the disk image: ${result.error}`);
   if (result.failure) throw new Error(`Could not open the disk image: ${result.failure}`);
 
-  // The guarded quit cancels active transfers and waits for their staging cleanup.
   setTimeout(() => void quitAfterTransfers(), QUIT_DELAY_MS);
 }
 
@@ -103,12 +100,6 @@ async function sha256File(path: string): Promise<string> {
   return hash.digest("hex");
 }
 
-/**
- * Stream the release DMG into `part`, refusing oversized or stalled responses,
- * and verify its SHA-256 before the caller renames it into place. A mismatch
- * leaves the part file for the caller to delete and never touches an existing
- * DMG.
- */
 async function downloadVerified(
   release: UpdateRelease,
   part: string,
@@ -141,8 +132,6 @@ async function downloadVerified(
     let received = 0;
     let lastEmit = 0;
 
-    // Counting transform throttled like the transfer ticker: progress events
-    // only while bytes actually flow, capped at 10/s so the renderer isn't flooded.
     const counter = new Transform({
       transform(chunk: Buffer, _enc, cb) {
         received += chunk.length;
@@ -188,7 +177,6 @@ async function run(info: UpdateInfo): Promise<string> {
 
     if (await exists(dest)) {
       if ((await sha256File(dest)) === release.checksum) {
-        // Already on disk and verified: skip straight to mounting.
         emit({ status: "done", version, receivedBytes: 0, totalBytes: 0, path: dest });
         await openDiskImage(dest);
         return dest;

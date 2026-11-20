@@ -1,8 +1,3 @@
-/**
- * Pure keybinding types. No Electron or DOM imports, so the main process, the
- * renderer, and the offline tests can share one registry.
- */
-
 export type CommandGroup = "Navigation" | "Files" | "Transfers" | "Panels";
 
 export type CommandId =

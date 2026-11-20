@@ -1,4 +1,3 @@
-/** Defaults and bounds for the persisted preferences. */
 import type { Preferences, RowDensity } from "./prefs.types";
 
 export const DEFAULT_CONCURRENCY = 3;

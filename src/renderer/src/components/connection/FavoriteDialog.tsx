@@ -12,8 +12,6 @@ export function FavoriteDialog(): React.JSX.Element {
   const open = editing !== null || adding;
 
   function close(): void {
-    // Settings stays open behind this dialog, so closing only dismisses the form
-    // and lands back on whichever surface opened it.
     setEditingFavorite(null);
     setAddingFavorite(false);
   }

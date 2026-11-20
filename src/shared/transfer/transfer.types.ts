@@ -1,5 +1,3 @@
-/** Transfer queue types shared between main and renderer (M5). */
-
 export type EndpointRef = { kind: "local" } | { kind: "sftp"; sessionId: string };
 
 export type TransferVerificationMode = "metadata" | "sha256";

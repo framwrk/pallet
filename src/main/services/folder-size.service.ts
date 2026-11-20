@@ -1,16 +1,3 @@
-/**
- * Recursive folder sizes for the "Calculate folder sizes" preference.
- *
- * Totals are *apparent bytes* — the sum of the sizes of the files inside —
- * not disk usage, so a folder's size is comparable to the file sizes shown
- * next to it and reads the same locally and remotely. Symlinks are counted at
- * their own size and never followed, keeping a link to "/"
- * from turning one folder into a walk of the whole filesystem.
- *
- * Remote sizing walks SFTP directories, whose listings already carry each
- * child's size and mode. Unlike `du`, this excludes directory metadata and
- * gives the same totals as local and FTP walks.
- */
 import { type Dirent, promises as fs } from "fs";
 import type { FileInfo } from "basic-ftp";
 import { S3Service } from "./s3/s3.service";
@@ -22,10 +9,8 @@ import { join } from "path";
 import { mapLimit } from "../utils/concurrency";
 import { remotePath } from "@shared/path/path.utils";
 
-/** Directories read in parallel during a local walk. */
 const LOCAL_WALK_CONCURRENCY = 32;
 
-/** Local walks that may run at once, across every pane and the inspector. */
 const LOCAL_JOBS = 4;
 
 /**
@@ -40,7 +25,6 @@ function cacheKey(target: SizeTarget, path: string): string {
   return target.kind === "local" ? `local\0${path}` : `${target.sessionId}\0${path}`;
 }
 
-/** Runs jobs up to a limit, dropping any that were cancelled while queued. */
 class Gate {
   private active = 0;
   private queue: (() => void)[] = [];
@@ -53,11 +37,7 @@ class Gate {
       waited = true;
       await new Promise<void>((resolve) => this.queue.push(resolve));
     }
-    // Checked after the wait, not before: the point of the queue is that a
-    // folder scrolled out of view never starts walking at all.
     if (cancelled()) {
-      // Hand the slot on only if one was held; releasing a waiter without one
-      // would put an extra job over the limit.
       if (waited) this.next();
       return null;
     }
@@ -88,8 +68,6 @@ async function walkLocal(root: string): Promise<number> {
       try {
         dirents = await fs.readdir(dir, { withFileTypes: true });
       } catch {
-        // Unreadable subtree (permissions, or deleted mid-walk): contributes
-        // nothing rather than failing the whole total.
         return 0;
       }
       let subtotal = 0;
@@ -132,7 +110,7 @@ async function walkRemote(sessions: SessionManager, sessionId: string, root: str
       try {
         list = await readdirRemote(sftp, dir);
       } catch {
-        continue; // Unreadable subtree, as above.
+        continue;
       }
       for (const child of list) {
         const full = remotePath.join(dir, child.filename);
@@ -182,7 +160,6 @@ async function walkFtp(sessions: SessionManager, sessionId: string, root: string
 export class FolderSizes {
   private cache = new Map<string, number>();
   private inflight = new Map<string, Promise<number | null>>();
-  /** Keys the renderer still wants; a cancel removes one before it starts. */
   private wanted = new Set<string>();
   private localGate = new Gate(LOCAL_JOBS);
   private remoteGates = new Map<string, Gate>();
@@ -250,8 +227,6 @@ export class FolderSizes {
   /** Forget cached totals for `path` and everything under it. */
   invalidate(target: SizeTarget, path: string): void {
     const self = cacheKey(target, path);
-    // At the root the key already ends in "/", and every key in that scope
-    // sits under it.
     const under = self.endsWith("/") ? self : `${self}/`;
     for (const key of this.cache.keys()) {
       if (key === self || key.startsWith(under)) this.cache.delete(key);

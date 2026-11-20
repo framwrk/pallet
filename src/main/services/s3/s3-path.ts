@@ -1,15 +1,3 @@
-/**
- * The single mapping between Pallet's POSIX-like pane paths and S3 object
- * keys. Every S3 operation goes through here; nothing else strips slashes or
- * builds CopySource strings by hand.
- *
- * A connection's root prefix is canonicalised once: "/" in the pane is that
- * prefix (empty for the bucket root). Pane paths are always absolute, never
- * carry a trailing slash, and cannot contain ".", "..", empty segments, NUL,
- * or control characters, so a path can never expand into a bucket-wide
- * operation by accident.
- */
-
 export interface S3Location {
   /** Canonical starting key prefix without leading/trailing slashes. */
   rootPrefix: string;

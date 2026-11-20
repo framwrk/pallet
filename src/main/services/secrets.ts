@@ -1,7 +1,3 @@
-/**
- * Secret storage (§3.5): Electron safeStorage (Keychain-backed on macOS).
- * Encrypted blobs live as files under userData/secrets — never in SQLite.
- */
 import { app, safeStorage } from "electron";
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { join } from "path";
@@ -13,7 +9,6 @@ function secretsDir(): string {
 }
 
 function pathFor(favoriteId: string): string {
-  // favoriteId is a UUID we generate, safe as a filename.
   return join(secretsDir(), `${favoriteId}.bin`);
 }
 

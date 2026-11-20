@@ -130,7 +130,6 @@ function Preview({
   backend: PaneBackend;
   maxBytes: number;
 }): React.JSX.Element | null {
-  // Mounted with key={entry.path} so each file starts from clean state.
   const [data, setData] = useState<PreviewData | null>(null);
   const [failed, setFailed] = useState(false);
   const ext = localPath.extname(entry.name).toLowerCase();
@@ -190,7 +189,6 @@ export function Inspector(): React.JSX.Element | null {
   const app = useAppState();
   const pane = app.panes[app.active];
   const entry = useMemo(() => {
-    // A terminal-view pane has no listing selection to inspect.
     if (pane.view === "terminal") return null;
     if (pane.selected.size === 1) {
       const name = [...pane.selected][0];
@@ -201,15 +199,12 @@ export function Inspector(): React.JSX.Element | null {
 
   const isS3 = pane.backend.kind === "sftp" && pane.backend.protocol === "s3";
   const editable = pane.backend.kind === "sftp" && !isS3 && entry !== null;
-  // Draft is tagged with the file it belongs to; switching files discards it.
   const [draft, setDraft] = useState<{ path: string; mode: number } | null>(null);
   const draftMode = entry && draft?.path === entry.path ? draft.mode : null;
   const setDraftMode = (m: number): void => {
     if (entry) setDraft({ path: entry.path, mode: m & 0o7777 });
   };
 
-  // Above the early return so the hook order stays fixed; an empty list while
-  // the inspector is closed keeps it from walking anything you cannot see.
   const folderSizes = useFolderSizes(app.inspectorOpen && entry && isSizeable(entry) ? [entry.path] : [], pane.backend);
 
   const open = app.inspectorOpen;
@@ -229,10 +224,6 @@ export function Inspector(): React.JSX.Element | null {
   }
 
   return (
-    // The rail always claims layout (the panes glide aside); its clipped
-    // zero-width state hides everything once the exit settles. The content
-    // stays mounted while visibility interpolates out (190ms), so the rail
-    // slides shut with its contents instead of emptying first.
     <aside
       className={cn(
         "bg-sidebar ease-onscreen shrink-0 overflow-hidden border-l transition-[width]",

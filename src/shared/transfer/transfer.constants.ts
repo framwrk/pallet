@@ -1,4 +1,3 @@
-/** Transfer constants shared by the queue, edit sessions, and the transfer panel UI. */
 import type { TransferState } from "./transfer.types";
 
 /** States a job never leaves on its own; reaching one means the job is done. */

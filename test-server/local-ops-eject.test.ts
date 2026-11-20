@@ -1,7 +1,3 @@
-/**
- * Ejecting is driven by a renderer-supplied path, so local-ops only lets a
- * currently mounted, non-boot volume through to diskutil.
- */
 import { expect, test } from "bun:test";
 import { join } from "node:path";
 

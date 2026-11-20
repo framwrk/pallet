@@ -23,7 +23,6 @@ export function GoToDialog(): React.JSX.Element {
         setGoToOpen(false);
         return;
       }
-      // Keep the dialog open with the typed path so it can be corrected or retried.
       setError(getState().panes[app.active].error?.message ?? "Couldn’t open that path");
     });
   }

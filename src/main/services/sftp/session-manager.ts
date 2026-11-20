@@ -1,11 +1,3 @@
-/**
- * SSH session lifecycle: connect, host-key verification (TOFU), a dedicated
- * SFTP channel for browsing, keepalive, and reconnect-with-backoff.
- *
- * This module deliberately imports nothing from Electron so the Docker
- * integration tests can drive it directly. Host-key decisions and status
- * events are injected via SessionManagerHooks.
- */
 import { type BaseAgent, type ConnectConfig, type SFTPWrapper, Client as SshClient, createAgent } from "ssh2";
 import type {
   ConnectProfile,
@@ -49,7 +41,6 @@ export interface SessionManagerOptions {
 
 interface ChannelPool {
   free: SFTPWrapper[];
-  /** Channels currently open (free + leased). */
   total: number;
   waiters: { resolve: (sftp: SFTPWrapper) => void; reject: (err: Error) => void }[];
 }
@@ -63,32 +54,23 @@ interface FtpPool {
 interface Session {
   id: string;
   profile: ConnectProfile;
-  /** Bumped on every successful dial; leases from older generations are dead. */
   generation: number;
   client: SshClient | null;
-  /** Dedicated FTP/FTPS client for browsing and metadata operations. */
   ftp: FtpClient | null;
-  /** S3 SDK client; shareable across every queued request. */
   s3: S3Client | null;
-  /** Bucket and canonical root prefix for the S3 session. */
   s3Target: S3Target | null;
-  /** Dedicated browsing channel; navigation never queues behind a transfer. */
   sftp: SFTPWrapper | null;
-  /** Pool of transfer channels (§3.3); size from the profile's concurrency. */
   pool: ChannelPool;
   ftpPool: FtpPool;
   status: SessionStatus;
-  /** Set while the user is deliberately disconnecting. */
   closing: boolean;
   reconnectAttempt: number;
   reconnectTimer: NodeJS.Timeout | null;
-  /** Set once a drop has been scheduled, so repeated failures do not stack timers. */
   dropNotified: boolean;
 }
 
 const RECONNECT_DELAYS_MS = [1000, 2000, 4000, 8000, 15000];
 
-/** Bound both channel handshakes and pool waits; dispose any late resource. */
 function boundedAcquire<T>(pending: Promise<T>, discard: (value: T) => void): Promise<T> {
   return new Promise((resolve, reject) => {
     let expired = false;
@@ -134,7 +116,6 @@ export function protocolOf(profile: ConnectProfile): ConnectionProtocol {
   return "sftp";
 }
 
-/** Parallel transfers plus one channel of headroom for short metadata calls. */
 function poolSizeFor(profile: ConnectProfile): number {
   const requested = profile.concurrency ?? DEFAULT_CONCURRENCY;
   const streams = Number.isFinite(requested)
@@ -159,7 +140,6 @@ function connectionError(err: Error): Error {
   });
 }
 
-/** Resolve SSH_AUTH_SOCK up front so agent failures reach the form as clear errors. */
 async function resolveSshAgent(): Promise<BaseAgent> {
   const socketPath = process.env.SSH_AUTH_SOCK;
   if (!socketPath?.trim()) {
@@ -192,7 +172,6 @@ async function resolveSshAgent(): Promise<BaseAgent> {
 export class SessionManager {
   private sessions = new Map<string, Session>();
   private seq = 0;
-  /** In-flight connects by renderer attempt id, so the user can abandon a slow one. */
   private attempts = new Map<string, () => void>();
 
   constructor(
@@ -331,7 +310,6 @@ export class SessionManager {
       });
     });
     const opening = open();
-    // A dial that completes after cancel leaves live resources on the session.
     opening.then(
       () => cancelled && this.abandon(session),
       () => {},
@@ -348,7 +326,6 @@ export class SessionManager {
     this.attempts.get(attemptId)?.();
   }
 
-  /** Tear down a session that never reached the caller. Safe to repeat. */
   private abandon(session: Session): void {
     session.closing = true;
     session.client?.destroy();
@@ -361,7 +338,6 @@ export class SessionManager {
     if (this.sessions.delete(session.id)) this.setStatus(session, "disconnected", "Connection cancelled");
   }
 
-  /** One dial attempt: TCP+SSH handshake plus the browse SFTP channel. */
   private async dial(session: Session): Promise<void> {
     const protocol = protocolOf(session.profile);
     if (protocol === "s3") {
@@ -399,11 +375,6 @@ export class SessionManager {
     client.on("error", () => {});
     session.reconnectAttempt = 0;
     session.dropNotified = false;
-    // handleDrop already emptied the pool, but a stream destroyed by the drop
-    // can emit 'close' without an 'error' and release its channel back into
-    // the free list afterwards — still on the outgoing generation, so the
-    // release-time guard lets it through. Clear the pool again here, where the
-    // new connection begins, so nothing from the old one can be leased out.
     this.resetPool(session, new Error("Connection replaced"));
     session.generation++;
     this.setStatus(session, "connected");
@@ -441,11 +412,6 @@ export class SessionManager {
     this.setStatus(session, "connected");
   }
 
-  /**
-   * S3 "dial" validates exactly the configured bucket and starting prefix with
-   * a minimal ListObjectsV2. HeadBucket or ListBuckets would reject credentials
-   * that are correctly scoped to one bucket/prefix.
-   */
   private async dialS3(session: Session): Promise<void> {
     const config = s3ConfigFromProfile(session.profile);
     const credentials = credentialsFromProfile(session.profile);
@@ -492,8 +458,6 @@ export class SessionManager {
   private async resolveInitialPath(session: Session): Promise<string> {
     const want = session.profile.remotePath?.trim();
     if (protocolOf(session.profile) === "s3") {
-      // The connection's starting prefix is the pane root; an empty prefix is
-      // a valid, empty folder rather than a failed navigation.
       return "/";
     }
     if (protocolOf(session.profile) !== "sftp") {
@@ -525,7 +489,6 @@ export class SessionManager {
 
   private handleDrop(session: Session): void {
     if (session.closing || !this.sessions.has(session.id)) return;
-    // Several in-flight requests can fail on one dead socket; reconnect once.
     if (session.dropNotified) return;
     session.dropNotified = true;
     session.sftp = null;
@@ -809,9 +772,6 @@ export class SessionManager {
   }
 
   private releaseTransferChannel(session: Session, sftp: SFTPWrapper, broken: boolean, leaseGeneration: number): void {
-    // The connection was replaced under this lease: the channel is dead even
-    // if its stream closed cleanly. Dropping it here keeps a corpse out of
-    // the free list, where it would silently hang the next transfer.
     if (leaseGeneration !== session.generation || session.closing || session.status !== "connected") {
       try {
         sftp.end();

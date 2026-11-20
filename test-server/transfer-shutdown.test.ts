@@ -1,8 +1,3 @@
-/**
- * Quitting must not leave `.pallet-part` staging files behind. Shutdown
- * cancels active jobs, aborts their streams, and waits for the run cleanup
- * that removes staged files, bounded so a dead destination cannot block exit.
- */
 import { Readable } from "node:stream";
 import type { SessionManager } from "../src/main/services/sftp/session-manager";
 import type { TransferEndpoint } from "../src/main/services/transfer/transfer-endpoint";
@@ -61,7 +56,6 @@ function harness(source: TransferEndpoint, dest: TransferEndpoint): TransferQueu
   return queue;
 }
 
-/** Calls `onHalf` once the first chunk of a large file has been read. */
 function stopAtHalfChunk(local: TransferEndpoint, onHalf: () => void): TransferEndpoint {
   let first = true;
   return wrap(local, {
@@ -96,7 +90,6 @@ function enqueue(queue: TransferQueue, sourceBase: string, destDir: string): voi
   });
 }
 
-/** Shut the queue down after the first chunk of a two-chunk file was copied. */
 async function shutdownMidFile(
   f: Fixture,
   dest: TransferEndpoint,
@@ -148,7 +141,6 @@ test("shutdown with no active transfers returns immediately", async () => {
 test("shutdown stops waiting when staging cleanup hangs", async () => {
   const f = await fixture();
   try {
-    // A destination that never answers a remove: quitting must not hang on it.
     const dest = wrap(f.local, { removeFile: () => new Promise<void>(() => {}) });
     const { result } = await shutdownMidFile(f, dest, 25);
 

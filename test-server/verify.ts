@@ -108,7 +108,6 @@ async function verifySftp(): Promise<void> {
         username,
         password,
         readyTimeout: 5_000,
-        // The ephemeral local SFTP server is intentionally accepted without a known-hosts file.
         hostVerifier: () => true,
       });
   });

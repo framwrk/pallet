@@ -129,8 +129,6 @@ if (mode === "destroyed" || mode === "send") {
     () => local,
   );
 
-  // Hold each chunk until a progress event exercises the next
-  // window state. This also covers broadcasts from the queue's progress ticker.
   const createReadStream = local.createReadStream.bind(local);
   local.createReadStream = async (path, options) => {
     const stream = await createReadStream(path, options);

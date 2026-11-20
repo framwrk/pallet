@@ -30,10 +30,6 @@ function bounded(value: unknown, fallback: number, min: number, max: number): nu
   return typeof value === "number" && Number.isFinite(value) ? Math.min(max, Math.max(min, Math.round(value))) : fallback;
 }
 
-/**
- * Values are stored as JSON so booleans and numbers round-trip through the
- * TEXT column. Anything unreadable falls back to the default for that key.
- */
 function coerce(stored: Record<string, unknown>): Preferences {
   const {
     showHidden,

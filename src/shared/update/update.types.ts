@@ -1,7 +1,3 @@
-/**
- * Update surfaces shared by main (checker + downloader) and renderer (toast).
- */
-
 /** A newer GitHub release, as surfaced by the update checker. */
 export interface UpdateInfo {
   version: string;
