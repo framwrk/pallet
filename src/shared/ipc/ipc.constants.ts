@@ -31,6 +31,7 @@ export const UiChannels = {
 
 export const SftpChannels = {
   connect: "sftp:connect",
+  cancelConnect: "sftp:cancelConnect",
   disconnect: "sftp:disconnect",
   reconnect: "sftp:reconnect",
   list: "sftp:list",

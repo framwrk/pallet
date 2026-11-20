@@ -175,8 +175,8 @@ containers, agents, profiles, fixtures and the uniquely named Trash file were re
 
 Other limits: no hardware/1Password agent
 approval, physical laptop sleep, malformed/encrypted private-key matrix, production certificates,
-or arbitrary lossy-network profiles are covered. Connection-handshake cancellation is disabled
-and remote moves are unsupported; this suite does not add either feature.
+or arbitrary lossy-network profiles are covered. Connection-handshake cancellation is covered
+offline by `test-server/connect-cancel.test.ts`, not by this suite; remote moves are unsupported.
 
 
 ### Optional transfer verification coverage

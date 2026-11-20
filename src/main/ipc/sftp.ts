@@ -104,7 +104,8 @@ function handle<Args extends unknown[], T>(channel: string, fn: (...args: Args) 
 }
 
 export function registerSftpHandlers(): void {
-  handle(SftpChannels.connect, (profile: ConnectProfile) => sessionManager.connect(profile));
+  handle(SftpChannels.connect, (profile: ConnectProfile, attemptId?: string) => sessionManager.connect(profile, attemptId));
+  handle(SftpChannels.cancelConnect, (attemptId: string) => sessionManager.cancelConnect(attemptId));
   handle(SftpChannels.disconnect, (sessionId: string) => sessionManager.disconnect(sessionId));
   handle(SftpChannels.reconnect, (sessionId: string) => sessionManager.reconnectNow(sessionId));
   handle(SftpChannels.list, (sessionId: string, dirPath: string) => sftpService.list(sessionId, dirPath));

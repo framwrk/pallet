@@ -39,7 +39,9 @@ export interface PalletApi {
     readPreview(p: string, maxBytes: number): Promise<PreviewData>;
   };
   sftp: {
-    connect(profile: ConnectProfile): Promise<ConnectResult>;
+    connect(profile: ConnectProfile, attemptId?: string): Promise<ConnectResult>;
+    /** Abandon an in-flight connect started with the same attempt id. */
+    cancelConnect(attemptId: string): Promise<void>;
     disconnect(sessionId: string): Promise<void>;
     reconnect(sessionId: string): Promise<void>;
     list(sessionId: string, dirPath: string): Promise<DirListing>;
@@ -96,7 +98,7 @@ export interface PalletApi {
     remove(id: string): Promise<void>;
     reorder(ids: string[]): Promise<void>;
     /** Connects main-side with the stored secret; ENOSECRET if none. */
-    connect(id: string): Promise<ConnectResult & { favorite: Favorite }>;
+    connect(id: string, attemptId?: string): Promise<ConnectResult & { favorite: Favorite }>;
     /** Dial once and disconnect, so a new favorite can be validated before saving. */
     test(profile: ConnectProfile): Promise<void>;
   };

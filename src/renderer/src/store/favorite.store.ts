@@ -8,6 +8,7 @@ import {
   dismissConnectionToast,
   endConnection,
   getState,
+  isCurrentConnection,
   navigate,
   openQuickConnect,
   pushToast,
@@ -15,8 +16,8 @@ import {
   setBackend,
   setFavorites,
 } from "./pane.store";
+import { closeIfCancelled, dropIfCancelled, rememberLeftLocalPane } from "./sftp.store";
 import { expandHome } from "@shared/path/path.utils";
-import { rememberLeftLocalPane } from "./sftp.store";
 
 export async function loadFavorites(): Promise<void> {
   try {
@@ -59,7 +60,8 @@ export async function reorderFavorites(ids: string[]): Promise<void> {
 export async function connectFavorite(favoriteId: string, paneId: PaneId = "right"): Promise<void> {
   const favorite = getState().favorites.find((f) => f.id === favoriteId);
   if (!favorite) return;
-  if (!beginConnection({ paneId, label: favorite.name, host: favorite.host, favoriteId })) {
+  const attemptId = beginConnection({ paneId, label: favorite.name, host: favorite.host, favoriteId });
+  if (!attemptId) {
     const pending = getState().connecting;
     pushToast(`Connecting to ${pending?.label ?? "another server"} — wait for it to finish`, "info");
     return;
@@ -68,7 +70,8 @@ export async function connectFavorite(favoriteId: string, paneId: PaneId = "righ
   if (paneId === "left" && previousBackend.kind === "local") rememberLeftLocalPane();
   let needsSecret = false;
   try {
-    const result = await window.pallet.favorites.connect(favoriteId);
+    const result = await window.pallet.favorites.connect(favoriteId, attemptId);
+    await dropIfCancelled(attemptId, result.sessionId);
     if (previousBackend.kind === "sftp" && previousBackend.sessionId !== result.sessionId) {
       try {
         await window.pallet.sftp.disconnect(previousBackend.sessionId);
@@ -98,6 +101,7 @@ export async function connectFavorite(favoriteId: string, paneId: PaneId = "righ
     // The session is live, so the progress toast can go before the listing loads.
     dismissConnectionToast();
     await navigate(paneId, result.initialPath, "replace");
+    await closeIfCancelled(attemptId, paneId);
     closeQuickConnect();
     if (paneId === "right" && result.favorite.localPath && getState().panes.left.backend.kind === "local") {
       await navigate("left", expandHome(result.favorite.localPath, await window.pallet.fs.homeDir()));
@@ -105,14 +109,16 @@ export async function connectFavorite(favoriteId: string, paneId: PaneId = "righ
     await loadFavorites(); // last-used ordering may have changed
   } catch (err) {
     const e = err as Error & { code?: string };
-    if (e.code === "ENOSECRET") {
+    if (!isCurrentConnection(attemptId)) {
+      // The user asked for this; nothing to report.
+    } else if (e.code === "ENOSECRET") {
       // No stored secret: show Quick Connect prefilled so the user can type it.
       needsSecret = true;
     } else {
       pushToast(e.message);
     }
   } finally {
-    endConnection();
+    endConnection(attemptId);
   }
   if (needsSecret) {
     openQuickConnect(favorite, paneId);

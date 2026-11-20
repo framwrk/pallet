@@ -74,6 +74,8 @@ export interface Toast {
 
 /** A remote connection that is opening but has no session yet. */
 export interface ConnectionAttempt {
+  /** Identifies the attempt to main, so it can be cancelled while it opens. */
+  id: string;
   paneId: PaneId;
   /** Server identity shown while the connection opens. */
   label: string;
@@ -410,12 +412,18 @@ export function openLocal(path: string): void {
 /** Connection progress toast, dismissed once the attempt connects or fails. */
 let connectionToastId: number | null = null;
 
-/** Claim the single remote-connection slot; false while another one opens. */
-export function beginConnection(attempt: ConnectionAttempt): boolean {
-  if (state.connecting) return false;
-  setApp({ connecting: attempt });
+/** Claim the single remote-connection slot; returns the attempt id, or null while another one opens. */
+export function beginConnection(attempt: Omit<ConnectionAttempt, "id">): string | null {
+  if (state.connecting) return null;
+  const id = crypto.randomUUID();
+  setApp({ connecting: { ...attempt, id } });
   connectionToastId = pushToast(`Connecting to ${attempt.label}…`, "info");
-  return true;
+  return id;
+}
+
+/** False once the attempt has finished or the user cancelled it. */
+export function isCurrentConnection(id: string): boolean {
+  return state.connecting?.id === id;
 }
 
 /** Drop the progress toast without releasing the connection slot. */
@@ -426,9 +434,11 @@ export function dismissConnectionToast(): void {
   }
 }
 
-export function endConnection(): void {
+/** Release the slot, unless it already belongs to a newer attempt. */
+export function endConnection(id: string): void {
+  if (!isCurrentConnection(id)) return;
   dismissConnectionToast();
-  if (state.connecting) setApp({ connecting: null });
+  setApp({ connecting: null });
 }
 
 /**

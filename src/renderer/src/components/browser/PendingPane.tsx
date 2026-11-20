@@ -1,7 +1,9 @@
 import { type ConnectionAttempt, useAppState } from "@/store/pane.store";
 import { LoaderCircle, Server } from "lucide-react";
 import { useLayoutEffect, useRef, useState } from "react";
+import { Button } from "@/components/ui/button";
 import { ROW_HEIGHTS } from "@shared/prefs/prefs.constants";
+import { cancelConnection } from "@/store/sftp.store";
 import { cn } from "@/lib/utils";
 
 /** Deterministic name-length variety so the placeholder reads as a listing. */
@@ -53,18 +55,33 @@ export function PendingPane({
       aria-hidden={leaving ? true : undefined}
     >
       <span className="sr-only">Connecting to {attempt.label}…</span>
-      <div
-        className="mt-1 flex h-8 items-center gap-1 border-b px-2"
-        aria-hidden="true"
-      >
-        <span className="bg-primary/10 text-primary flex shrink-0 items-center gap-1 rounded-full py-0.5 pr-2 pl-2 text-[11px] font-medium">
+      <div className="mt-1 flex h-8 items-center gap-1 border-b px-2">
+        <span
+          aria-hidden="true"
+          className="bg-primary/10 text-primary flex shrink-0 items-center gap-1 rounded-full py-0.5 pr-2 pl-2 text-[11px] font-medium"
+        >
           <Server className="size-3" />
           <span className="max-w-56 truncate">{attempt.host}</span>
         </span>
-        <div className="flex min-w-0 flex-1 items-center pl-1">
+        <div
+          aria-hidden="true"
+          className="flex min-w-0 flex-1 items-center pl-1"
+        >
           <span className="bg-muted h-2.5 w-28 rounded-sm" />
         </div>
-        <LoaderCircle className="text-muted-foreground size-3.5 shrink-0 animate-spin" />
+        <LoaderCircle
+          aria-hidden="true"
+          className="text-muted-foreground size-3.5 shrink-0 animate-spin"
+        />
+        <Button
+          size="xs"
+          variant="outline"
+          className="ml-1"
+          aria-label={`Cancel connecting to ${attempt.label}`}
+          onClick={cancelConnection}
+        >
+          Cancel
+        </Button>
       </div>
 
       <div

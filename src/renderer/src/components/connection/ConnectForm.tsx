@@ -19,13 +19,13 @@ import type { ConnectProfile, ConnectionProtocol } from "@shared/sftp/sftp.types
 import { type PaneId, getState, pushToast, useAppState } from "@/store/pane.store";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { cancelConnection, connectRemote, isCancelledConnection } from "@/store/sftp.store";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
-import { connectRemote } from "@/store/sftp.store";
 import { saveFavorite } from "@/store/favorite.store";
 
 const PROTOCOLS: Record<ConnectionProtocol, string> = {
@@ -412,7 +412,7 @@ export function ConnectForm({
       }
     } catch (err) {
       setBusy(false);
-      setError((err as Error).message);
+      if (!isCancelledConnection(err)) setError((err as Error).message);
     }
   }
 
@@ -1150,8 +1150,10 @@ export function ConnectForm({
             variant="outline"
             size="sm"
             className="h-8 text-[13px]"
-            disabled={busy}
-            onClick={onClose}
+            // While this form's connection opens, Cancel stops it instead of closing.
+            disabled={busy && !isPane}
+            onClick={isPane && busy ? cancelConnection : onClose}
+            title={isPane && busy ? "Stop connecting" : undefined}
           >
             Cancel
           </Button>

@@ -192,6 +192,8 @@ async function resolveSshAgent(): Promise<BaseAgent> {
 export class SessionManager {
   private sessions = new Map<string, Session>();
   private seq = 0;
+  /** In-flight connects by renderer attempt id, so the user can abandon a slow one. */
+  private attempts = new Map<string, () => void>();
 
   constructor(
     private hooks: SessionManagerHooks,
@@ -284,7 +286,7 @@ export class SessionManager {
   }
 
   /** Open the connection and the dedicated browse channel. */
-  async connect(profile: ConnectProfile): Promise<ConnectResult> {
+  async connect(profile: ConnectProfile, attemptId?: string): Promise<ConnectResult> {
     const id = `s${++this.seq}`;
     const session: Session = {
       id,
@@ -306,18 +308,57 @@ export class SessionManager {
     this.sessions.set(id, session);
     this.setStatus(session, "connecting");
 
+    const open = async (): Promise<ConnectResult> => {
+      try {
+        await this.dial(session);
+      } catch (err) {
+        this.sessions.delete(id);
+        throw err;
+      }
+      session.client?.on("close", () => this.handleDrop(session));
+      this.watchFtpDrop(session);
+      const initialPath = await this.resolveInitialPath(session);
+      return { sessionId: id, initialPath };
+    };
+    if (!attemptId) return open();
+
+    let cancelled = false;
+    const aborted = new Promise<never>((_, reject) => {
+      this.attempts.set(attemptId, () => {
+        cancelled = true;
+        this.abandon(session);
+        reject(Object.assign(new Error("Connection cancelled"), { code: "ECANCELED" }));
+      });
+    });
+    const opening = open();
+    // A dial that completes after cancel leaves live resources on the session.
+    opening.then(
+      () => cancelled && this.abandon(session),
+      () => {},
+    );
     try {
-      await this.dial(session);
-    } catch (err) {
-      this.sessions.delete(id);
-      throw err;
+      return await Promise.race([opening, aborted]);
+    } finally {
+      this.attempts.delete(attemptId);
     }
+  }
 
-    session.client?.on("close", () => this.handleDrop(session));
-    this.watchFtpDrop(session);
+  /** Abandon a connect that is still opening; a no-op once it has settled. */
+  cancelConnect(attemptId: string): void {
+    this.attempts.get(attemptId)?.();
+  }
 
-    const initialPath = await this.resolveInitialPath(session);
-    return { sessionId: id, initialPath };
+  /** Tear down a session that never reached the caller. Safe to repeat. */
+  private abandon(session: Session): void {
+    session.closing = true;
+    session.client?.destroy();
+    session.ftp?.close();
+    session.s3?.destroy();
+    session.s3 = null;
+    session.generation++;
+    this.resetPool(session, new Error("Connection cancelled"));
+    this.resetFtpPool(session, new Error("Connection cancelled"));
+    if (this.sessions.delete(session.id)) this.setStatus(session, "disconnected", "Connection cancelled");
   }
 
   /** One dial attempt: TCP+SSH handshake plus the browse SFTP channel. */

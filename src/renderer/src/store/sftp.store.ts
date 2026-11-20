@@ -6,6 +6,7 @@ import {
   dismissConnectionToast,
   endConnection,
   getState,
+  isCurrentConnection,
   navigate,
   pushHostKeyPrompt,
   pushToast,
@@ -52,8 +53,8 @@ export function initSftpEvents(): void {
  */
 export async function connectRemote(profile: ConnectProfile, localPath?: string, paneId: PaneId = "right"): Promise<void> {
   const label = profile.s3?.bucket ?? `${profile.username}@${profile.host}`;
-  const attempt = { paneId, label, host: profile.host };
-  if (!beginConnection(attempt)) {
+  const attemptId = beginConnection({ paneId, label, host: profile.host });
+  if (!attemptId) {
     const pending = getState().connecting;
     throw new Error(pending ? `Still connecting to ${pending.label}` : "Another connection is already opening");
   }
@@ -62,7 +63,8 @@ export async function connectRemote(profile: ConnectProfile, localPath?: string,
     if (paneId === "left" && previousBackend.kind === "local") {
       rememberLeftLocalPane();
     }
-    const result = await window.pallet.sftp.connect(profile);
+    const result = await window.pallet.sftp.connect(profile, attemptId);
+    await dropIfCancelled(attemptId, result.sessionId);
 
     // Keep the current workspace intact while connecting. Once the replacement
     // succeeds, retire the old session before mounting the new one.
@@ -96,14 +98,49 @@ export async function connectRemote(profile: ConnectProfile, localPath?: string,
     // The session is live, so the progress toast can go before the listing loads.
     dismissConnectionToast();
     await navigate(paneId, result.initialPath, "replace");
+    await closeIfCancelled(attemptId, paneId);
     closeQuickConnect();
     // A favorite's local path only belongs to a local left pane.
     if (paneId === "right" && localPath && getState().panes.left.backend.kind === "local") {
       await navigate("left", expandHome(localPath, await window.pallet.fs.homeDir()));
     }
+  } catch (err) {
+    // Error codes do not survive the context bridge, so judge by the attempt itself.
+    throw isCurrentConnection(attemptId) ? err : cancelledError();
   } finally {
-    endConnection();
+    endConnection(attemptId);
   }
+}
+
+/** Raised by a connect the user cancelled; callers stay quiet about it. */
+export function isCancelledConnection(err: unknown): boolean {
+  return (err as { code?: string } | null)?.code === "ECANCELED";
+}
+
+function cancelledError(): Error {
+  return Object.assign(new Error("Connection cancelled"), { code: "ECANCELED" });
+}
+
+/** Stop the connection that is opening. Its pane keeps whatever it showed before. */
+export function cancelConnection(): void {
+  const attempt = getState().connecting;
+  if (!attempt) return;
+  endConnection(attempt.id);
+  void window.pallet.sftp.cancelConnect(attempt.id).catch(() => {});
+}
+
+/** Main finished before the cancel reached it: close the session nobody wants. */
+export async function dropIfCancelled(attemptId: string, sessionId: string): Promise<void> {
+  if (isCurrentConnection(attemptId)) return;
+  await window.pallet.sftp.disconnect(sessionId).catch(() => {});
+  throw cancelledError();
+}
+
+/** Cancelled while the first listing loaded: the pane is live, so close it. */
+export async function closeIfCancelled(attemptId: string, paneId: PaneId): Promise<void> {
+  if (isCurrentConnection(attemptId)) return;
+  await disconnectPane(paneId);
+  throw cancelledError();
 }
 
 /** Disconnect a remote pane; the left pane returns to the local disk. */

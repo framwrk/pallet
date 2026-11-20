@@ -23,7 +23,7 @@ function handle<Args extends unknown[], T>(channel: string, fn: (...args: Args) 
  * Connect with the favorite's stored secret, entirely main-side: the secret
  * is decrypted here and goes straight into the ssh2 config.
  */
-async function connectFavorite(id: string): Promise<ConnectResult & { favorite: Favorite }> {
+async function connectFavorite(id: string, attemptId?: string): Promise<ConnectResult & { favorite: Favorite }> {
   const favorite = store.getFavorite(id);
   if (!favorite) throw new Error("Favorite not found");
 
@@ -114,7 +114,7 @@ async function connectFavorite(id: string): Promise<ConnectResult & { favorite: 
     }
   }
 
-  const result = await sessionManager.connect(profile);
+  const result = await sessionManager.connect(profile, attemptId);
   store.touchLastUsed(id);
   return { ...result, favorite: store.getFavorite(id) ?? favorite };
 }

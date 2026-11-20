@@ -11,6 +11,7 @@ import {
   Plug,
   Server,
   Usb,
+  X,
 } from "lucide-react";
 import { ejectVolume, localPaneId, openLocal, openQuickConnect, setEditingFavorite, useAppState } from "@/store/pane.store";
 import { favoriteContextMenu, reorderFavorites, requestFavoriteConnection } from "@/store/favorite.store";
@@ -18,6 +19,7 @@ import { useRef, useState } from "react";
 import type { Favorite } from "@shared/favorite/favorite.types";
 import { LABEL_COLOR_CLASSES } from "@shared/favorite/favorite.constants";
 import type { VolumeInfo } from "@shared/fs/fs.types";
+import { cancelConnection } from "@/store/sftp.store";
 import { cn } from "@/lib/utils";
 import { displayParts } from "@shared/keybindings/keybinding.utils";
 import { useKeybindings } from "@/store/keybinding.store";
@@ -124,8 +126,10 @@ function FavoriteItem({
     <button
       type="button"
       draggable
-      disabled={disabled}
+      // The opening row stays clickable: clicking it cancels the attempt.
+      disabled={disabled && !connecting}
       aria-busy={connecting}
+      aria-label={connecting ? `Cancel connecting to ${favorite.name}` : undefined}
       onDragStart={onDragStart}
       onDragOver={onDragOver}
       onDrop={onDrop}
@@ -137,10 +141,10 @@ function FavoriteItem({
         "transition-[background-color,color,box-shadow] duration-[140ms]",
         dragTarget && "pallet-sidebar-drop-target",
         connecting && "bg-sidebar-accent/60",
-        disabled && "cursor-not-allowed",
+        disabled && !connecting && "cursor-not-allowed",
         disabled && !connecting && "opacity-55",
       )}
-      onClick={() => void requestFavoriteConnection(favorite.id)}
+      onClick={() => (connecting ? cancelConnection() : void requestFavoriteConnection(favorite.id))}
       onContextMenu={(e) => {
         e.preventDefault();
         void favoriteContextMenu(favorite).then((action) => {
@@ -149,17 +153,23 @@ function FavoriteItem({
       }}
       title={
         connecting
-          ? `Connecting to ${favorite.name}…`
+          ? `Connecting to ${favorite.name}… Click to cancel`
           : disabled
             ? "A connection is already opening"
             : favoriteTooltip(favorite)
       }
     >
       {connecting ? (
-        <LoaderCircle
-          aria-hidden="true"
-          className="text-primary size-4 shrink-0 animate-spin"
-        />
+        <>
+          <LoaderCircle
+            aria-hidden="true"
+            className="text-primary size-4 shrink-0 animate-spin group-hover:hidden"
+          />
+          <X
+            aria-hidden="true"
+            className="text-sidebar-foreground hidden size-4 shrink-0 group-hover:block"
+          />
+        </>
       ) : (
         <Server className="text-muted-foreground group-hover:text-sidebar-foreground size-4 shrink-0 transition-colors duration-[140ms]" />
       )}

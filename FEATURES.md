@@ -162,6 +162,10 @@ after you disconnect. To open it over a connected pane, press **⌘K** or click 
 at the top of the sidebar. Saved favorites are listed in the sidebar rather than the dialog.
 **Cancel** returns you to the file list.
 
+A connection that is taking too long can be stopped while it opens: click **Cancel** in the
+connecting placeholder or the connection dialog, or click the favorite's row in the sidebar again.
+The pane keeps whatever it showed before.
+
 **Remote to remote:** click the **Replace Local Pane with Remote** button in the toolbar to connect
 a server in the left pane. While that pane is remote, a local folder picked in the sidebar opens in
 the right pane; click the **×** on the server chip in the left pane (or the toolbar's **Restore

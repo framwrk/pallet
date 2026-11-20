@@ -71,7 +71,9 @@ const pallet: PalletApi = {
     readPreview: (p: string, maxBytes: number): Promise<PreviewData> => invoke(FsChannels.readPreview, p, maxBytes),
   },
   sftp: {
-    connect: (profile: ConnectProfile): Promise<ConnectResult> => invoke(SftpChannels.connect, profile),
+    connect: (profile: ConnectProfile, attemptId?: string): Promise<ConnectResult> =>
+      invoke(SftpChannels.connect, profile, attemptId),
+    cancelConnect: (attemptId: string): Promise<void> => invoke(SftpChannels.cancelConnect, attemptId),
     disconnect: (sessionId: string): Promise<void> => invoke(SftpChannels.disconnect, sessionId),
     reconnect: (sessionId: string): Promise<void> => invoke(SftpChannels.reconnect, sessionId),
     list: (sessionId: string, dirPath: string): Promise<DirListing> => invoke(SftpChannels.list, sessionId, dirPath),
@@ -126,7 +128,8 @@ const pallet: PalletApi = {
       invoke(FavoriteChannels.save, input, secret),
     remove: (id: string): Promise<void> => invoke(FavoriteChannels.remove, id),
     reorder: (ids: string[]): Promise<void> => invoke(FavoriteChannels.reorder, ids),
-    connect: (id: string): Promise<ConnectResult & { favorite: Favorite }> => invoke(FavoriteChannels.connect, id),
+    connect: (id: string, attemptId?: string): Promise<ConnectResult & { favorite: Favorite }> =>
+      invoke(FavoriteChannels.connect, id, attemptId),
     test: (profile: ConnectProfile): Promise<void> => invoke(FavoriteChannels.test, profile),
   },
   hostKeys: {
