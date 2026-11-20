@@ -34,7 +34,7 @@ export function UpdateToast(): React.JSX.Element | null {
   const pct = download && download.totalBytes > 0 ? download.receivedBytes / download.totalBytes : null;
 
   return (
-    <div className="bg-popover fixed right-3 bottom-24 z-50 flex w-80 items-start gap-2 rounded-lg border p-3 text-sm shadow-lg">
+    <div className="bg-popover fixed right-3 bottom-[calc(4.25rem+var(--transfer-panel-clearance,0px))] z-50 flex w-80 items-start gap-2 rounded-lg border p-3 text-sm shadow-lg">
       <ArrowDownToLine className="text-primary mt-0.5 size-4 shrink-0" />
       <div className="min-w-0 flex-1">
         <p className="font-medium">

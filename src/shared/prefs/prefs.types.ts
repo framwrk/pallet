@@ -6,6 +6,9 @@ export type Appearance = "system" | "light" | "dark";
 /** File-list row spacing; "comfortable" trades density for breathing room. */
 export type RowDensity = "compact" | "comfortable";
 
+/** Bottom corner of the workspace the floating transfer panel sits in. */
+export type TransferPanelSide = "left" | "right";
+
 export interface Preferences {
   /** Show dotfiles in both panes (also toggled with ⇧⌘.). */
   showHidden: boolean;
@@ -47,8 +50,10 @@ export interface Preferences {
   verifyCopiedFiles: boolean;
   /** Per-file retries after a dead channel before the file is reported failed. */
   transferMaxRetries: number;
-  /** Trailing window for the drawer's recent average and median speed. */
+  /** Trailing window for the transfer panel's recent average and median speed. */
   speedStatsWindowSeconds: number;
+  /** Bottom corner of the workspace the floating transfer panel sits in. */
+  transferPanelSide: TransferPanelSide;
 
   /** Wait for the external editor to settle before uploading. */
   editorSaveDebounceMs: number;

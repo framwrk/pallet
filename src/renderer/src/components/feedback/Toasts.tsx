@@ -4,9 +4,14 @@ import { cn } from "@/lib/utils";
 
 export function Toasts(): React.JSX.Element | null {
   const { toasts } = useAppState();
-  if (toasts.length === 0) return null;
+  // The live region stays mounted so screen readers announce toasts as they arrive.
   return (
-    <div className="pointer-events-none fixed right-3 bottom-10 z-50 flex w-80 flex-col gap-2">
+    <div
+      role="status"
+      aria-live="polite"
+      aria-atomic="false"
+      className="pointer-events-none fixed right-3 bottom-[calc(0.75rem+var(--transfer-panel-clearance,0px))] z-50 flex w-80 flex-col gap-2 transition-[bottom] duration-[240ms] motion-reduce:transition-none"
+    >
       {toasts.map((t, index) => (
         <div
           key={t.id}

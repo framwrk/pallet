@@ -60,6 +60,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   verifyCopiedFiles: false,
   transferMaxRetries: 5,
   speedStatsWindowSeconds: 30,
+  transferPanelSide: "right",
   editorSaveDebounceMs: 800,
   editorPollIntervalMs: 1000,
   editorUploadTimeoutMs: 60_000,

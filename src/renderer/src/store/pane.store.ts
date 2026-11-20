@@ -1,9 +1,9 @@
 import type { ConnectionProtocol, HostKeyPrompt, SessionStatus } from "@shared/sftp/sftp.types";
 import type { Entry, KnownFolders, SizeTarget, SortDir, SortKey, VolumeInfo } from "@shared/fs/fs.types";
+import type { RowDensity, TransferPanelSide } from "@shared/prefs/prefs.types";
 import { localPath, remotePath } from "@shared/path/path.utils";
 import { DEFAULT_PREFERENCES } from "@shared/prefs/prefs.constants";
 import type { Favorite } from "@shared/favorite/favorite.types";
-import type { RowDensity } from "@shared/prefs/prefs.types";
 import { useSyncExternalStore } from "react";
 
 /** The left pane starts on the local disk but can host a second server; the right pane is the server (§3.1). */
@@ -102,8 +102,10 @@ export interface AppState {
   rowDensity: RowDensity;
   /** Preference: largest file the inspector previews inline. */
   previewMaxBytes: number;
-  /** Preference: trailing window for the drawer's recent speed stats. */
+  /** Preference: trailing window for the transfer panel's recent speed stats. */
   speedStatsWindowSeconds: number;
+  /** Preference: bottom corner the floating transfer panel sits in. */
+  transferPanelSide: TransferPanelSide;
   /** Preference: keepalive field seeded in the connect dialog. */
   defaultKeepaliveSeconds: number;
   volumes: VolumeInfo[];
@@ -170,6 +172,7 @@ let state: AppState = {
   rowDensity: DEFAULT_PREFERENCES.rowDensity,
   previewMaxBytes: DEFAULT_PREFERENCES.previewMaxBytes,
   speedStatsWindowSeconds: DEFAULT_PREFERENCES.speedStatsWindowSeconds,
+  transferPanelSide: DEFAULT_PREFERENCES.transferPanelSide,
   defaultKeepaliveSeconds: DEFAULT_PREFERENCES.defaultKeepaliveSeconds,
   volumes: [],
   knownFolders: null,
@@ -632,6 +635,7 @@ export async function initApp(): Promise<void> {
       rowDensity: next.rowDensity,
       previewMaxBytes: next.previewMaxBytes,
       speedStatsWindowSeconds: next.speedStatsWindowSeconds,
+      transferPanelSide: next.transferPanelSide,
       defaultKeepaliveSeconds: next.defaultKeepaliveSeconds,
     });
     // A changed default should be visible at once, but other preference edits

@@ -21,17 +21,25 @@ import type {
   TransferState,
   TransferVerificationProgress,
 } from "@shared/transfer/transfer.types";
-import { clearFinishedJobs, itemAction, jobAction, removeJob, setDrawerOpen, useTransfers } from "@/store/transfer.store";
-import { useEffect, useState } from "react";
+import { clearFinishedJobs, itemAction, jobAction, removeJob, setPanelExpanded, useTransfers } from "@/store/transfer.store";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { TERMINAL_TRANSFER_STATES } from "@shared/transfer/transfer.constants";
 import { cn } from "@/lib/utils";
 import { formatBytes } from "@/lib/format.utils";
 import { useAppState } from "@/store/pane.store";
 
-const LIST_ID = "transfer-drawer-jobs";
+const LIST_ID = "transfer-panel-jobs";
 
-/** A queued item is a row of its own but still waiting for a worker. */
-type RowState = TransferState | "queued";
+/** CSS variable the toast stacks read to sit above a panel in their corner. */
+export const TOAST_CLEARANCE_VAR = "--transfer-panel-clearance";
+/** Space between the panel and toasts stacked above it. */
+const PANEL_GAP_PX = 8;
+
+/** Clicks on Remove this soon after a job ends are the tail of a Cancel double-click. */
+const REMOVE_GUARD_MS = 400;
+
+/** Jobs queue for a session slot; items also queue while waiting for a worker. */
+type RowState = TransferState;
 
 function formatSpeed(bytesPerSec: number): string {
   return bytesPerSec > 0 ? `${formatBytes(bytesPerSec)}/s` : "0 B/s";
@@ -154,6 +162,8 @@ function verificationText(files: TransferVerificationProgress[] | undefined): st
 function jobSummary(job: TransferJobSnapshot): string {
   const bytes = job.totalBytes > 0 ? `${formatBytes(job.doneBytes)} of ${formatBytes(job.totalBytes)}` : null;
   switch (job.state) {
+    case "queued":
+      return "Queued";
     case "enumerating":
       return job.totalBytes > 0 ? `${formatBytes(job.totalBytes)} found` : "Preparing…";
     case "waiting":
@@ -190,6 +200,8 @@ function jobDetail(job: TransferJobSnapshot): { text: string; full: string; dest
     };
   }
   switch (job.state) {
+    case "queued":
+      return { text: "Waiting to start", full: "Waiting to start", destructive: false };
     case "enumerating":
       return { text: "Scanning source…", full: "Scanning source", destructive: false };
     case "waiting":
@@ -213,11 +225,34 @@ function jobDetail(job: TransferJobSnapshot): { text: string; full: string; dest
   }
 }
 
+/** What a progress bar announces, matching what the row shows. */
+function progressValueText(state: RowState, pct: number, sized: boolean): string {
+  switch (state) {
+    case "queued":
+      return "Queued";
+    case "enumerating":
+      return "Scanning";
+    case "completed":
+      return "Completed";
+    case "waiting":
+      return `On hold, ${pct}%`;
+    case "paused":
+      return `Paused, ${pct}%`;
+    case "failed":
+      return `Failed, ${pct}%`;
+    case "canceled":
+      return `Canceled, ${pct}%`;
+    default:
+      return sized ? `${pct}%` : "Preparing";
+  }
+}
+
 /** Item state plus the job-level pause/scan cues that apply while it waits. */
 function itemDisplayState(job: TransferJobSnapshot, item: TransferItemSnapshot): RowState {
   if (item.state === "running" && job.state === "paused") return "paused";
   if (item.state === "running" && job.state === "waiting") return "waiting";
   if (item.state === "pending") {
+    if (job.state === "queued") return "queued";
     if (job.state === "enumerating") return "enumerating";
     if (job.state === "waiting") return "waiting";
     if (job.state === "paused") return "paused";
@@ -393,6 +428,7 @@ interface AdvancedStatsProps {
   totalFiles: number;
   doneFiles: number;
   skippedFiles: number;
+  verifying: boolean;
 }
 
 function AdvancedStats({
@@ -407,6 +443,7 @@ function AdvancedStats({
   totalFiles,
   doneFiles,
   skippedFiles,
+  verifying,
 }: AdvancedStatsProps): React.JSX.Element {
   const { speedStatsWindowSeconds } = useAppState();
   const recentSpeedLabel = `Last ${speedStatsWindowSeconds}s`;
@@ -425,11 +462,15 @@ function AdvancedStats({
           ? "Waiting"
           : state === "paused"
             ? "Paused"
-            : etaMs === null
-              ? "Estimating…"
-              : etaMs < 1000
-                ? "Almost done"
-                : `~${formatDuration(etaMs)}`;
+            : state === "running" && remainingBytes === 0 && totalBytes > 0
+              ? verifying
+                ? "Verifying…"
+                : "Finishing…"
+              : etaMs === null
+                ? "Estimating…"
+                : etaMs < 1000
+                  ? "Almost done"
+                  : `~${formatDuration(etaMs)}`;
   const processedFiles = doneFiles + skippedFiles;
   const files =
     skippedFiles > 0 ? `${processedFiles} of ${totalFiles} · ${skippedFiles} skipped` : `${processedFiles} of ${totalFiles}`;
@@ -486,19 +527,30 @@ function AdvancedStats({
         </div>
       </div>
       <p className="text-muted-foreground/80 mt-2 border-t pt-1.5 text-[11px]">
-        Rates are measured from destination-confirmed progress.
+        Rates are measured from bytes written to the destination.
       </p>
     </div>
   );
 }
 
+/**
+ * Move focus to the job's cancel/remove button, which stays mounted, before the
+ * clicked button unmounts with the state change.
+ */
+function focusJobPrimary(from: HTMLElement): void {
+  from.closest("[data-job-row]")?.querySelector<HTMLElement>("[data-row-primary]")?.focus();
+}
+
 function RowAction({
   label,
   onClick,
+  primary = false,
   children,
 }: {
   label: string;
-  onClick: () => void;
+  onClick: (event: React.MouseEvent<HTMLButtonElement>) => void;
+  /** The job's cancel/remove button: always mounted, so focus can land on it. */
+  primary?: boolean;
   children: React.ReactNode;
 }): React.JSX.Element {
   return (
@@ -507,6 +559,11 @@ function RowAction({
       className="text-muted-foreground hover:bg-accent hover:text-accent-foreground focus-visible:ring-ring grid size-6 place-items-center rounded-md transition-colors duration-[140ms] focus-visible:ring-2 focus-visible:outline-none motion-reduce:transition-none"
       title={label}
       aria-label={label}
+      data-row-primary={primary || undefined}
+      // A held Enter or Space must not repeat into whatever button replaces this one; other keys still repeat.
+      onKeyDown={(event) => {
+        if (event.repeat && (event.key === "Enter" || event.key === " ")) event.preventDefault();
+      }}
       onClick={onClick}
     >
       {children}
@@ -569,6 +626,7 @@ function ItemRow({
   const canPauseItem = jobActive && job.state === "running" && !item.paused && !itemTerminal;
   const canResumeItem = jobActive && item.paused;
   const canCancelItem = jobActive && !itemTerminal;
+  const indeterminate = state === "queued" || state === "enumerating" || (item.totalBytes === 0 && !itemTerminal);
 
   return (
     <div
@@ -596,8 +654,8 @@ function ItemRow({
             aria-label={`${item.name} progress`}
             aria-valuemin={0}
             aria-valuemax={100}
-            aria-valuenow={barPct}
-            aria-valuetext={item.totalBytes > 0 ? `${barPct}%` : "Preparing"}
+            aria-valuenow={indeterminate ? undefined : barPct}
+            aria-valuetext={item.state === "skipped" ? "Skipped" : progressValueText(state, barPct, item.totalBytes > 0)}
           >
             <div
               className={cn(
@@ -651,30 +709,28 @@ function ItemRow({
             totalFiles={item.totalFiles}
             doneFiles={item.doneFiles}
             skippedFiles={item.skippedFiles}
+            verifying={!!item.verifyingFiles?.length}
           />
         )}
       </div>
       <div className="flex shrink-0 items-center gap-0.5">
-        {canPauseItem && (
+        {/* One slot for pause and resume, so toggling keeps keyboard focus. */}
+        {(canPauseItem || canResumeItem) && (
           <RowAction
-            label={`Pause ${item.name}`}
-            onClick={() => itemAction(job.id, item.name, "pause")}
+            key="pause-resume"
+            label={`${canResumeItem ? "Resume" : "Pause"} ${item.name}`}
+            onClick={() => itemAction(job.id, item.name, canResumeItem ? "resume" : "pause")}
           >
-            <Pause className="size-3.5" />
-          </RowAction>
-        )}
-        {canResumeItem && (
-          <RowAction
-            label={`Resume ${item.name}`}
-            onClick={() => itemAction(job.id, item.name, "resume")}
-          >
-            <Play className="size-3.5" />
+            {canResumeItem ? <Play className="size-3.5" /> : <Pause className="size-3.5" />}
           </RowAction>
         )}
         {canCancelItem && (
           <RowAction
             label={`Cancel ${item.name}`}
-            onClick={() => itemAction(job.id, item.name, "cancel")}
+            onClick={(event) => {
+              focusJobPrimary(event.currentTarget);
+              itemAction(job.id, item.name, "cancel");
+            }}
           >
             <X className="size-3.5" />
           </RowAction>
@@ -686,7 +742,7 @@ function ItemRow({
 
 function JobRow({ job, index }: { job: TransferJobSnapshot; index: number }): React.JSX.Element {
   const [expanded, setExpanded] = useState(false);
-  const canExpand = job.state !== "enumerating" && job.state !== "waiting";
+  const canExpand = job.state !== "queued" && job.state !== "enumerating" && job.state !== "waiting";
   const showJobStats = canExpand && job.items.length > 1;
   const detailsId = `transfer-stats-${job.id}`;
   const processedFiles = job.doneFiles + job.skippedFiles;
@@ -694,15 +750,18 @@ function JobRow({ job, index }: { job: TransferJobSnapshot; index: number }): Re
   const summary = jobSummary(job);
   const detail = jobDetail(job);
   const filesLabel =
-    job.state === "enumerating"
-      ? `${job.totalFiles} found`
-      : job.state === "waiting"
-        ? `${job.totalFiles} files`
-        : `${processedFiles}/${job.totalFiles} files`;
+    job.state === "queued"
+      ? "—"
+      : job.state === "enumerating"
+        ? `${job.totalFiles} found`
+        : job.state === "waiting"
+          ? `${job.totalFiles} files`
+          : `${processedFiles}/${job.totalFiles} files`;
 
   return (
     <div
       role="listitem"
+      data-job-row=""
       className="animate-in fade-in slide-in-from-top-1 fill-mode-both ease-entrance border-t duration-[200ms] first:border-t-0"
       style={{ animationDelay: `${Math.min(index, 12) * 30}ms` }}
     >
@@ -750,49 +809,50 @@ function JobRow({ job, index }: { job: TransferJobSnapshot; index: number }): Re
               totalFiles={job.totalFiles}
               doneFiles={job.doneFiles}
               skippedFiles={job.skippedFiles}
+              verifying={!!job.verifyingFiles?.length}
             />
           )}
         </div>
         <div className="flex shrink-0 items-center gap-0.5">
-          {job.state === "running" && (
+          {/* One slot for pause and resume, so toggling keeps keyboard focus. */}
+          {(job.state === "running" || (job.state === "paused" && !job.autoPaused)) && (
             <RowAction
-              label="Pause transfer"
-              onClick={() => jobAction(job.id, "pause")}
+              key="pause-resume"
+              label={job.state === "paused" ? "Resume transfer" : "Pause transfer"}
+              onClick={(event) => {
+                // The second click of a double-click on Retry can land here once the job restarts.
+                if (event.detail > 1) return;
+                jobAction(job.id, job.state === "paused" ? "resume" : "pause");
+              }}
             >
-              <Pause className="size-3.5" />
-            </RowAction>
-          )}
-          {job.state === "paused" && !job.autoPaused && (
-            <RowAction
-              label="Resume transfer"
-              onClick={() => jobAction(job.id, "resume")}
-            >
-              <Play className="size-3.5" />
+              {job.state === "paused" ? <Play className="size-3.5" /> : <Pause className="size-3.5" />}
             </RowAction>
           )}
           {(job.state === "failed" || job.state === "canceled") && (
             <RowAction
+              key="retry"
               label="Retry transfer"
-              onClick={() => jobAction(job.id, "retry")}
+              onClick={(event) => {
+                focusJobPrimary(event.currentTarget);
+                jobAction(job.id, "retry");
+              }}
             >
               <RotateCcw className="size-3.5" />
             </RowAction>
           )}
-          {terminal ? (
-            <RowAction
-              label="Remove transfer from list"
-              onClick={() => removeJob(job.id)}
-            >
-              <Trash2 className="size-3.5" />
-            </RowAction>
-          ) : (
-            <RowAction
-              label="Cancel transfer"
-              onClick={() => jobAction(job.id, "cancel")}
-            >
-              <X className="size-3.5" />
-            </RowAction>
-          )}
+          {/* One slot for cancel and remove keeps focus; the guard stops a double-click on Cancel from removing. */}
+          <RowAction
+            key="cancel-remove"
+            primary
+            label={terminal ? "Remove transfer from list" : "Cancel transfer"}
+            onClick={(event) => {
+              if (!terminal) return jobAction(job.id, "cancel");
+              if (event.detail > 1 || Date.now() - (job.finishedAt ?? 0) < REMOVE_GUARD_MS) return;
+              removeJob(job.id);
+            }}
+          >
+            {terminal ? <Trash2 className="size-3.5" /> : <X className="size-3.5" />}
+          </RowAction>
         </div>
       </div>
       {job.items.length > 0 && (
@@ -815,8 +875,37 @@ function JobRow({ job, index }: { job: TransferJobSnapshot; index: number }): Re
   );
 }
 
-export function QueueDrawer(): React.JSX.Element | null {
-  const { jobs, drawerOpen } = useTransfers();
+/**
+ * Publish the panel's height while it sits in the toasts' corner, so toasts
+ * stack above it instead of covering it.
+ */
+function useToastClearance(ref: React.RefObject<HTMLElement | null>, active: boolean): void {
+  useLayoutEffect(() => {
+    const root = document.documentElement;
+    const el = ref.current;
+    if (!active || !el) return;
+    const update = (): void => root.style.setProperty(TOAST_CLEARANCE_VAR, `${el.offsetHeight + PANEL_GAP_PX}px`);
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(el);
+    return () => {
+      observer.disconnect();
+      root.style.removeProperty(TOAST_CLEARANCE_VAR);
+    };
+  }, [ref, active]);
+}
+
+/**
+ * Floating transfer panel in a bottom corner of the workspace. It expands when
+ * a transfer starts and collapses to a summary card that stays out of the way
+ * while the panes remain usable underneath.
+ */
+export function TransferPanel(): React.JSX.Element | null {
+  const { jobs, panelExpanded, announcement } = useTransfers();
+  const { transferPanelSide } = useAppState();
+  const panelRef = useRef<HTMLElement>(null);
+  // Toasts live in the bottom-right corner; only a right-side panel needs to make room.
+  useToastClearance(panelRef, jobs.length > 0 && transferPanelSide === "right");
   if (jobs.length === 0) return null;
 
   const active = jobs.filter((j) => !TERMINAL_TRANSFER_STATES.includes(j.state));
@@ -824,7 +913,7 @@ export function QueueDrawer(): React.JSX.Element | null {
   const finished = jobs.filter((j) => TERMINAL_TRANSFER_STATES.includes(j.state));
   const totalBytes = active.reduce((a, j) => a + j.totalBytes, 0);
   const doneBytes = active.reduce((a, j) => a + j.doneBytes, 0);
-  const pct = totalBytes > 0 ? Math.floor((doneBytes / totalBytes) * 100) : null;
+  const pct = totalBytes > 0 ? Math.min(100, Math.floor((doneBytes / totalBytes) * 100)) : null;
   const activeSpeed = active.reduce((a, j) => a + (j.state === "running" ? j.bytesPerSec : 0), 0);
   const activeItems = active.reduce((a, j) => {
     const remaining = j.items.filter(
@@ -836,25 +925,49 @@ export function QueueDrawer(): React.JSX.Element | null {
     active.length > 0
       ? `${activeItems} item${activeItems === 1 ? "" : "s"} · ${active.some((job) => job.verifyingFiles?.length) ? "Verifying…" : `${pct ?? 0}%`}`
       : `${jobs.length} finished`;
+  const toggleLabel = panelExpanded ? "Collapse transfers" : "Expand transfers";
 
   return (
     <section
-      className="bg-sidebar shrink-0 border-t"
+      ref={panelRef}
       aria-label="Transfer queue"
+      className={cn(
+        "pallet-popover animate-in fade-in slide-in-from-bottom-2 ease-entrance absolute bottom-3 z-40 flex max-h-[calc(100%-1.5rem)] flex-col overflow-hidden rounded-[14px] border duration-[240ms]",
+        // Width eases between the summary card and the full panel.
+        "ease-onscreen transition-[width] motion-reduce:animate-none motion-reduce:transition-none",
+        transferPanelSide === "left" ? "left-3" : "right-3",
+        panelExpanded
+          ? "w-[min(30rem,calc(100%-1.5rem))] duration-[240ms]"
+          : "w-[min(22rem,calc(100%-1.5rem))] duration-[190ms]",
+      )}
+      onKeyDown={(event) => {
+        // Escape inside the panel tucks it away without reaching pane shortcuts.
+        if (event.key !== "Escape" || !panelExpanded) return;
+        event.stopPropagation();
+        setPanelExpanded(false);
+      }}
     >
-      <div className="flex h-9 items-center gap-2 pr-2 pl-3">
-        <button
-          type="button"
-          className="focus-visible:ring-ring flex h-full min-w-0 flex-1 items-center gap-2 rounded-md text-left text-xs focus-visible:ring-2 focus-visible:outline-none"
-          aria-expanded={drawerOpen}
-          aria-controls={LIST_ID}
-          onClick={() => setDrawerOpen(!drawerOpen)}
-        >
-          {drawerOpen ? <ChevronDown className="size-3.5 shrink-0" /> : <ChevronUp className="size-3.5 shrink-0" />}
+      <p
+        className="sr-only"
+        role="status"
+        aria-live="polite"
+      >
+        {announcement}
+      </p>
+      <div
+        className={cn("flex h-10 shrink-0 items-center gap-2 pr-1.5 pl-3", !panelExpanded && "cursor-pointer")}
+        // The whole collapsed card is a mouse target; keyboard users use the toggle button.
+        onClick={panelExpanded ? undefined : () => setPanelExpanded(true)}
+      >
+        <ArrowLeftRight
+          className={cn("size-3.5 shrink-0", active.length > 0 ? "text-primary" : "text-muted-foreground")}
+          aria-hidden
+        />
+        <div className="flex min-w-0 flex-1 items-baseline gap-2 text-xs">
           <span className="text-foreground shrink-0 font-medium">Transfers</span>
           <span className="text-muted-foreground truncate">{summary}</span>
-        </button>
-        <div className="flex shrink-0 items-center gap-2">
+        </div>
+        <div className="flex shrink-0 items-center gap-1.5">
           {activeSpeed > 0 && (
             <span className="text-muted-foreground text-[11px] tabular-nums">{formatSpeed(activeSpeed)}</span>
           )}
@@ -863,25 +976,41 @@ export function QueueDrawer(): React.JSX.Element | null {
               <AlertCircle className="size-3" /> {failed.length} failed
             </span>
           )}
-          {finished.length > 0 && (
+          {panelExpanded && finished.length > 0 && (
             <button
               type="button"
               className="text-muted-foreground hover:bg-accent hover:text-accent-foreground focus-visible:ring-ring rounded px-1.5 py-0.5 text-[11px] transition-colors duration-[140ms] focus-visible:ring-2 focus-visible:outline-none motion-reduce:transition-none"
+              aria-label="Clear finished transfers"
               onClick={clearFinishedJobs}
             >
               Clear
             </button>
           )}
+          <button
+            type="button"
+            className="text-muted-foreground hover:bg-accent hover:text-accent-foreground focus-visible:ring-ring grid size-6 place-items-center rounded-md transition-colors duration-[140ms] focus-visible:ring-2 focus-visible:outline-none motion-reduce:transition-none"
+            aria-label={toggleLabel}
+            title={toggleLabel}
+            aria-expanded={panelExpanded}
+            aria-controls={LIST_ID}
+            onClick={(event) => {
+              event.stopPropagation();
+              setPanelExpanded(!panelExpanded);
+            }}
+          >
+            {panelExpanded ? <ChevronDown className="size-3.5" /> : <ChevronUp className="size-3.5" />}
+          </button>
         </div>
       </div>
       {active.length > 0 && (
         <div
-          className="bg-foreground/10 h-0.5"
+          className="bg-foreground/10 h-0.5 shrink-0"
           role="progressbar"
           aria-label="Overall transfer progress"
           aria-valuemin={0}
           aria-valuemax={100}
-          aria-valuenow={pct ?? 0}
+          aria-valuenow={pct ?? undefined}
+          aria-valuetext={summary}
         >
           <div
             className="bg-primary h-full transition-[width] duration-300 ease-linear motion-reduce:transition-none"
@@ -891,28 +1020,31 @@ export function QueueDrawer(): React.JSX.Element | null {
       )}
       <div
         className={cn(
-          // Rows stay mounted; a grid-row collapse lets reopening animate in
-          // both directions (240ms in, 190ms out, ease in out).
-          "ease-onscreen grid transition-[grid-template-rows]",
-          drawerOpen ? "grid-rows-[1fr] duration-[240ms]" : "grid-rows-[0fr] duration-[190ms]",
+          // Rows stay mounted; the clip animates height to and from auto (240ms in,
+          // 190ms out, ease in out). A 0fr/1fr grid-row collapse is not used: its track
+          // and the panel's own height ease on different curves, so the glass outran
+          // the rows and left an empty band mid-animation.
+          "ease-onscreen min-h-0 overflow-hidden transition-[height] [interpolate-size:allow-keywords] motion-reduce:transition-none",
+          panelExpanded ? "h-auto duration-[240ms]" : "h-0 duration-[190ms]",
         )}
       >
-        <div className="min-h-0 overflow-hidden">
-          <div
-            id={LIST_ID}
-            role="list"
-            className="max-h-60 overflow-y-auto overscroll-contain"
-            aria-hidden={!drawerOpen || undefined}
-            inert={!drawerOpen}
-          >
-            {jobs.map((job, index) => (
-              <JobRow
-                key={job.id}
-                job={job}
-                index={index}
-              />
-            ))}
-          </div>
+        <div
+          id={LIST_ID}
+          role="list"
+          // Rows sit on a stable surface inside the glass shell (DESIGN.md › The Glass Has a Job).
+          // The list grows with its jobs and scrolls only once the panel would reach the
+          // toolbar: 11rem leaves room for the toolbar, the panel header, and margins.
+          className="bg-popover max-h-[calc(100vh-11rem)] overflow-y-auto overscroll-contain border-t"
+          aria-hidden={!panelExpanded || undefined}
+          inert={!panelExpanded}
+        >
+          {jobs.map((job, index) => (
+            <JobRow
+              key={job.id}
+              job={job}
+              index={index}
+            />
+          ))}
         </div>
       </div>
     </section>

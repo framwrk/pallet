@@ -162,6 +162,7 @@ export class ElectronUI {
   async click(expression: string, count = 1, modifiers = 0, mouseButton = "left"): Promise<void> {
     this.lastAction = `click: ${expression}`;
     await this.wait(`!!(${expression})`, `control exists: ${expression}`);
+    await this.makeRoomForTarget(expression);
     await this.wait(
       `(()=>{const e=(${expression});if(!e)return false;const r=e.getBoundingClientRect();return r.width>0&&r.height>0})()`,
       "control has layout",
@@ -190,6 +191,19 @@ export class ElectronUI {
         clickCount: count,
         modifiers,
       });
+  }
+  /**
+   * The floating transfer panel overlays the panes. Act as a user would: expand
+   * it to reach a job's controls, and collapse it when it covers a pane target.
+   */
+  private async makeRoomForTarget(expression: string): Promise<void> {
+    const need = await this.read<string>(
+      `(()=>{const e=(${expression});const p=document.querySelector('section[aria-label="Transfer queue"]');if(!e||!p)return '';` +
+        `if(p.contains(e))return p.querySelector('[aria-label="Expand transfers"]')&&!e.matches('[aria-label="Expand transfers"]')&&e.closest('#transfer-panel-jobs')?'expand':'';` +
+        `const r=e.getBoundingClientRect();const hit=document.elementFromPoint(r.x+r.width/2,r.y+r.height/2);` +
+        `return hit&&p.contains(hit)&&p.querySelector('[aria-label="Collapse transfers"]')?'collapse':''})()`,
+    );
+    if (need) await this.click(button(need === "expand" ? "Expand transfers" : "Collapse transfers"));
   }
   button(label: string, scope = "document"): Promise<void> {
     return this.click(button(label, scope));

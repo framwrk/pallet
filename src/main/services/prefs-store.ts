@@ -52,6 +52,7 @@ function coerce(stored: Record<string, unknown>): Preferences {
     verifyCopiedFiles,
     transferMaxRetries,
     speedStatsWindowSeconds,
+    transferPanelSide,
     editorSaveDebounceMs,
     editorPollIntervalMs,
     editorUploadTimeoutMs,
@@ -102,6 +103,7 @@ function coerce(stored: Record<string, unknown>): Preferences {
       MIN_SPEED_STATS_WINDOW_SECONDS,
       MAX_SPEED_STATS_WINDOW_SECONDS,
     ),
+    transferPanelSide: transferPanelSide === "left" ? "left" : DEFAULT_PREFERENCES.transferPanelSide,
     editorSaveDebounceMs: bounded(
       editorSaveDebounceMs,
       DEFAULT_PREFERENCES.editorSaveDebounceMs,

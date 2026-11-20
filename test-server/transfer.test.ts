@@ -868,7 +868,7 @@ test("remote-to-remote cancel during scan reports partial progress and stops sca
     assert.equal(result.totalBytes, first.length);
     assert.equal(result.doneBytes, 0);
     const canceled = updates.filter((s) => s.state === "canceled");
-    assert(canceled.length > 0, "expected the drawer to receive a canceled update");
+    assert(canceled.length > 0, "expected the transfer panel to receive a canceled update");
     assert.equal(canceled.at(-1)?.totalFiles, 1);
     assert.equal(canceled.at(-1)?.totalBytes, first.length);
     assert.deepEqual(await fs.readdir(f.dest), []);
@@ -1602,6 +1602,52 @@ test("metadata mode retains its existing post-copy wait without a verification s
     }).run(f.source, f.dest, ["file"]);
     assert.equal(result.state, "completed", JSON.stringify(result.errors));
     assert.equal(await fs.readFile(`${f.dest}/file`, "utf8"), "correct bytes");
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test("a job waiting for another job's session is shown as queued right away", async () => {
+  const f = await fixture();
+  try {
+    await fs.writeFile(`${f.source}/a`, "data");
+    let releaseFirst!: () => void;
+    const firstHeld = new Promise<void>((resolve) => (releaseFirst = resolve));
+    let writes = 0;
+    const dest = wrap(f.local, {
+      createWriteStream: async (p, mode, options) => {
+        if (++writes === 1) await firstHeld;
+        return f.local.createWriteStream(p, mode, options);
+      },
+    });
+    const updates: TransferJobSnapshot[] = [];
+    const h = harness(f.local, dest, "replace", (s) => updates.push(s));
+    const first = h.run(f.source, `${f.dest}/one`, ["a"]);
+    const second = h.run(f.source, `${f.dest}/two`, ["a"]);
+    const [firstId, secondId] = h.queue.snapshots().map((s) => s.id);
+    assert.equal(updates.find((s) => s.id === secondId)?.state, "queued", "the waiting job must reach the transfer panel");
+    assert.notEqual(updates.find((s) => s.id === firstId)?.state, "queued", "an uncontended job skips the queued state");
+    releaseFirst();
+    const results = await Promise.all([first, second]);
+    assert(results.every((r) => r.state === "completed"));
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test("skipped conflict files leave the reported byte totals", async () => {
+  const f = await fixture();
+  try {
+    await fs.writeFile(`${f.source}/a`, Buffer.alloc(64 * 1024, 1));
+    await fs.writeFile(`${f.source}/b`, Buffer.alloc(4096, 2));
+    await fs.writeFile(`${f.dest}/a`, "existing");
+    const h = harness(f.local, f.local, "skip");
+    const result = await h.run(f.source, f.dest, ["a", "b"]);
+    assert.equal(result.state, "completed", JSON.stringify(result.errors));
+    assert.equal(result.totalBytes, 4096, "skipped bytes never move, so they are not owed");
+    assert.equal(result.doneBytes, result.totalBytes);
+    assert.equal(result.items.find((item) => item.name === "a")?.totalBytes, 0);
+    assert.equal(result.items.find((item) => item.name === "a")?.state, "skipped");
   } finally {
     await f.cleanup();
   }

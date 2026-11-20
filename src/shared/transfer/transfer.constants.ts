@@ -1,4 +1,4 @@
-/** Transfer constants shared by the queue, edit sessions, and the drawer UI. */
+/** Transfer constants shared by the queue, edit sessions, and the transfer panel UI. */
 import type { TransferState } from "./transfer.types";
 
 /** States a job never leaves on its own; reaching one means the job is done. */
@@ -7,7 +7,7 @@ export const TERMINAL_TRANSFER_STATES: readonly TransferState[] = ["completed", 
 /** Staging suffix for a partial write, renamed into place on success (§3.4). */
 export const PART_SUFFIX = ".pallet-part";
 
-/** Trailing window for the drawer's recent average and median speed. */
+/** Trailing window for the transfer panel's recent average and median speed. */
 export const SPEED_STATS_WINDOW_MS = 30_000;
 
 /**
