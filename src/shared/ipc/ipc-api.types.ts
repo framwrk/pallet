@@ -141,8 +141,8 @@ export interface PalletApi {
   };
   keybindings: {
     get(): Promise<KeybindingsState>;
-    /** Persist one command's shortcuts; rejects with EKEYBINDING when invalid. */
-    set(id: CommandId, keys: string[]): Promise<void>;
+    /** Persist one command's shortcut, or null to unassign it; rejects with EKEYBINDING when invalid. */
+    set(id: CommandId, key: string | null): Promise<void>;
     /** Delete one command's overrides, restoring its defaults. */
     reset(id: CommandId): Promise<void>;
     /** Delete every override. */

@@ -181,7 +181,7 @@ export function Sidebar(): React.JSX.Element {
   const app = useAppState();
   const bindings = useKeybindings();
   const connecting = app.connecting;
-  const connectKey = bindings.effective["panels.connect"][0];
+  const connectKey = bindings.effective["panels.connect"];
   const connectHint = connectKey ? displayParts(connectKey).join("") : null;
   // Devices and folders drive the local pane: the left disk, or the right one
   // while the left pane is a server and the right is free.

@@ -25,9 +25,8 @@ let bound = false;
 function rebuildLookup(effective: KeybindingsState["effective"]): void {
   lookup = new Map();
   for (const command of KEYBINDING_COMMANDS) {
-    for (const key of effective[command.id]) {
-      if (!lookup.has(key)) lookup.set(key, command.id);
-    }
+    const key = effective[command.id];
+    if (key !== null && !lookup.has(key)) lookup.set(key, command.id);
   }
 }
 

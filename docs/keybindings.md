@@ -16,8 +16,8 @@ same everywhere.
 | Settings tab | `KeybindingsPanel` in `src/renderer/src/components/settings/SettingsDialog.tsx` |
 
 `src/shared/keybindings/keybinding.constants.ts` is the source of truth. `KEYBINDING_COMMANDS`
-holds each command's id, group, title, defaults, and runtime scope in registry order.
-`LOCKED_KEYBINDINGS` lists the two fixed selection commands for display only.
+holds each command's id, group, title, single default key, and runtime scope in registry order.
+`LOCKED_KEYBINDINGS` lists the four fixed selection directions for display only.
 
 Canonical keys are lowercase, `+`-joined, with modifiers in the fixed order `cmd`, `ctrl`, `alt`,
 `shift`, then one key. Read aliases (`command`, `meta`, `control`, `option`, `return`, `esc`,
@@ -28,12 +28,11 @@ follows the physical key position rather than the character produced by the layo
 
 `resolveBindings` turns the JSON overrides into effective bindings:
 
-1. Values must be arrays of key strings; bad shapes are reported and the command keeps its defaults.
-2. Each key is parsed, validated, and deduplicated within its command. Invalid keys are reported and
-   dropped, while the entry's valid keys still apply.
-3. A present entry replaces the command's defaults wholesale; `[]` means unbound.
+1. Values must be a key string or `null`; bad shapes are reported and the command keeps its default.
+2. The key is parsed and validated. Invalid keys are reported and the default stays in effect.
+3. A present string replaces the command's default; `null` means unbound.
 4. Commands are walked in registry order. The first command to claim a canonical key keeps it; a
-   later command's copy is dropped and reported. Because both overrides exist before claims are
+   later command becomes unbound and is reported. Because both overrides exist before claims are
    checked, swapping two keys in the JSON works.
 
 `findConflict` answers the recorder's question against the current effective map.
@@ -46,9 +45,8 @@ follows the physical key position rather than the character produced by the layo
   Command-specific conditions stay: Rename needs exactly one selection and no ⌘.
 - **pane-switch** — Switch Active Pane fires anywhere outside dialogs and text fields while a right
   pane exists and is not connecting; otherwise Tab falls through to native focus traversal.
-- **menu** — The first binding is the Electron menu accelerator, which fires from any focus. Extra
-  bindings are dispatched by the renderer before the other guards, calling the same handler the menu
-  item reaches, except while a recorder is open.
+- **menu** — The command's single binding is the Electron menu accelerator, which fires from any
+  focus.
 - **fixed** — ↑/↓ and ⇧↑/⇧↓ keep their original selection-movement code path.
 
 Modifier-only events and unsupported codes never match. Lookup is an exact `Map<string, CommandId>`.
@@ -58,7 +56,7 @@ Modifier-only events and unsupported codes never match. Lookup is an exact `Map<
 `keybindings.json` lives in `app.getPath("userData")`, next to `pallet.db`, and stores overrides
 only. Main reads it on startup, creates it on demand for **Open keybindings.json**, and rewrites it
 atomically (temporary file plus rename) from the UI. Writes use registry order, 2-space JSON, and a
-trailing newline; an entry equal to its defaults is omitted, and **Reset all** writes `{}`.
+trailing newline; an entry equal to its default is omitted, and **Reset All to Defaults…** writes `{}`.
 
 A directory watcher (not a file watcher, which an atomic rename would break) filters for
 `keybindings.json` and debounces 100 ms. It skips content equal to main's own last write. On a JSON
@@ -69,14 +67,12 @@ rebuilds the menu.
 
 ## Menu accelerators and recording
 
-The Settings, Close Remote Pane, and Toggle Terminal menu items read their first effective binding
+The Settings, Close Remote Pane, and Toggle Terminal menu items read their effective shortcut
 through `toAccelerator`. An unbound command has no accelerator. While the Settings recorder is open,
 main rebuilds the menu without those three accelerators so recording ⌘W, ⌘, or ⌃` cannot disconnect,
 reopen Settings, or toggle a pane. Losing window focus or reloading clears the flag, and the
 renderer clears it on recorder exit or unmount.
 
-The first binding stays on the menu; extra bindings run in the renderer because Electron has only
-one accelerator per item.
 
 ## Why there is no `watchWindowShortcuts` or stock View menu
 
@@ -94,8 +90,8 @@ packaged app.
 
 ## Adding a command
 
-1. Add an entry to `KEYBINDING_COMMANDS` with a unique id, group, title, canonical defaults, and
-   scope. Keep registry order meaningful: it is the claim order and the file order.
+1. Add an entry to `KEYBINDING_COMMANDS` with a unique id, group, title, one canonical default key,
+   and scope. Keep registry order meaningful: it is the claim order and the file order.
 2. Implement the action in the renderer dispatcher's files switch, or give it a menu item and add
    it to the menu's accelerator lookup.
 3. If it is a menu-accelerator command, include it in the menu accelerator suspension set.

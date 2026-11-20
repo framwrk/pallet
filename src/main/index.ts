@@ -97,7 +97,7 @@ function menuAccelerator(id: CommandId): string | undefined {
   // While the Settings recorder is open, ⌘W, ⌘, and ⌃` must reach the
   // recorder instead of disconnecting, reopening, or toggling a pane.
   if (isKeybindingRecording()) return undefined;
-  const key = getKeybindingsState().effective[id]?.[0];
+  const key = getKeybindingsState().effective[id];
   return key ? toAccelerator(key) : undefined;
 }
 

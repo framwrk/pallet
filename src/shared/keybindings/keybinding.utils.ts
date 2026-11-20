@@ -114,37 +114,26 @@ export function resolveBindings(overrides: unknown): {
   for (const command of KEYBINDING_COMMANDS) {
     if (!Object.prototype.hasOwnProperty.call(source, command.id)) continue;
     const value = source[command.id];
-    if (!Array.isArray(value) || !value.every((entry) => typeof entry === "string")) {
-      issues.push({ code: "notArray", command: command.id, message: `${command.id} must be an array of key strings` });
+    if (value === null) {
+      sanitized[command.id] = null;
+      continue;
+    }
+    if (typeof value !== "string") {
+      issues.push({ code: "notKey", command: command.id, message: `${command.id} must be a key string or null` });
       continue;
     }
 
-    const keys: string[] = [];
-    const seen = new Set<string>();
-    for (const raw of value) {
-      const parsed = parseKey(raw);
-      if (parsed === null) {
-        issues.push({ code: "invalidKey", command: command.id, message: `${raw}: that key isn’t supported` });
-        continue;
-      }
-      const issue = validateKey(parsed, { allowEscape: true });
-      if (issue !== null) {
-        issues.push({ code: "invalidKey", command: command.id, key: parsed, message: `${raw}: ${issue.message}` });
-        continue;
-      }
-      if (seen.has(parsed)) {
-        issues.push({
-          code: "duplicate",
-          command: command.id,
-          key: parsed,
-          message: `${command.title}: ${parsed} appears more than once`,
-        });
-        continue;
-      }
-      seen.add(parsed);
-      keys.push(parsed);
+    const parsed = parseKey(value);
+    if (parsed === null) {
+      issues.push({ code: "invalidKey", command: command.id, message: `${value}: that key isn’t supported` });
+      continue;
     }
-    sanitized[command.id] = keys;
+    const issue = validateKey(parsed, { allowEscape: true });
+    if (issue !== null) {
+      issues.push({ code: "invalidKey", command: command.id, key: parsed, message: `${value}: ${issue.message}` });
+      continue;
+    }
+    sanitized[command.id] = parsed;
   }
 
   const effective = defaultBindings();
@@ -156,22 +145,20 @@ export function resolveBindings(overrides: unknown): {
 
   const claimed = new Map<string, CommandId>();
   for (const command of KEYBINDING_COMMANDS) {
-    const kept: string[] = [];
-    for (const key of effective[command.id]) {
-      const owner = claimed.get(key);
-      if (owner) {
-        issues.push({
-          code: "conflict",
-          command: command.id,
-          key,
-          message: `${key} is already used by ${titleOf(owner)}`,
-        });
-        continue;
-      }
-      claimed.set(key, command.id);
-      kept.push(key);
+    const key = effective[command.id];
+    if (key === null) continue;
+    const owner = claimed.get(key);
+    if (owner) {
+      issues.push({
+        code: "conflict",
+        command: command.id,
+        key,
+        message: `${key} is already used by ${titleOf(owner)}`,
+      });
+      effective[command.id] = null;
+      continue;
     }
-    effective[command.id] = kept;
+    claimed.set(key, command.id);
   }
 
   return { effective, overrides: sanitized, issues };
@@ -181,7 +168,7 @@ export function resolveBindings(overrides: unknown): {
 export function findConflict(effective: CommandBindings, commandId: CommandId, key: string): CommandId | null {
   for (const command of KEYBINDING_COMMANDS) {
     if (command.id === commandId) continue;
-    if (effective[command.id].includes(key)) return command.id;
+    if (effective[command.id] === key) return command.id;
   }
   return null;
 }
@@ -241,10 +228,10 @@ export function toAccelerator(key: string): string {
 export function serializeOverrides(overrides: Partial<CommandBindings>): string {
   const ordered: Partial<CommandBindings> = {};
   for (const command of KEYBINDING_COMMANDS) {
-    const keys = overrides[command.id];
-    if (keys === undefined) continue;
-    if (keys.length === command.defaults.length && keys.every((key, index) => key === command.defaults[index])) continue;
-    ordered[command.id] = keys;
+    const key = overrides[command.id];
+    if (key === undefined) continue;
+    if (key === command.defaultKey) continue;
+    ordered[command.id] = key;
   }
   return `${JSON.stringify(ordered, null, 2)}\n`;
 }

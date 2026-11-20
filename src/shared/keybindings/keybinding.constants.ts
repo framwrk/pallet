@@ -6,147 +6,147 @@ export const KEYBINDING_COMMANDS: readonly KeybindingCommand[] = [
     id: "navigation.open",
     group: "Navigation",
     title: "Open",
-    defaults: ["cmd+down", "cmd+o"],
+    defaultKey: "cmd+down",
     scope: "files",
   },
   {
     id: "navigation.goUp",
     group: "Navigation",
     title: "Go to Parent Folder",
-    defaults: ["cmd+up"],
+    defaultKey: "cmd+up",
     scope: "files",
   },
   {
     id: "navigation.switchPane",
     group: "Navigation",
     title: "Switch Active Pane",
-    defaults: ["tab"],
+    defaultKey: "tab",
     scope: "pane-switch",
   },
   {
     id: "navigation.goToFolder",
     group: "Navigation",
     title: "Go to Folder",
-    defaults: ["cmd+shift+g"],
+    defaultKey: "cmd+shift+g",
     scope: "files",
   },
   {
     id: "navigation.refresh",
     group: "Navigation",
     title: "Refresh",
-    defaults: ["cmd+r"],
+    defaultKey: "cmd+r",
     scope: "files",
   },
   {
     id: "navigation.selectAll",
     group: "Navigation",
     title: "Select All",
-    defaults: ["cmd+a"],
+    defaultKey: "cmd+a",
     scope: "files",
   },
   {
     id: "navigation.clearSelection",
     group: "Navigation",
     title: "Clear Selection",
-    defaults: ["escape"],
+    defaultKey: "escape",
     scope: "files",
   },
   {
     id: "navigation.toggleHidden",
     group: "Navigation",
     title: "Show/Hide Hidden Files",
-    defaults: ["cmd+shift+."],
+    defaultKey: "cmd+shift+.",
     scope: "files",
   },
   {
     id: "files.rename",
     group: "Files",
     title: "Rename",
-    defaults: ["enter"],
+    defaultKey: "enter",
     scope: "files",
   },
   {
     id: "files.newFolder",
     group: "Files",
     title: "New Folder",
-    defaults: ["cmd+shift+n"],
+    defaultKey: "cmd+shift+n",
     scope: "files",
   },
   {
     id: "files.trash",
     group: "Files",
     title: "Move to Trash / Delete",
-    defaults: ["cmd+backspace"],
+    defaultKey: "cmd+backspace",
     scope: "files",
   },
   {
     id: "files.undo",
     group: "Files",
     title: "Undo Rename or Move",
-    defaults: ["cmd+z"],
+    defaultKey: "cmd+z",
     scope: "files",
   },
   {
     id: "transfers.copyToOther",
     group: "Transfers",
     title: "Copy to Other Pane",
-    defaults: ["f5", "cmd+d"],
+    defaultKey: "f5",
     scope: "files",
   },
   {
     id: "transfers.moveToOther",
     group: "Transfers",
     title: "Move to Other Pane",
-    defaults: ["f6"],
+    defaultKey: "f6",
     scope: "files",
   },
   {
     id: "transfers.copy",
     group: "Transfers",
     title: "Copy",
-    defaults: ["cmd+c"],
+    defaultKey: "cmd+c",
     scope: "files",
   },
   {
     id: "transfers.paste",
     group: "Transfers",
     title: "Paste",
-    defaults: ["cmd+v"],
+    defaultKey: "cmd+v",
     scope: "files",
   },
   {
     id: "panels.toggleInspector",
     group: "Panels",
     title: "Toggle Inspector",
-    defaults: ["cmd+i", "space"],
+    defaultKey: "cmd+i",
     scope: "files",
   },
   {
     id: "panels.connect",
     group: "Panels",
     title: "Connect to Server",
-    defaults: ["cmd+k"],
+    defaultKey: "cmd+k",
     scope: "files",
   },
   {
     id: "panels.toggleTerminal",
     group: "Panels",
     title: "Toggle Terminal",
-    defaults: ["ctrl+`"],
+    defaultKey: "ctrl+`",
     scope: "menu",
   },
   {
     id: "panels.closeRemotePane",
     group: "Panels",
     title: "Close Remote Pane",
-    defaults: ["cmd+w"],
+    defaultKey: "cmd+w",
     scope: "menu",
   },
   {
     id: "panels.settings",
     group: "Panels",
     title: "Settings",
-    defaults: ["cmd+,"],
+    defaultKey: "cmd+,",
     scope: "menu",
   },
 ];
@@ -155,8 +155,10 @@ export const KEYBINDING_GROUPS: readonly CommandGroup[] = ["Navigation", "Files"
 
 /** Listed beside the registry but fixed in place: selection movement. */
 export const LOCKED_KEYBINDINGS: readonly LockedKeybinding[] = [
-  { group: "Navigation", title: "Move Selection", keys: ["up", "down"] },
-  { group: "Navigation", title: "Extend Selection", keys: ["shift+up", "shift+down"] },
+  { group: "Navigation", title: "Move Selection Up", key: "up" },
+  { group: "Navigation", title: "Move Selection Down", key: "down" },
+  { group: "Navigation", title: "Extend Selection Up", key: "shift+up" },
+  { group: "Navigation", title: "Extend Selection Down", key: "shift+down" },
 ];
 
 export const COMMAND_BY_ID = new Map(KEYBINDING_COMMANDS.map((command) => [command.id, command]));
@@ -164,7 +166,7 @@ export const COMMAND_BY_ID = new Map(KEYBINDING_COMMANDS.map((command) => [comma
 export const COMMAND_TITLES = new Map(KEYBINDING_COMMANDS.map((command) => [command.id, command.title]));
 
 export function defaultBindings(): CommandBindings {
-  return Object.fromEntries(KEYBINDING_COMMANDS.map((command) => [command.id, [...command.defaults]])) as CommandBindings;
+  return Object.fromEntries(KEYBINDING_COMMANDS.map((command) => [command.id, command.defaultKey])) as CommandBindings;
 }
 
 /** Keys the grammar can represent, without modifiers. */

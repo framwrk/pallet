@@ -53,7 +53,7 @@ export function Toolbar(): React.JSX.Element {
   const leftIsLocal = app.panes.left.backend.kind === "local";
   const connecting = app.connecting;
   const terminalView = pane.view === "terminal";
-  const inspectorKey = bindings.effective["panels.toggleInspector"][0];
+  const inspectorKey = bindings.effective["panels.toggleInspector"];
   const inspectorLabel = inspectorKey ? `Get Info (${displayParts(inspectorKey).join("")})` : "Get Info";
   const folderTitle = terminalView
     ? `Terminal — ${pane.backend.kind === "sftp" ? pane.backend.host : ""}`

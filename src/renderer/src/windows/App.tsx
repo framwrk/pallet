@@ -27,11 +27,9 @@ import {
   useAppState,
 } from "@/store/pane.store";
 import { disconnectPane, initSftpEvents } from "@/store/sftp.store";
-import { getKeybindingLookup, getKeybindings, initKeybindings, isKeybindingRecorderOpen } from "@/store/keybinding.store";
-import { initTerminalEvents, toggleTerminal } from "@/store/terminal.store";
+import { getKeybindingLookup, initKeybindings } from "@/store/keybinding.store";
 import { useEffect, useState } from "react";
 import { COMMAND_BY_ID } from "@shared/keybindings/keybinding.constants";
-import type { CommandId } from "@shared/keybindings/keybinding.types";
 import { ConfirmDeleteDialog } from "@/components/browser/ConfirmDeleteDialog";
 import { ConflictDialog } from "@/components/transfer/ConflictDialog";
 import { ConnectDialog } from "@/components/connection/QuickConnect";
@@ -47,6 +45,7 @@ import { Toasts } from "@/components/feedback/Toasts";
 import { Toolbar } from "@/components/browser/Toolbar";
 import { UpdateToast } from "@/components/feedback/UpdateToast";
 import { eventToKey } from "@shared/keybindings/keybinding.utils";
+import { initTerminalEvents } from "@/store/terminal.store";
 import { initTransferEvents } from "@/store/transfer.store";
 import { loadFavorites } from "@/store/favorite.store";
 import { visibleEntries } from "@/lib/entry.utils";
@@ -81,22 +80,7 @@ function isFileContext(e: KeyboardEvent, key: string): boolean {
   return true;
 }
 
-/** The same handler each menu item reaches, for a command's extra bindings. */
-function runMenuCommand(command: CommandId): void {
-  const state = getState();
-  if (command === "panels.settings") {
-    setSettingsOpen(true);
-    return;
-  }
-  if (command === "panels.closeRemotePane") {
-    if (state.panes[state.active].backend.kind === "sftp") void disconnectPane(state.active);
-    return;
-  }
-  if (command === "panels.toggleTerminal") {
-    if (!isModalOpen()) toggleTerminal(state.active);
-  }
-}
-
+/** Dispatch one binding per command; menu accelerators are handled by main. */
 function handleKeyDown(e: KeyboardEvent): void {
   if (e.defaultPrevented || e.isComposing) return;
   const key = eventToKey(e);
@@ -104,16 +88,6 @@ function handleKeyDown(e: KeyboardEvent): void {
 
   const command = getKeybindingLookup().get(key);
   const spec = command ? COMMAND_BY_ID.get(command) : undefined;
-
-  // Menu extras act like the menu itself: before the editable/modal guards.
-  // The first binding is the Electron accelerator, which main already owns.
-  if (command && spec?.scope === "menu") {
-    if (isKeybindingRecorderOpen()) return;
-    if (getKeybindings().effective[command][0] === key) return;
-    e.preventDefault();
-    runMenuCommand(command);
-    return;
-  }
 
   if (isEditableTarget(e.target)) return;
   if (isModalOpen()) return;

@@ -34,7 +34,8 @@ export interface KeybindingCommand {
   id: CommandId;
   group: CommandGroup;
   title: string;
-  defaults: string[];
+  /** The one default shortcut; unbound commands use null overrides. */
+  defaultKey: string;
   scope: Exclude<CommandScope, "fixed">;
 }
 
@@ -42,7 +43,7 @@ export interface KeybindingCommand {
 export interface LockedKeybinding {
   group: CommandGroup;
   title: string;
-  keys: string[];
+  key: string;
 }
 
 export type KeyIssueCode = "unsupported" | "needsModifier" | "reserved" | "locked" | "escapeReserved";
@@ -53,7 +54,7 @@ export interface KeyIssue {
   message: string;
 }
 
-export type KeybindingIssueCode = "shape" | "unknownCommand" | "notArray" | "invalidKey" | "duplicate" | "conflict";
+export type KeybindingIssueCode = "shape" | "unknownCommand" | "notKey" | "invalidKey" | "conflict";
 
 /** One skipped entry in keybindings.json, shown in the Settings banner. */
 export interface KeybindingIssue {
@@ -65,7 +66,8 @@ export interface KeybindingIssue {
   message: string;
 }
 
-export type CommandBindings = Record<CommandId, string[]>;
+/** One shortcut per command. null means the command is unbound. */
+export type CommandBindings = Record<CommandId, string | null>;
 
 export interface KeybindingsState {
   effective: CommandBindings;

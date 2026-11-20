@@ -40,7 +40,7 @@ left pane with a second server for [remote-to-remote transfers](#transferring-fi
 | **Sidebar**      | `Connect to Server`, then Devices (mounted volumes; right-click one to eject it), Folders (Home, Desktop, Documents, Downloads, Movies, Music, Pictures), and Favorites.    |
 | **Panes**        | Either pane can show the local disk or a server, each with its own breadcrumb bar and status line.                                             |
 | **Queue drawer** | Collapsible transfer queue along the bottom. Appears when you start a transfer.                                                                |
-| **Inspector**    | Right-hand info panel. Toggle with **⌘I** or **Space**.                                                                                        |
+| **Inspector**    | Right-hand info panel. Toggle with **⌘I**.                                                                                        |
 
 **The active pane** is the pane with the accent-colored top border. Every toolbar button and
 keyboard shortcut applies to it. Click a pane or press **⇥** to switch. Keyboard focus and the
@@ -53,7 +53,7 @@ dark in [Settings](#settings).
 
 ## Browsing
 
-**Navigate into a folder:** double-click it, or select it and press **⌘↓** or **⌘O**.
+**Navigate into a folder:** double-click it, or select it and press **⌘↓**.
 **Go to the parent folder:** **⌘↑**. You land in the parent folder with the folder you left
 selected, as in Finder. **Back** and **Forward:** the toolbar arrows. Each pane keeps its own
 independent history.
@@ -116,8 +116,8 @@ discards its totals.
 
 | Action          | How                              |
 | --------------- | -------------------------------- |
-| Select one      | Click, or **↑** / **↓**          |
-| Extend a range  | **⇧**-click, or **⇧↑** / **⇧↓**  |
+| Select one      | Click, **↑** up, or **↓** down   |
+| Extend a range  | **⇧**-click, **⇧↑** up, or **⇧↓** down |
 | Add/remove one  | **⌘**-click                      |
 | Select all      | **⌘A**                           |
 | Clear selection | **Escape**, or click empty space |
@@ -142,7 +142,7 @@ deletes are permanent, and Pallet asks for confirmation first.
 **Copy and paste (⌘C, ⌘V).** Copy in one pane and paste in the other. It works in every direction,
 including local to remote and remote to local: pasting routes through the transfer queue.
 
-**Copy to the other pane (F5 or ⌘D).** **Move between local panes (F6).**
+**Copy to the other pane (F5).** **Move between local panes (F6).**
 
 **Undo (⌘Z).** Undoes local renames and moves, up to 50 levels deep. Transfers and deletes are not
 undoable; recover Trash items through Finder instead.
@@ -232,7 +232,7 @@ login shell. Click the button again (**Show Files**) or press **⌃&#96;** to re
   shell.
 - If the shell exits or its SSH connection drops, the pane returns to the files and a toast reports
   it. Pallet never reconnects the shell automatically; open a new one with the button or **⌃&#96;**.
-- While a pane shows its terminal it is not a copy source or destination. **F5**, **F6**, **⌘D**,
+- While a pane shows its terminal it is not a copy source or destination. **F5**, **F6**,
   pasting into it, drag and drop, New Folder, Move to Trash, Refresh, and Back/Forward do nothing.
   Transfers that were already queued or running continue.
 - A file-session reconnect does not interrupt the shell, because the terminal has its own
@@ -360,7 +360,7 @@ else in the pane to drop at the current directory. The drop target highlights. B
 remote, so the same copy paths (F5, ⌘C/⌘V, drag and drop, and the row context menu) work between
 two servers.
 
-Use the keyboard instead: **F5** or **⌘D** to copy to the other pane, **F6** to move (local only),
+Use the keyboard instead: **F5** to copy to the other pane, **F6** to move (local only),
 or **⌘C** and **⌘V** to copy and paste.
 
 Copies go through the **transfer queue** in the drawer at the bottom, including local copies.
@@ -483,7 +483,7 @@ Pallet overwrites a file only when you choose to.
 
 ## The inspector
 
-Press **⌘I** or **Space** to toggle it. The inspector shows details for a single selected item:
+Press **⌘I** to toggle it. The inspector shows details for a single selected item:
 
 - Name, kind, size, date modified, full path, and extension
 - **Permissions matrix**: a grid of R/W/X checkboxes across Owner, Group, and Others, plus the
@@ -560,38 +560,39 @@ without connecting a pane.
 
 ### Keybindings
 
-**Every shortcut is customizable.** Settings → Keybindings lists each command with its current key
-chips, grouped as Navigation, Files, Transfers, and Panels. Click a chip group to record a
-replacement, or use **+** on a row to add an alternate. A group's **×** removes that shortcut, and a
-command with none shows **Unbound**. Escape cancels recording; click elsewhere or move focus away
-for the same result.
+**Every shortcut is customizable.** Settings → Keybindings lists each command with its current
+shortcut, grouped as Navigation, Files, Transfers, and Panels. Each command has exactly one
+shortcut. Click a chip group to edit it; a command with none shows **Assign**, which opens the
+recorder. The **…** menu next to a shortcut offers **Unassign**. Escape cancels recording; click
+elsewhere or move focus away for the same result.
 
 A shortcut is valid when it has **⌘**, **⌃**, or **⌥**, or when it is a function key or a special
 key (Return, Escape, Space, Tab, Delete, Backspace, or an arrow). ⇧ may be added. Bare letters,
 digits, and symbols are rejected, as are modifier-only presses and combinations macOS owns (for
 example **⌘Q**, **⌘Space**, **⇧⌘3**, **⌘X**, and **⌃⌘F**). Pallet blocks a shortcut another
-command already uses, names the owner, and keeps the recorder open. A duplicate within the same
-command is a no-op.
+command already uses, names the owner, and keeps the recorder open.
 
 Shortcuts marked **Built in; can't be changed** are selection movement (**↑**/**↓** and
 **⇧↑**/**⇧↓**). **⌘F** and **/** inside Settings and **⌘K** inside the terminal are internal to
 those views and are not listed.
 
-A customized row shows a small dot and a reset button that restores that command. **Reset all** in
-the toolbar restores every default after an inline confirmation. Edits save immediately.
+A customized row shows a small dot and a reset button that restores that command. **Reset All to
+Defaults…** sits at the bottom of the tab and restores every shortcut after an inline confirmation.
+Edits save immediately.
 
 **Open keybindings.json** opens the overrides file in `~/Library/Application Support/Pallet/`,
 next to `pallet.db`. The file is optional and stores overrides only, keyed by command id:
 
 ```json
 {
-  "transfers.copyToOther": ["f5", "cmd+shift+c"]
+  "transfers.copyToOther": "f5",
+  "panels.connect": null
 }
 ```
 
-A command absent from the file uses its defaults, and `[]` means unbound. Pallet writes the file in
+A command absent from the file uses its default, and `null` means unbound. Pallet writes the file in
 registry order with 2-space JSON and a trailing newline, and drops an entry that matches its
-defaults. Edits in your editor apply live. If the file is not valid JSON, Pallet keeps the last good
+default. Edits in your editor apply live. If the file is not valid JSON, Pallet keeps the last good
 bindings (defaults on launch), shows a warning banner in the tab, and raises a toast. Entries that
 are individually invalid are skipped and listed in the banner while the rest still apply. Within the
 file, earlier commands win a conflict, so both sides of a swap can be written at once.
@@ -679,9 +680,11 @@ These are the **defaults**. Every shortcut listed here (except selection movemen
 
 | Key         | Action                     |
 | ----------- | -------------------------- |
-| `↑` `↓`     | Move selection             |
-| `⇧↑` `⇧↓`   | Extend selection           |
-| `⌘↓` / `⌘O` | Open / descend into folder |
+| `↑`         | Move selection up          |
+| `↓`         | Move selection down        |
+| `⇧↑`        | Extend selection up        |
+| `⇧↓`        | Extend selection down      |
+| `⌘↓`       | Open / descend into folder |
 | `⌘↑`        | Go to parent folder        |
 | `⇥`         | Switch active pane         |
 | `⌘⇧G`       | Go to folder               |
@@ -703,7 +706,7 @@ These are the **defaults**. Every shortcut listed here (except selection movemen
 
 | Key         | Action                          |
 | ----------- | ------------------------------- |
-| `F5` / `⌘D` | Copy to other pane              |
+| `F5`        | Copy to other pane              |
 | `F6`        | Move to other pane (local only) |
 | `⌘C` / `⌘V` | Copy / paste across panes       |
 
@@ -711,7 +714,7 @@ These are the **defaults**. Every shortcut listed here (except selection movemen
 
 | Key            | Action            |
 | -------------- | ----------------- |
-| `⌘I` / `Space` | Toggle inspector  |
+| `⌘I`           | Toggle inspector  |
 | `⌘K`           | Connect to server |
 | `⌘W`           | Disconnect active remote pane; keep window open |
 | `⌃&#96;`       | Toggle the terminal on the active SFTP pane     |

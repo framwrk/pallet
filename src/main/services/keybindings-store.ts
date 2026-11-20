@@ -75,7 +75,7 @@ function keybindingError(message: string): NodeJS.ErrnoException {
   return error;
 }
 
-function writeOverrides(next: Partial<Record<CommandId, string[]>>): void {
+function writeOverrides(next: Partial<Record<CommandId, string | null>>): void {
   const text = serializeOverrides(next);
   const target = keybindingsPath();
   const temporary = `${target}.tmp`;
@@ -151,29 +151,26 @@ export function setKeybindingRecording(active: boolean): void {
   for (const listener of recordingListeners) listener(recording);
 }
 
-/** Validate and persist one command's shortcuts; main never trusts the renderer. */
-export function setCommandKeys(id: CommandId, keys: unknown): void {
+/** Validate and persist one command's shortcut; main never trusts the renderer. */
+export function setCommandKey(id: CommandId, key: unknown): void {
   const command = COMMAND_BY_ID.get(id);
   if (!command) throw keybindingError(`Unknown command: ${String(id)}`);
-  if (!Array.isArray(keys) || !keys.every((entry) => typeof entry === "string")) {
-    throw keybindingError("Shortcuts must be an array of key strings");
+  if (key === null) {
+    writeOverrides({ ...state.overrides, [id]: null });
+    return;
+  }
+  if (typeof key !== "string") throw keybindingError("A shortcut must be a key string or null");
+
+  const parsed = parseKey(key);
+  if (parsed === null) throw keybindingError(`That key isn’t supported: ${key}`);
+  const issue = validateKey(parsed, { allowEscape: false });
+  if (issue !== null) throw keybindingError(issue.message);
+  const conflict = findConflict(state.effective, id, parsed);
+  if (conflict) {
+    throw keybindingError(`${formatKey(parsed)} is already used by ${COMMAND_TITLES.get(conflict) ?? conflict}`);
   }
 
-  const next: string[] = [];
-  for (const raw of keys) {
-    const parsed = parseKey(raw);
-    if (parsed === null) throw keybindingError(`That key isn’t supported: ${raw}`);
-    if (next.includes(parsed)) continue;
-    const issue = validateKey(parsed, { allowEscape: false });
-    if (issue !== null) throw keybindingError(issue.message);
-    const conflict = findConflict(state.effective, id, parsed);
-    if (conflict) {
-      throw keybindingError(`${formatKey(parsed)} is already used by ${COMMAND_TITLES.get(conflict) ?? conflict}`);
-    }
-    next.push(parsed);
-  }
-
-  writeOverrides({ ...state.overrides, [id]: next });
+  writeOverrides({ ...state.overrides, [id]: parsed });
 }
 
 export function resetCommand(id: CommandId): void {

@@ -5,7 +5,7 @@ import {
   openKeybindingsFile,
   resetAll,
   resetCommand,
-  setCommandKeys,
+  setCommandKey,
   setKeybindingRecording,
 } from "../services/keybindings-store";
 import type { IpcResult } from "@shared/ipc/ipc.types";
@@ -28,7 +28,7 @@ export function registerKeybindingHandlers(): void {
   onKeybindingsChange((state: KeybindingsState) => broadcast(KeybindingChannels.changed, state));
 
   handle(KeybindingChannels.get, () => getKeybindingsState());
-  handle(KeybindingChannels.set, (id: CommandId, keys: string[]) => setCommandKeys(id, keys));
+  handle(KeybindingChannels.set, (id: CommandId, key: string | null) => setCommandKey(id, key));
   handle(KeybindingChannels.reset, (id: CommandId) => resetCommand(id));
   handle(KeybindingChannels.resetAll, () => resetAll());
   handle(KeybindingChannels.open, () => openKeybindingsFile());

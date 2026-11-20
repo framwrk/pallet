@@ -157,7 +157,7 @@ const pallet: PalletApi = {
   },
   keybindings: {
     get: (): Promise<KeybindingsState> => invoke(KeybindingChannels.get),
-    set: (id: CommandId, keys: string[]): Promise<void> => invoke(KeybindingChannels.set, id, keys),
+    set: (id: CommandId, key: string | null): Promise<void> => invoke(KeybindingChannels.set, id, key),
     reset: (id: CommandId): Promise<void> => invoke(KeybindingChannels.reset, id),
     resetAll: (): Promise<void> => invoke(KeybindingChannels.resetAll),
     open: (): Promise<void> => invoke(KeybindingChannels.open),

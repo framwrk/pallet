@@ -58,61 +58,53 @@ describe("validateKey", () => {
 
   test("every registry default is valid", () => {
     for (const command of KEYBINDING_COMMANDS) {
-      for (const key of command.defaults) {
-        expect(validateKey(key, { allowEscape: true })).toBeNull();
-      }
+      expect(validateKey(command.defaultKey, { allowEscape: true })).toBeNull();
     }
   });
 });
 
 describe("resolveBindings", () => {
   test("reports unknown commands and keeps defaults", () => {
-    const result = resolveBindings({ "foo.bar": ["cmd+x"] });
+    const result = resolveBindings({ "foo.bar": "cmd+x" });
     expect(result.issues.map((issue) => issue.code)).toEqual(["unknownCommand"]);
-    expect(result.effective["navigation.refresh"]).toEqual(["cmd+r"]);
+    expect(result.effective["navigation.refresh"]).toBe("cmd+r");
   });
 
-  test("reports a non-array value and keeps defaults", () => {
-    const result = resolveBindings({ "files.newFolder": "cmd+n" });
-    expect(result.issues.map((issue) => issue.code)).toEqual(["notArray"]);
-    expect(result.effective["files.newFolder"]).toEqual(["cmd+shift+n"]);
+  test("reports a non-string value and keeps defaults", () => {
+    const result = resolveBindings({ "files.newFolder": ["cmd+n"] });
+    expect(result.issues.map((issue) => issue.code)).toEqual(["notKey"]);
+    expect(result.effective["files.newFolder"]).toBe("cmd+shift+n");
   });
 
-  test("keeps valid keys beside an invalid one", () => {
-    const result = resolveBindings({ "files.newFolder": ["cmd+shift+n", "j", "cmd+alt+n"] });
-    expect(result.effective["files.newFolder"]).toEqual(["cmd+shift+n", "cmd+alt+n"]);
+  test("reports an invalid key and keeps defaults", () => {
+    const result = resolveBindings({ "files.newFolder": "j" });
     expect(result.issues.map((issue) => issue.code)).toEqual(["invalidKey"]);
-  });
-
-  test("drops a duplicate within one command", () => {
-    const result = resolveBindings({ "files.newFolder": ["cmd+n", "cmd+n"] });
-    expect(result.effective["files.newFolder"]).toEqual(["cmd+n"]);
-    expect(result.issues.map((issue) => issue.code)).toEqual(["duplicate"]);
+    expect(result.effective["files.newFolder"]).toBe("cmd+shift+n");
   });
 
   test("the earlier command keeps a cross-command conflict", () => {
     const result = resolveBindings({
-      "navigation.refresh": ["cmd+d"],
-      "transfers.copyToOther": ["cmd+d"],
+      "navigation.refresh": "cmd+d",
+      "transfers.copyToOther": "cmd+d",
     });
-    expect(result.effective["navigation.refresh"]).toEqual(["cmd+d"]);
-    expect(result.effective["transfers.copyToOther"]).toEqual([]);
+    expect(result.effective["navigation.refresh"]).toBe("cmd+d");
+    expect(result.effective["transfers.copyToOther"]).toBeNull();
     expect(result.issues.find((issue) => issue.code === "conflict")?.message).toBe("cmd+d is already used by Refresh");
   });
 
   test("a JSON swap applies both overrides before claims are checked", () => {
     const result = resolveBindings({
-      "navigation.refresh": ["cmd+shift+g"],
-      "navigation.goToFolder": ["cmd+r"],
+      "navigation.refresh": "cmd+shift+g",
+      "navigation.goToFolder": "cmd+r",
     });
-    expect(result.effective["navigation.refresh"]).toEqual(["cmd+shift+g"]);
-    expect(result.effective["navigation.goToFolder"]).toEqual(["cmd+r"]);
+    expect(result.effective["navigation.refresh"]).toBe("cmd+shift+g");
+    expect(result.effective["navigation.goToFolder"]).toBe("cmd+r");
     expect(result.issues).toEqual([]);
   });
 
-  test("an empty array means unbound", () => {
-    const result = resolveBindings({ "panels.connect": [] });
-    expect(result.effective["panels.connect"]).toEqual([]);
+  test("null means unbound", () => {
+    const result = resolveBindings({ "panels.connect": null });
+    expect(result.effective["panels.connect"]).toBeNull();
     expect(result.issues).toEqual([]);
   });
 
@@ -124,8 +116,8 @@ describe("resolveBindings", () => {
 
   test("findConflict ignores the command itself", () => {
     const { effective } = resolveBindings({});
-    expect(findConflict(effective, "transfers.copyToOther", "cmd+d")).toBeNull();
-    expect(findConflict(effective, "navigation.refresh", "cmd+d")).toBe("transfers.copyToOther");
+    expect(findConflict(effective, "transfers.copyToOther", "f5")).toBeNull();
+    expect(findConflict(effective, "navigation.refresh", "f5")).toBe("transfers.copyToOther");
   });
 });
 
@@ -168,20 +160,20 @@ describe("serializeOverrides", () => {
     expect(serializeOverrides({})).toBe("{}\n");
   });
 
-  test("drops an entry equal to its defaults", () => {
-    expect(serializeOverrides({ "navigation.refresh": ["cmd+r"] })).toBe("{}\n");
-    expect(serializeOverrides({ "transfers.copyToOther": ["f5", "cmd+d"] })).toBe("{}\n");
+  test("drops an entry equal to its default", () => {
+    expect(serializeOverrides({ "navigation.refresh": "cmd+r" })).toBe("{}\n");
+    expect(serializeOverrides({ "transfers.copyToOther": "f5" })).toBe("{}\n");
   });
 
   test("keeps registry order and unbound entries", () => {
     const text = serializeOverrides({
-      "panels.settings": ["cmd+alt+,"],
-      "files.newFolder": ["cmd+alt+n"],
-      "panels.connect": [],
+      "panels.settings": "cmd+alt+,",
+      "files.newFolder": "cmd+alt+n",
+      "panels.connect": null,
     });
-    const parsed = JSON.parse(text) as Record<string, string[]>;
+    const parsed = JSON.parse(text) as Record<string, string | null>;
     expect(Object.keys(parsed)).toEqual(["files.newFolder", "panels.connect", "panels.settings"]);
-    expect(parsed["panels.connect"]).toEqual([]);
+    expect(parsed["panels.connect"]).toBeNull();
     expect(text.endsWith("\n")).toBe(true);
     expect(text).toContain('  "files.newFolder"');
   });

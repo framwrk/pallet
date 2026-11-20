@@ -14,6 +14,7 @@ import {
   Keyboard,
   LoaderCircle,
   Lock,
+  MoreHorizontal,
   Pencil,
   Plus,
   RefreshCw,
@@ -62,6 +63,7 @@ import { FavoriteDialog } from "@renderer/components/connection/FavoriteDialog";
 import { Input } from "@renderer/components/ui/input";
 import { LABEL_COLOR_CLASSES } from "@shared/favorite/favorite.constants";
 import type { LucideIcon } from "lucide-react";
+import { Menu as MenuPrimitive } from "@base-ui/react/menu";
 import { Switch } from "@renderer/components/ui/switch";
 import appIcon from "@renderer/assets/pallet-icon.png";
 import { cn } from "@renderer/lib/utils";
@@ -1382,7 +1384,10 @@ function scrollRowIntoView(row: HTMLElement | null): void {
 }
 
 const KEY_CHIP =
-  "border-border/70 bg-foreground/[0.055] inline-flex h-5 min-w-5 items-center justify-center rounded-[4px] border px-1.5 font-mono text-[11px] leading-none";
+  "bg-foreground/[0.075] text-foreground/85 inline-flex h-6 min-w-6 items-center justify-center rounded-md px-1.5 font-mono text-[11px] leading-none";
+
+/** One binding's chips: separate keycaps with a small, even gap. */
+const KEY_GROUP = "inline-flex items-center gap-1";
 
 function KeyChips({ keys }: { keys: string[] }): React.JSX.Element {
   return (
@@ -1420,7 +1425,7 @@ function KeybindingsPanel(): React.JSX.Element {
   const bindings = useKeybindings();
   const [query, setQuery] = useState("");
   const [confirmResetAll, setConfirmResetAll] = useState(false);
-  const [recorder, setRecorder] = useState<{ commandId: CommandId; index: number | null } | null>(null);
+  const [recorder, setRecorder] = useState<{ commandId: CommandId } | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const recorderRowRef = useRef<HTMLDivElement | null>(null);
@@ -1433,20 +1438,16 @@ function KeybindingsPanel(): React.JSX.Element {
     setKeybindingRecording(false);
   }, []);
 
-  function startRecorder(commandId: CommandId, index: number | null): void {
-    setRecorder({ commandId, index });
+  function startRecorder(commandId: CommandId): void {
+    setRecorder({ commandId });
     setPreview(null);
     setError(null);
     setKeybindingRecording(true);
   }
 
-  function saveKeys(commandId: CommandId, keys: string[]): void {
-    void window.pallet.keybindings.set(commandId, keys).catch((err: unknown) => pushToast((err as Error).message));
-  }
-
   useEffect(() => {
     if (!recorder) return;
-    const { commandId, index } = recorder;
+    const { commandId } = recorder;
     const effective = bindings.effective;
 
     function onKeyDown(event: KeyboardEvent): void {
@@ -1476,16 +1477,12 @@ function KeybindingsPanel(): React.JSX.Element {
         return;
       }
 
-      const current = effective[commandId];
-      // A key already in this command (including the chip being replaced) is a
-      // no-op, not a silent merge that would delete the other chip.
-      if (current.includes(key)) {
+      if (effective[commandId] === key) {
         cancelRecorder();
         return;
       }
-      const next = index === null ? [...current, key] : current.map((existing, at) => (at === index ? key : existing));
       void window.pallet.keybindings
-        .set(commandId, next)
+        .set(commandId, key)
         .then(() => cancelRecorder())
         .catch((err: unknown) => setError((err as Error).message));
     }
@@ -1515,20 +1512,20 @@ function KeybindingsPanel(): React.JSX.Element {
   const term = query.trim().toLowerCase();
   const matches = (command: KeybindingCommand): boolean => {
     if (!term) return true;
+    const key = bindings.effective[command.id];
     return (
       command.title.toLowerCase().includes(term) ||
       command.group.toLowerCase().includes(term) ||
-      bindings.effective[command.id].some(
-        (key) => displayParts(key).join("").toLowerCase().includes(term) || key.toLowerCase().includes(term),
-      )
+      (key !== null && (displayParts(key).join("").toLowerCase().includes(term) || key.toLowerCase().includes(term)))
     );
   };
-  const lockedMatches = (title: string, group: string, keys: string[]): boolean => {
+  const lockedMatches = (title: string, group: string, key: string): boolean => {
     if (!term) return true;
     return (
       title.toLowerCase().includes(term) ||
       group.toLowerCase().includes(term) ||
-      keys.some((key) => displayParts(key).join("").toLowerCase().includes(term) || key.toLowerCase().includes(term))
+      displayParts(key).join("").toLowerCase().includes(term) ||
+      key.toLowerCase().includes(term)
     );
   };
 
@@ -1536,7 +1533,7 @@ function KeybindingsPanel(): React.JSX.Element {
     group,
     commands: KEYBINDING_COMMANDS.filter((command) => command.group === group && matches(command)),
     locked: LOCKED_KEYBINDINGS.filter(
-      (locked) => locked.group === group && lockedMatches(locked.title, locked.group, locked.keys),
+      (locked) => locked.group === group && lockedMatches(locked.title, locked.group, locked.key),
     ),
   })).filter((entry) => entry.commands.length > 0 || entry.locked.length > 0);
 
@@ -1555,6 +1552,10 @@ function KeybindingsPanel(): React.JSX.Element {
     });
   }
 
+  function removeShortcut(commandId: CommandId): void {
+    void window.pallet.keybindings.set(commandId, null).catch((err: unknown) => pushToast((err as Error).message));
+  }
+
   function errorFor(commandId: CommandId): string | null {
     return recorder?.commandId === commandId ? error : null;
   }
@@ -1562,58 +1563,28 @@ function KeybindingsPanel(): React.JSX.Element {
   return (
     <div className="flex flex-col gap-6">
       <Section title="Keybindings">
-        {confirmResetAll ? (
-          <div className="flex items-center gap-3 px-3 py-2.5 sm:px-4">
-            <p className="text-foreground text-sm font-medium">Reset all keybindings to defaults?</p>
-            <div className="ms-auto flex shrink-0 items-center gap-1">
-              <Button
-                size="xs"
-                variant="ghost"
-                onClick={() => setConfirmResetAll(false)}
-              >
-                Cancel
-              </Button>
-              <Button
-                size="xs"
-                variant="destructive"
-                onClick={resetAll}
-              >
-                Reset
-              </Button>
-            </div>
+        <div className="flex items-center gap-2 px-3 py-2.5 sm:px-4">
+          <div className="relative min-w-0 flex-1">
+            <Search className="text-muted-foreground pointer-events-none absolute start-2 top-1/2 size-3.5 -translate-y-1/2" />
+            <Input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Search keybindings"
+              aria-label="Search keybindings"
+              spellCheck={false}
+              className="h-7 rounded-sm ps-7 text-[13px]"
+            />
           </div>
-        ) : (
-          <div className="flex items-center gap-2 px-3 py-2.5 sm:px-4">
-            <div className="relative min-w-0 flex-1">
-              <Search className="text-muted-foreground pointer-events-none absolute start-2 top-1/2 size-3.5 -translate-y-1/2" />
-              <Input
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder="Search keybindings"
-                aria-label="Search keybindings"
-                spellCheck={false}
-                className="h-7 rounded-sm ps-7 text-[13px]"
-              />
-            </div>
-            <Button
-              size="xs"
-              variant="outline"
-              disabled={!customized}
-              onClick={() => setConfirmResetAll(true)}
-            >
-              Reset all
-            </Button>
-            <Button
-              size="icon-xs"
-              variant="outline"
-              aria-label="Open keybindings.json"
-              title="Open keybindings.json"
-              onClick={openFile}
-            >
-              <FileBraces />
-            </Button>
-          </div>
-        )}
+          <Button
+            size="icon-xs"
+            variant="outline"
+            aria-label="Open keybindings.json"
+            title="Open keybindings.json"
+            onClick={openFile}
+          >
+            <FileBraces />
+          </Button>
+        </div>
       </Section>
 
       {(bindings.syntaxError !== null || bindings.issues.length > 0) && (
@@ -1645,7 +1616,7 @@ function KeybindingsPanel(): React.JSX.Element {
             title={group}
           >
             {commands.map((command, rowIndex) => {
-              const keys = bindings.effective[command.id];
+              const key = bindings.effective[command.id];
               const modified = Object.prototype.hasOwnProperty.call(bindings.overrides, command.id);
               const recording = recorder?.commandId === command.id;
               const rowError = errorFor(command.id);
@@ -1680,68 +1651,74 @@ function KeybindingsPanel(): React.JSX.Element {
                       </p>
                     )}
                   </div>
-                  <div className="flex min-w-0 shrink-0 items-center justify-end gap-2">
-                    {keys.length === 0 && !recording && <span className="text-muted-foreground text-xs">Unbound</span>}
-                    {keys.map((key, index) => {
-                      const replacing = recording && recorder?.index === index;
-                      return (
-                        <Fragment key={`${key}-${index}`}>
-                          {index > 0 && <span className="text-muted-foreground text-[11px]">or</span>}
-                          <div className="flex items-center gap-0.5">
-                            <button
-                              type="button"
-                              aria-label={`Shortcut ${displayParts(key).join(" ")} for ${command.title}, press to change`}
-                              onClick={() => startRecorder(command.id, index)}
-                              className={cn(
-                                "inline-flex h-6 items-center gap-1 rounded-[4px] px-1.5 leading-none outline-none",
-                                "focus-visible:ring-primary/55 focus-visible:ring-2",
-                                replacing
-                                  ? "border-primary/60 bg-primary/10 border"
-                                  : "hover:bg-foreground/[0.09] border border-transparent",
-                              )}
-                            >
-                              {replacing ? (
-                                <span className="text-muted-foreground font-sans text-[11px]">
-                                  {preview ?? "Press a shortcut…"}
-                                </span>
-                              ) : (
-                                <KeyChips keys={[key]} />
-                              )}
-                            </button>
-                            <button
-                              type="button"
-                              aria-label={`Remove shortcut ${displayParts(key).join(" ")} from ${command.title}`}
-                              onClick={() =>
-                                saveKeys(
-                                  command.id,
-                                  keys.filter((_, at) => at !== index),
-                                )
-                              }
-                              className="text-muted-foreground hover:text-foreground ms-0.5 rounded p-0.5 opacity-0 transition-opacity group-hover/row:opacity-100 focus-visible:opacity-100"
-                            >
-                              <XIcon className="size-3" />
-                            </button>
-                          </div>
-                        </Fragment>
-                      );
-                    })}
-                    {recording && recorder?.index === null && (
+                  <div className="flex min-w-0 shrink-0 items-center justify-end gap-1.5">
+                    {recording ? (
                       <button
                         type="button"
-                        aria-label={`Recording a new shortcut for ${command.title}`}
-                        className="border-primary/60 bg-primary/10 focus-visible:ring-primary/55 inline-flex h-6 items-center rounded-[4px] border px-1.5 leading-none outline-none focus-visible:ring-2"
+                        aria-label={`Recording a shortcut for ${command.title}`}
+                        className="border-primary/60 bg-primary/10 focus-visible:ring-primary/55 inline-flex h-6 items-center rounded-md border px-1.5 leading-none outline-none focus-visible:ring-2"
                       >
                         <span className="text-muted-foreground font-sans text-[11px]">{preview ?? "Press a shortcut…"}</span>
                       </button>
+                    ) : key === null ? (
+                      <button
+                        type="button"
+                        aria-label={`Assign shortcut for ${command.title}`}
+                        title="Assign shortcut"
+                        onClick={() => startRecorder(command.id)}
+                        className="border-border/70 text-muted-foreground hover:bg-foreground/[0.04] hover:text-foreground inline-flex h-6 items-center gap-1 rounded-md border border-dashed px-2 text-[11px] font-medium"
+                      >
+                        <Plus className="size-3" />
+                        Assign
+                      </button>
+                    ) : (
+                      <div className="flex items-center gap-1.5">
+                        <MenuPrimitive.Root>
+                          <MenuPrimitive.Trigger
+                            type="button"
+                            disabled={recordingActive}
+                            aria-label={`More options for ${displayParts(key).join(" ")} in ${command.title}`}
+                            className={cn(
+                              "text-muted-foreground hover:bg-foreground/[0.07] hover:text-foreground flex size-6 items-center justify-center rounded-md",
+                              recordingActive
+                                ? "pointer-events-none opacity-0"
+                                : "opacity-0 transition-opacity group-hover/row:opacity-100 focus-visible:opacity-100 data-[popup-open]:opacity-100",
+                            )}
+                          >
+                            <MoreHorizontal className="size-3.5" />
+                          </MenuPrimitive.Trigger>
+                          <MenuPrimitive.Portal>
+                            <MenuPrimitive.Positioner
+                              side="bottom"
+                              align="end"
+                              sideOffset={4}
+                              className="z-50"
+                            >
+                              <MenuPrimitive.Popup className="bg-popover text-popover-foreground border-border/70 w-44 rounded-[10px] border p-1 shadow-2xl">
+                                <MenuPrimitive.Item
+                                  onClick={() => removeShortcut(command.id)}
+                                  className="text-destructive data-[highlighted]:bg-destructive/10 flex cursor-default items-center rounded-md px-2.5 py-1.5 text-left text-[13px] font-medium outline-none select-none"
+                                >
+                                  Unassign
+                                </MenuPrimitive.Item>
+                              </MenuPrimitive.Popup>
+                            </MenuPrimitive.Positioner>
+                          </MenuPrimitive.Portal>
+                        </MenuPrimitive.Root>
+                        <button
+                          type="button"
+                          aria-label={`Shortcut ${displayParts(key).join(" ")} for ${command.title}, press to change`}
+                          onClick={() => startRecorder(command.id)}
+                          className={cn(
+                            KEY_GROUP,
+                            "focus-visible:ring-primary/55 -my-1 rounded-md p-1 outline-none focus-visible:ring-2",
+                            "hover:bg-foreground/[0.06] focus-visible:bg-foreground/[0.06]",
+                          )}
+                        >
+                          <KeyChips keys={[key]} />
+                        </button>
+                      </div>
                     )}
-                    <button
-                      type="button"
-                      aria-label={`Add shortcut for ${command.title}`}
-                      onClick={() => startRecorder(command.id, null)}
-                      className="text-muted-foreground hover:bg-foreground/[0.07] hover:text-foreground rounded p-1 opacity-0 transition-opacity group-hover/row:opacity-100 focus-visible:opacity-100"
-                    >
-                      <Plus className="size-3" />
-                    </button>
                     {modified && (
                       <button
                         type="button"
@@ -1752,7 +1729,7 @@ function KeybindingsPanel(): React.JSX.Element {
                             .reset(command.id)
                             .catch((err: unknown) => pushToast((err as Error).message));
                         }}
-                        className="text-muted-foreground hover:bg-foreground/[0.07] hover:text-foreground rounded p-1"
+                        className="text-muted-foreground hover:bg-foreground/[0.07] hover:text-foreground flex size-6 items-center justify-center rounded"
                       >
                         <RotateCcw className="size-3" />
                       </button>
@@ -1769,14 +1746,14 @@ function KeybindingsPanel(): React.JSX.Element {
                 <div className="min-w-0 flex-1">
                   <span className="text-foreground truncate text-sm font-medium">{lockedRow.title}</span>
                 </div>
-                <div className="flex min-w-0 shrink-0 items-center justify-end gap-2">
-                  <span className="border-border/70 bg-foreground/[0.055] inline-flex h-5 items-center gap-1 rounded-[4px] border px-1.5">
-                    <KeyChips keys={lockedRow.keys} />
+                <div className="flex min-w-0 shrink-0 items-center justify-end gap-1.5">
+                  <span className={KEY_GROUP}>
+                    <KeyChips keys={[lockedRow.key]} />
                   </span>
                   <span
                     aria-label="Built in; can't be changed"
                     title="Built in; can't be changed"
-                    className="text-muted-foreground p-1"
+                    className="text-muted-foreground ms-1 flex size-6 items-center justify-center"
                   >
                     <Lock className="size-3" />
                   </span>
@@ -1786,6 +1763,47 @@ function KeybindingsPanel(): React.JSX.Element {
           </Section>
         ))
       )}
+
+      <div className="border-border/60 bg-card/40 rounded-xl border px-3 py-3 shadow-xs/5 sm:px-4">
+        {confirmResetAll ? (
+          <div className="flex flex-wrap items-center gap-3">
+            <p className="text-foreground min-w-0 flex-1 text-sm font-medium">Reset all keybindings to defaults?</p>
+            <div className="ms-auto flex shrink-0 items-center gap-1">
+              <Button
+                size="xs"
+                variant="ghost"
+                onClick={() => setConfirmResetAll(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                size="xs"
+                variant="destructive"
+                onClick={resetAll}
+              >
+                Reset
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="min-w-0 flex-1">
+              <p className="text-foreground text-sm font-medium">Reset all keybindings</p>
+              <p className="text-muted-foreground text-xs leading-normal">
+                {customized ? "Restore every shortcut to its default." : "All shortcuts are at their defaults."}
+              </p>
+            </div>
+            <Button
+              size="xs"
+              variant="outline"
+              disabled={!customized}
+              onClick={() => setConfirmResetAll(true)}
+            >
+              Reset All to Defaults…
+            </Button>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
