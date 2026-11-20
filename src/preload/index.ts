@@ -184,6 +184,6 @@ if (process.contextIsolated) {
     console.error(error);
   }
 } else {
-  // @ts-ignore (define in dts)
+  // @ts-expect-error tsc skips index.d.ts beside index.ts here; only tsconfig.web.json loads it.
   window.pallet = pallet;
 }

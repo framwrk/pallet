@@ -244,7 +244,7 @@ test("aborting a write calls upload.abort()", async () => {
   controller.abort();
   await tick();
 
-  expect(aborts).toBeGreaterThanOrEqual(1);
+  expect(aborts).toBe(1);
   expect(stream.destroyed).toBe(true);
 });
 

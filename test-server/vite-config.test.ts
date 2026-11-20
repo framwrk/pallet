@@ -15,6 +15,6 @@ test("the root Vite shim loads the same plugins as the electron-vite renderer", 
   expect(pluginNames(shim.plugins)).toEqual(pluginNames(renderer.plugins));
 });
 
-test("every root Vite shim alias matches the electron-vite renderer alias", () => {
-  for (const [name, target] of Object.entries(shim.resolve.alias)) expect(renderer.resolve.alias[name]).toBe(target);
+test("the root Vite shim uses the same aliases as the electron-vite renderer", () => {
+  expect(shim.resolve.alias).toEqual(renderer.resolve.alias);
 });
