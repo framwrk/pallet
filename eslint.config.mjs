@@ -43,7 +43,7 @@ export default defineConfig(
         {
           paths: ["path", "node:path", "path/posix"].map((name) => ({
             name,
-            message: "Renderer code must use localPath/remotePath from @shared/paths instead.",
+            message: "Renderer code must use localPath/remotePath from @shared/path/path.utils instead.",
           })),
         },
       ],

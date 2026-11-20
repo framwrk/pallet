@@ -8,7 +8,10 @@ function secretsDir(): string {
   return dir;
 }
 
+const FAVORITE_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 function pathFor(favoriteId: string): string {
+  if (!FAVORITE_ID.test(favoriteId)) throw new Error("Invalid favorite id");
   return join(secretsDir(), `${favoriteId}.bin`);
 }
 
