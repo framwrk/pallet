@@ -76,7 +76,7 @@ const CHUNK_THRESHOLD = 16 * 1024 * 1024;
  */
 const SHUTDOWN_TIMEOUT_MS = 5_000;
 
-/** One selected file or folder, tracked so the drawer can show a row per item. */
+/** One selected file or folder, tracked so the transfer panel can show a row per item. */
 interface PlanItem {
   name: string;
   totalFiles: number;
@@ -86,6 +86,8 @@ interface PlanItem {
   skippedSymlinks: number;
   totalBytes: number;
   doneBytes: number;
+  /** Bytes of skipped or canceled files that will never move; left out of the reported total. */
+  excludedBytes: number;
   /** Files of this item currently streaming; drives live per-item sampling. */
   runningFiles: number;
   /** This item's files still waiting for a worker. */
@@ -124,6 +126,10 @@ interface PlanFile {
   completed?: boolean;
   /** Counted as skipped after its item was canceled. */
   canceled?: boolean;
+  /** Its bytes left the reported totals; never excluded twice. */
+  excluded?: boolean;
+  /** Failed for good; an item cancel must not count it again. */
+  failed?: boolean;
 }
 
 /** Shared shape for job- and item-level speed sampling. */
@@ -176,12 +182,19 @@ export interface TransferQueueOptions {
 /** Seam for tests: swap in in-memory endpoints instead of disk/SFTP. */
 export type EndpointFactory = (sessions: SessionManager, ref: TransferRequest["from"]) => TransferEndpoint;
 
+/** Trailing window for the live rate shown in rows and the transfer panel header. */
+const LIVE_RATE_WINDOW_MS = 3000;
+/** Chunks closer together than this update one sample instead of adding one. */
+const LIVE_RATE_SAMPLE_MS = 100;
+/** Shortest span the live rate divides by. */
+const LIVE_RATE_MIN_SPAN_MS = 250;
+
 class Job {
   /** Enqueue time, so history rows have a real transfer start. */
   startedAt = Date.now();
-  /** Set once the job settles, so the drawer can report a fixed elapsed time. */
+  /** Set once the job settles, so the transfer panel can report a fixed elapsed time. */
   finishedAt?: number;
-  state: TransferState = "enumerating";
+  state: TransferState = "queued";
   autoPaused = false;
   userPaused = false;
   canceled = false;
@@ -200,6 +213,8 @@ class Job {
   skippedFiles = 0;
   doneBytes = 0;
   totalBytes = 0;
+  /** Bytes of skipped or canceled files that will never move; left out of the reported total. */
+  excludedBytes = 0;
   errors: TransferError[] = [];
   /** Names already produced per destination directory (keep-both bookkeeping). */
   destNames = new Map<string, Set<string>>();
@@ -276,6 +291,7 @@ export class TransferQueue {
       skippedSymlinks: 0,
       totalBytes: 0,
       doneBytes: 0,
+      excludedBytes: 0,
       runningFiles: 0,
       queue: [],
       userPaused: false,
@@ -298,7 +314,8 @@ export class TransferQueue {
 
   private itemState(job: Job, item: PlanItem): TransferItemState {
     if (item.canceled) return "canceled";
-    if (item.errors.length > 0) return "failed";
+    // An item with a failed file keeps running its other files; it reads as failed once settled.
+    if (item.errors.length > 0 && (item.finishedAt || TERMINAL_TRANSFER_STATES.includes(job.state))) return "failed";
     if (item.totalFiles > 0 && item.doneFiles + item.skippedFiles >= item.totalFiles) {
       return item.doneFiles > 0 ? "completed" : "skipped";
     }
@@ -319,7 +336,8 @@ export class TransferQueue {
       totalFiles: item.totalFiles,
       doneFiles: item.doneFiles,
       skippedFiles: item.skippedFiles + item.skippedSymlinks,
-      totalBytes: item.totalBytes,
+      // A canceled item keeps its full size, so it reads as partly done rather than finished.
+      totalBytes: item.canceled ? item.totalBytes : item.totalBytes - item.excludedBytes,
       doneBytes: item.doneBytes,
       bytesPerSec: this.bytesPerSecOfSamples(item.samples),
       speedStats: item.speedStats,
@@ -333,15 +351,42 @@ export class TransferQueue {
     };
   }
 
-  /** Bytes/second over the trailing 3 s sample window. */
+  /**
+   * Bytes/second over the trailing 3 s sample window, measured to now so a
+   * stall decays instead of holding the last burst's rate.
+   */
   private bytesPerSecOfSamples(samples: { t: number; bytes: number }[]): number {
     const now = Date.now();
-    const windowStart = now - 3000;
+    const windowStart = now - LIVE_RATE_WINDOW_MS;
     const recent = samples.filter((s) => s.t >= windowStart);
     if (recent.length < 2) return 0;
-    return (
-      ((recent[recent.length - 1].bytes - recent[0].bytes) / Math.max(1, recent[recent.length - 1].t - recent[0].t)) * 1000
-    );
+    // A floor on the span keeps a same-millisecond burst from reading as GB/s.
+    const span = Math.max(LIVE_RATE_MIN_SPAN_MS, now - recent[0].t);
+    return Math.max(0, ((recent[recent.length - 1].bytes - recent[0].bytes) / span) * 1000);
+  }
+
+  /**
+   * Run a counter rollback without it reading as negative throughput: shift the
+   * live-rate history by what was given back, so the rate keeps its smoothing.
+   */
+  private keepRateThrough(job: Job, item: PlanItem, giveBack: () => void): void {
+    const jobBefore = job.doneBytes;
+    const itemBefore = item.doneBytes;
+    giveBack();
+    for (const sample of job.samples) sample.bytes -= jobBefore - job.doneBytes;
+    for (const sample of item.samples) sample.bytes -= itemBefore - item.doneBytes;
+  }
+
+  /** Record a live-rate sample: one per LIVE_RATE_SAMPLE_MS, pruned by age rather than count. */
+  private pushRateSample(samples: { t: number; bytes: number }[], now: number, bytes: number): void {
+    // The newest sample tracks the latest chunk until it is a full step past the one before it.
+    const prev = samples[samples.length - 2];
+    const last = samples[samples.length - 1];
+    if (prev && last && now - prev.t < LIVE_RATE_SAMPLE_MS) {
+      last.t = now;
+      last.bytes = bytes;
+    } else samples.push({ t: now, bytes });
+    while (samples.length > 2 && samples[0].t < now - LIVE_RATE_WINDOW_MS) samples.shift();
   }
 
   snapshot(job: Job): TransferJobSnapshot {
@@ -357,7 +402,7 @@ export class TransferQueue {
       totalFiles: job.planFiles.length,
       doneFiles: job.doneFiles,
       skippedFiles: job.skippedFiles + job.skippedSymlinks,
-      totalBytes: job.totalBytes,
+      totalBytes: job.state === "canceled" ? job.totalBytes : job.totalBytes - job.excludedBytes,
       doneBytes: job.doneBytes,
       bytesPerSec: this.bytesPerSecOfSamples(job.samples),
       speedStats: job.speedStats,
@@ -504,6 +549,8 @@ export class TransferQueue {
   private async acquireJobSlot(job: Job): Promise<() => void> {
     const ids = [...new Set([job.request.from, job.request.to].flatMap((ref) => (ref.kind === "sftp" ? [ref.sessionId] : [])))];
     while (!job.canceled && ids.some((id) => this.activeSessions.has(id))) {
+      // Show the row while it waits; an uncontended job goes straight to scanning.
+      this.emit(job, true);
       await new Promise<void>((resolve) => this.slotWaiters.push(resolve));
     }
     if (job.canceled) return () => {};
@@ -874,12 +921,22 @@ export class TransferQueue {
     return file.target;
   }
 
+  /** Drop a file that will never move from the reported totals; bytes it already confirmed stay counted. */
+  private excludeFileBytes(job: Job, file: PlanFile): void {
+    if (file.excluded) return;
+    file.excluded = true;
+    const bytes = Math.max(0, file.size - file.checkpoint);
+    job.excludedBytes += bytes;
+    file.item.excludedBytes += bytes;
+  }
+
   /** Count a file its item had canceled exactly once, so job totals still add up. */
   private skipCanceledFile(job: Job, file: PlanFile): void {
     if (file.completed || file.canceled) return;
     file.canceled = true;
     job.skippedFiles++;
     file.item.skippedFiles++;
+    this.excludeFileBytes(job, file);
     this.settleItem(file.item);
     this.emit(job);
   }
@@ -901,6 +958,7 @@ export class TransferQueue {
     if (target === "skip") {
       job.skippedFiles++;
       file.item.skippedFiles++;
+      this.excludeFileBytes(job, file);
       this.settleItem(file.item);
       this.emit(job);
       return;
@@ -1065,10 +1123,8 @@ export class TransferQueue {
             credit(chunk.length);
             if (checkpointed) confirm(dst.confirmedBytes?.() ?? offset);
             const now = Date.now();
-            job.samples.push({ t: now, bytes: job.doneBytes });
-            if (job.samples.length > 200) job.samples.splice(0, 100);
-            item.samples.push({ t: now, bytes: item.doneBytes });
-            if (item.samples.length > 200) item.samples.splice(0, 100);
+            this.pushRateSample(job.samples, now, job.doneBytes);
+            this.pushRateSample(item.samples, now, item.doneBytes);
             this.emit(job);
             cb(null, chunk);
           },
@@ -1151,9 +1207,7 @@ export class TransferQueue {
       if (checkpointed) confirm(flight.dst?.confirmedBytes?.() ?? file.checkpoint);
       // Roll back only this attempt's unconfirmed bytes; other workers keep
       // theirs, and a resume starts at the last confirmed offset.
-      rollback();
-      job.samples = [];
-      item.samples = [];
+      this.keepRateThrough(job, item, rollback);
       let retry = false;
       if (!job.canceled && !item.canceled && !committing && !(err instanceof TransferIntegrityError)) {
         if (this.sessionDown(job)) {
@@ -1171,7 +1225,7 @@ export class TransferQueue {
       }
       if (retry && !job.canceled && !item.canceled) item.queue.unshift(file);
       else {
-        discard();
+        this.keepRateThrough(job, item, discard);
         if (item.canceled) this.skipCanceledFile(job, file);
         else if (!job.canceled) {
           const message = committing
@@ -1180,6 +1234,7 @@ export class TransferQueue {
           job.errors.push({ relPath: file.relPath, message });
           item.errors.push(message);
           item.failedFiles++;
+          file.failed = true;
         }
       }
     } finally {
@@ -1318,10 +1373,20 @@ export class TransferQueue {
     // Count waiting files as skipped now. In-flight files settle in their own
     // catch path, so a file that commits during the abort is not double-counted.
     for (const file of job.planFiles) {
-      if (file.item !== item || file.completed || file.canceled || job.inFlight.has(file.relPath)) continue;
+      if (
+        file.item !== item ||
+        file.completed ||
+        file.canceled ||
+        file.excluded ||
+        file.failed ||
+        job.inFlight.has(file.relPath)
+      ) {
+        continue;
+      }
       file.canceled = true;
       job.skippedFiles++;
       item.skippedFiles++;
+      this.excludeFileBytes(job, file);
     }
     item.queue = [];
     // A conflict prompt for this item must not block the rest of the job.
@@ -1337,7 +1402,7 @@ export class TransferQueue {
     this.emit(job, true);
   }
 
-  cancel(jobId: string): void {
+  cancel(jobId: string, { silent = false }: { silent?: boolean } = {}): void {
     const job = this.jobs.get(jobId);
     if (!job || TERMINAL_TRANSFER_STATES.includes(job.state)) return;
     job.canceled = true;
@@ -1350,7 +1415,8 @@ export class TransferQueue {
     const waiters = job.resumeWaiters.splice(0);
     for (const w of waiters) w();
     this.wakeItemWaiters(job);
-    this.emit(job, true);
+    // A removed job's row is already gone; a canceled snapshot would re-add it.
+    if (!silent) this.emit(job, true);
   }
 
   /** True while a job is still running or cleaning up its staging files. */
@@ -1391,6 +1457,8 @@ export class TransferQueue {
     if (!old || !["failed", "canceled"].includes(old.state)) return;
     const job = new Job(jobId, old.request);
     this.jobs.set(jobId, job);
+    // Replace the failed row at once; the rerun may wait for the old cleanup or a session slot.
+    this.emit(job, true);
     job.settled = old.settled.then(() => {
       for (const file of old.planFiles) {
         if (file.completed) job.previousCompleted.set(file.relPath, { size: file.size, scanMtimeMs: file.scanMtimeMs });
@@ -1402,7 +1470,7 @@ export class TransferQueue {
 
   remove(jobId: string): void {
     const job = this.jobs.get(jobId);
-    if (job && !TERMINAL_TRANSFER_STATES.includes(job.state)) this.cancel(jobId);
+    if (job && !TERMINAL_TRANSFER_STATES.includes(job.state)) this.cancel(jobId, { silent: true });
     this.jobs.delete(jobId);
     this.order = this.order.filter((id) => id !== jobId);
   }

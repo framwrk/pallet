@@ -9,7 +9,8 @@ import { execFileSync } from "node:child_process";
 import { join } from "node:path";
 
 const connected = (id = "right"): string => `!!${pane(id)}?.querySelector('[aria-label=Disconnect]')`;
-const job = "[...document.querySelectorAll('#transfer-drawer-jobs > [role=listitem]')].at(-1)";
+const job = "[...document.querySelectorAll('#transfer-panel-jobs > [role=listitem]')].at(-1)";
+const panelExpanded = "!!document.querySelector('section[aria-label=\"Transfer queue\"] [aria-expanded=true]')";
 const favorite = (name: string): string =>
   `[...document.querySelectorAll('aside[aria-label="Locations and connections"] button[draggable=true]')].find(e=>e.innerText.trim()===${JSON.stringify(name)})`;
 export async function hash(path: string): Promise<string> {
@@ -68,8 +69,10 @@ async function connect(ui: ElectronUI, s: Servers, p: Protocol, id = "right", au
   await finishConnect(ui, id);
 }
 async function clear(ui: ElectronUI): Promise<void> {
+  // Clear lives in the expanded panel's header.
+  if (await ui.read(`!!(${button("Expand transfers")})`)) await ui.button("Expand transfers");
   if (await ui.read(`!!(${button("Clear")})`)) await ui.button("Clear");
-  await ui.wait("document.querySelectorAll('#transfer-drawer-jobs > [role=listitem]').length===0", "empty queue");
+  await ui.wait("document.querySelectorAll('#transfer-panel-jobs > [role=listitem]').length===0", "empty queue");
 }
 async function copy(ui: ElectronUI, name: string, id = "left"): Promise<void> {
   await clear(ui);
@@ -395,7 +398,7 @@ export function integrationCases(root: string, s: Servers): Case[] {
         await until(
           async () => {
             assert.equal(
-              await ui.read<number>("document.querySelectorAll('#transfer-drawer-jobs > [role=listitem]').length"),
+              await ui.read<number>("document.querySelectorAll('#transfer-panel-jobs > [role=listitem]').length"),
               0,
               "F5 enqueued a transfer into the terminal pane",
             );
@@ -429,10 +432,21 @@ export function integrationCases(root: string, s: Servers): Case[] {
         await copy(ui, name);
         await terminal(ui);
         assert.equal(await hash(join(remote, name)), await hash(join(source, name)));
+        // The floating panel opens for a transfer and collapses to a short card that stays in its corner.
+        assert.equal(await ui.read(panelExpanded), true, "a new transfer opens the panel");
+        await ui.button("Collapse transfers");
+        await ui.wait(
+          `!${panelExpanded} && document.getElementById('transfer-panel-jobs').inert && document.querySelector('section[aria-label="Transfer queue"]').getBoundingClientRect().height < 60`,
+          "collapsed transfer card",
+        );
+        await ui.button("Expand transfers");
+        await ui.wait(`${panelExpanded} && !document.getElementById('transfer-panel-jobs').inert`, "expanded panel");
+        await ui.button("Collapse transfers");
         const target = join(download, p);
         await mkdir(target);
         await ui.go(target);
         await copy(ui, name, "right");
+        await ui.wait(panelExpanded, "the next transfer reopens the panel");
         await terminal(ui);
         assert.equal(await hash(join(target, name)), await hash(join(source, name)));
         await ui.go(source);

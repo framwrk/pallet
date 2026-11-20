@@ -39,7 +39,7 @@ left pane with a second server for [remote-to-remote transfers](#transferring-fi
 | **Toolbar**      | Back, Forward, Replace Local Pane with Remote / Restore Local Pane, Refresh, New Folder, Move to Trash, Get Info. Acts on the **active pane**. |
 | **Sidebar**      | `Connect to Server`, then Devices (mounted volumes; right-click one to eject it), Folders (Home, Desktop, Documents, Downloads, Movies, Music, Pictures), and Favorites.    |
 | **Panes**        | Either pane can show the local disk or a server, each with its own breadcrumb bar and status line.                                             |
-| **Queue drawer** | Collapsible transfer queue along the bottom. Appears when you start a transfer.                                                                |
+| **Transfer panel** | Floating transfer queue in a bottom corner, over the panes. Opens when you start a transfer; collapse it to a summary card and keep browsing. |
 | **Inspector**    | Right-hand info panel. Toggle with **⌘I**.                                                                                        |
 
 **The active pane** is the pane with the accent-colored top border. Every toolbar button and
@@ -363,7 +363,7 @@ two servers.
 Use the keyboard instead: **F5** to copy to the other pane, **F6** to move (local only),
 or **⌘C** and **⌘V** to copy and paste.
 
-Copies go through the **transfer queue** in the drawer at the bottom, including local copies.
+Copies go through the **transfer queue** in the floating transfer panel, including local copies.
 Local moves run directly and support undo.
 
 ### How a transfer runs
@@ -399,7 +399,7 @@ remote-to-remote copies without server shell access.
 
 Read-back adds disk and network traffic and requires read permission on both files. A mismatch,
 short read, or read-permission failure stops the file before replacement; verification never falls
-back silently. **Retry** copies fresh staged content after an integrity failure. The drawer shows
+back silently. **Retry** copies fresh staged content after an integrity failure. The panel shows
 **Verifying…** and bytes checked separately from copied bytes; the job stays active and files count
 as complete only after replacement. Pause/cancel, per-item controls, network recovery, and the stall
 timeout apply during hashing. Interrupted digest passes restart from byte zero.
@@ -409,7 +409,13 @@ disk durability, and cannot prevent another writer changing a file after it was 
 
 ### Queue controls
 
-The queue drawer shows one row per selected item, each with its own progress bar, transfer rate, and
+The transfer panel floats in the bottom-right corner of the workspace (bottom-left if you choose
+that in **Settings › Transfers**). It opens when a transfer starts; the chevron at its top collapses
+it to a summary card with the overall progress and rate, so the panes stay usable while transfers
+run. Click the card or the chevron to open it again, and press **Escape** inside it to collapse it.
+Toasts stack above the panel when they share its corner.
+
+The panel shows one row per selected item, each with its own progress bar, transfer rate, and
 bytes moved. Selected folders are grouped into a single row that aggregates the files beneath them.
 Each item row also names the files currently in flight.
 
@@ -429,10 +435,10 @@ cancel everything at once.
 **Advanced stats** in each item row shows a graph of transfer speed over the entire transfer, along
 with measured average and median throughput (all-time and the last 30 seconds), elapsed time,
 estimated time left, bytes moved, and file counts. Multi-item jobs also expose the same stats for the
-whole job. The drawer header summarizes active items, with an aggregate progress bar and combined
+whole job. The panel header summarizes active items, with an aggregate progress bar and combined
 transfer rate.
 
-**Clear** removes all finished jobs at once. The drawer header shows aggregate progress across all
+**Clear** removes all finished jobs at once. The panel header shows aggregate progress across all
 running jobs. These controls and the live progress reporting apply to every transfer direction,
 including copies between two remote servers.
 
@@ -556,7 +562,8 @@ without connecting a pane.
 | **Verify copied files with SHA-256** | Off | Reread full source and staged destination before replacement; adds traffic and requires read permission. |
 | **Stall timeout**           | 60 s    | Abandon a file after this long without progress.                                       |
 | **Retries per file**        | 5       | Per-file retries after a dead channel before reporting failure.                        |
-| **Speed window**            | 30 s    | Trailing window for the transfer drawer's average and median speeds.                   |
+| **Speed window**            | 30 s    | Trailing window for the transfer panel's average and median speeds.                    |
+| **Transfer panel position** | Bottom right | Which bottom corner of the workspace the transfer panel floats in.                |
 
 ### Keybindings
 

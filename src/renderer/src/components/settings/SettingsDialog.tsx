@@ -1,4 +1,4 @@
-import type { Appearance, Preferences, RowDensity } from "@shared/prefs/prefs.types";
+import type { Appearance, Preferences, RowDensity, TransferPanelSide } from "@shared/prefs/prefs.types";
 import {
   ArrowDown,
   ArrowUp,
@@ -123,6 +123,11 @@ const APPEARANCES: Record<Appearance, string> = {
   system: "System",
   light: "Light",
   dark: "Dark",
+};
+
+const TRANSFER_PANEL_SIDES: Record<TransferPanelSide, string> = {
+  left: "Bottom left",
+  right: "Bottom right",
 };
 
 const ROW_DENSITIES: Record<RowDensity, string> = {
@@ -1002,7 +1007,7 @@ function TransfersPanel({
         <Group>
           <Row
             label="Speed window"
-            description="Sets the trailing window for the average and median speeds in the transfer drawer."
+            description="Sets the trailing window for the average and median speeds in the transfer panel."
             htmlFor="pref-speed-window"
           >
             <Select
@@ -1031,6 +1036,50 @@ function TransfersPanel({
                 className="min-w-0 p-1"
               >
                 {Object.entries(SPEED_WINDOW_OPTIONS).map(([value, label]) => (
+                  <SelectItem
+                    key={value}
+                    value={value}
+                    className="py-0.5 text-[13px]"
+                  >
+                    {label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Row>
+        </Group>
+      </Section>
+      <Section title="Transfer panel">
+        <Group>
+          <Row
+            label="Position"
+            description="Which bottom corner of the workspace the transfer panel floats in."
+            htmlFor="pref-transfer-panel-side"
+          >
+            <Select
+              items={TRANSFER_PANEL_SIDES}
+              value={prefs.transferPanelSide}
+              onValueChange={(value) => save({ transferPanelSide: value as TransferPanelSide })}
+            >
+              <SelectTrigger
+                id="pref-transfer-panel-side"
+                aria-describedby="pref-transfer-panel-side-desc"
+                className="w-36 rounded-sm py-0 pr-1.5 text-[13px] data-[size=default]:h-6 [&>svg]:hidden"
+              >
+                <SelectValue />
+                <span className="text-muted-foreground flex">
+                  <ChevronsUpDown
+                    className="size-3.5"
+                    strokeWidth={2}
+                  />
+                </span>
+              </SelectTrigger>
+              <SelectContent
+                align="start"
+                alignItemWithTrigger={false}
+                className="min-w-0 p-1"
+              >
+                {Object.entries(TRANSFER_PANEL_SIDES).map(([value, label]) => (
                   <SelectItem
                     key={value}
                     value={value}

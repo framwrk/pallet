@@ -23,7 +23,8 @@ export interface TransferRequest {
   destDir: string;
 }
 
-export type TransferState = "enumerating" | "waiting" | "running" | "paused" | "completed" | "failed" | "canceled";
+/** "queued" waits for another job on the same server to release its session. */
+export type TransferState = "queued" | "enumerating" | "waiting" | "running" | "paused" | "completed" | "failed" | "canceled";
 
 export interface TransferError {
   relPath: string;
@@ -53,7 +54,7 @@ export interface TransferSpeedPoint {
 /** State of one selected item (file or folder) inside a transfer job. */
 export type TransferItemState = "pending" | "running" | "paused" | "completed" | "skipped" | "failed" | "canceled";
 
-/** Per-item progress so the drawer can show a row, bar, and stats per selection. */
+/** Per-item progress so the transfer panel can show a row, bar, and stats per selection. */
 export interface TransferItemSnapshot {
   /** Top-level selected name, relative to the job's source base. */
   name: string;

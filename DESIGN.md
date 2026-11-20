@@ -148,7 +148,7 @@ The palette follows the user's macOS appearance. Dark and light are equally auth
 
 ### Named Rules
 
-**The Glass Has a Job Rule.** Use translucency for structural chrome—sidebar, titlebar, inspector, drawer chrome, popovers, and dialogs. File rows, long-form text, forms, and dense tables sit on stable surfaces. Glass never lowers text contrast or makes one pane's content bleed into another.
+**The Glass Has a Job Rule.** Use translucency for structural chrome—sidebar, titlebar, inspector, transfer panel chrome, popovers, and dialogs. File rows, long-form text, forms, and dense tables sit on stable surfaces. Glass never lowers text contrast or makes one pane's content bleed into another.
 
 **The One Blue Signal Rule.** Blue means current focus, selection, navigation, or progress. It is not ambient decoration. On a typical working screen, blue should occupy less than ten percent of the area.
 
@@ -184,7 +184,7 @@ Pallet keeps its dual-pane workspace: the left pane starts local, and the right 
 - **Primary sidebar:** `232–264px` wide, full height beneath the titlebar material, translucent, optionally resizable, and never narrower than an icon plus a readable favorite name. Devices, Folders, and Favorites preserve their order.
 - **Workspace:** two equal panes by default with a draggable divider. Each pane keeps breadcrumb, column header, virtualized list, and status line. The active pane is identified by a restrained blue focus treatment on its breadcrumb/header region and divider edge—not a thick decorative stripe.
 - **Inspector:** `272–320px` wide, right-docked, translucent at its outer shell, with stable inset surfaces for previews and editable permission controls.
-- **Transfer drawer:** full-width beneath the workspace, `32–38px` collapsed and up to `240px` open. Its shell may use glass; progress rows use stable surfaces.
+- **Transfer panel:** floats over the panes in a bottom corner of the workspace (right by default, left by preference), inset `12px`, with `14px` corners and popover lift. Open it is up to `480px` wide with a job list that grows to fit its jobs and scrolls only once the panel would reach the toolbar; collapsed it is a `40px` summary card about `352px` wide. It never dims or blocks the panes. Its shell uses glass; progress rows use stable surfaces. Toasts sharing its corner stack above it.
 - **Dialogs and connection forms:** compact and centered, with label/control alignment maintained. Destructive decisions keep the action nearest the consequence and visually separate Cancel.
 - **Settings:** retain the in-app modal, searchable sidebar, and eight categories: General, Appearance, Favorites, Transfers, Keybindings, Updates, Advanced, and About. The right side uses grouped settings surfaces.
 
@@ -286,7 +286,7 @@ Motion explains state or spatial continuity: panel reveal, selection movement, t
 
 #### Timing
 
-- Use `140ms` for hover/focus color changes, `180ms` as the default for dropdowns, popovers, and menus (`150–250ms` allowed), and `240ms` for sidebar, inspector, and drawer transitions entering.
+- Use `140ms` for hover/focus color changes, `180ms` as the default for dropdowns, popovers, and menus (`150–250ms` allowed), and `240ms` for sidebar, inspector, and transfer panel transitions entering.
 - Exits are about 20% shorter than their entrances: a `240ms` panel entrance leaves in roughly `190ms`; an `180ms` popover leaves in roughly `145ms`.
 - Stagger list rows by `30ms` when the whole list animates in — initial load, refresh, or filtered results. Individual rows never animate during scrolling or incremental updates.
 

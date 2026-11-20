@@ -1,5 +1,5 @@
 /**
- * Pure throughput statistics for the transfer drawer. The queue stores one
+ * Pure throughput statistics for the transfer panel. The queue stores one
  * sample per second while a job runs; this module turns those samples into the
  * average/median figures shown when a row is expanded.
  */

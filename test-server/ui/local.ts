@@ -130,7 +130,7 @@ export function localCases(root: string): Case[] {
         assert.equal(await readFile(join(files, "renamed.txt"), "utf8"), "one");
         assert.equal(await readFile(join(files, "refreshed.txt"), "utf8"), "new");
         const before = (await readdir(files)).sort();
-        const jobs = await ui.read<number>("document.querySelectorAll('#transfer-drawer-jobs > [role=listitem]').length");
+        const jobs = await ui.read<number>("document.querySelectorAll('#transfer-panel-jobs > [role=listitem]').length");
         await ui.select("renamed.txt");
         await ui.key("g", 12);
         await ui.fill(dialogInput, "isolated input");
@@ -141,10 +141,7 @@ export function localCases(root: string): Case[] {
         assert.equal(await ui.read("!!document.querySelector('[role=dialog]')"), true);
         await ui.key("Escape");
         assert.deepEqual((await readdir(files)).sort(), before);
-        assert.equal(
-          await ui.read<number>("document.querySelectorAll('#transfer-drawer-jobs > [role=listitem]').length"),
-          jobs,
-        );
+        assert.equal(await ui.read<number>("document.querySelectorAll('#transfer-panel-jobs > [role=listitem]').length"), jobs);
       },
     ],
     [

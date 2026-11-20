@@ -38,11 +38,11 @@ import { HostKeyDialog } from "@/components/connection/HostKeyDialog";
 import { Inspector } from "@/components/browser/Inspector";
 import { Pane } from "@/components/browser/Pane";
 import { PendingPane } from "@/components/browser/PendingPane";
-import { QueueDrawer } from "@/components/transfer/QueueDrawer";
 import { SettingsDialog } from "@/components/settings/SettingsDialog";
 import { Sidebar } from "@/components/connection/Sidebar";
 import { Toasts } from "@/components/feedback/Toasts";
 import { Toolbar } from "@/components/browser/Toolbar";
+import { TransferPanel } from "@/components/transfer/TransferPanel";
 import { UpdateToast } from "@/components/feedback/UpdateToast";
 import { eventToKey } from "@shared/keybindings/keybinding.utils";
 import { initTerminalEvents } from "@/store/terminal.store";
@@ -276,7 +276,7 @@ function App(): React.JSX.Element {
   return (
     <div className="flex h-full select-none">
       <Sidebar />
-      <div className="flex w-full flex-col overflow-hidden">
+      <div className="relative flex w-full flex-col overflow-hidden">
         <Toolbar />
         <div className="flex min-h-0 flex-1">
           <Pane paneId="left" />
@@ -297,7 +297,8 @@ function App(): React.JSX.Element {
           )}
           <Inspector />
         </div>
-        <QueueDrawer />
+        {/* Floats over the panes in a bottom corner; the panes stay usable around it. */}
+        <TransferPanel />
         <ConnectDialog />
         <GoToDialog />
         <HostKeyDialog />

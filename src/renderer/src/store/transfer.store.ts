@@ -1,4 +1,4 @@
-/** Renderer transfer state: job snapshots, conflict prompts, drawer UI (M5). */
+/** Renderer transfer state: job snapshots, conflict prompts, transfer panel UI (M5). */
 import type { ConflictAction, ConflictPrompt, EndpointRef, TransferJobSnapshot } from "@shared/transfer/transfer.types";
 import { type PaneId, getState, pushToast, refresh, setConflictPromptCount } from "./pane.store";
 import { TERMINAL_TRANSFER_STATES } from "@shared/transfer/transfer.constants";
@@ -7,10 +7,15 @@ import { useSyncExternalStore } from "react";
 interface TransferUiState {
   jobs: TransferJobSnapshot[];
   prompts: ConflictPrompt[];
-  drawerOpen: boolean;
+  /** The floating panel shows its full job list; collapsed, it is a summary card. */
+  panelExpanded: boolean;
+  /** Last job that finished, for the panel's screen-reader live region. */
+  announcement: string;
 }
 
-let state: TransferUiState = { jobs: [], prompts: [], drawerOpen: false };
+let state: TransferUiState = { jobs: [], prompts: [], panelExpanded: false, announcement: "" };
+/** Ids the user removed; a snapshot already in flight must not re-add the row. */
+const removedIds = new Set<string>();
 const listeners = new Set<() => void>();
 
 function set(patch: Partial<TransferUiState>): void {
@@ -28,21 +33,33 @@ export function useTransfers(): TransferUiState {
   );
 }
 
+function nextAnnouncement(text: string): string {
+  return state.announcement === text ? `${text}\u200b` : text;
+}
+
 let bound = false;
 export function initTransferEvents(): void {
   if (bound) return;
   bound = true;
   window.pallet.transfer.onUpdate((snapshot) => {
+    if (removedIds.has(snapshot.id)) return;
     const existing = state.jobs.find((j) => j.id === snapshot.id);
     const wasTerminal = existing && TERMINAL_TRANSFER_STATES.includes(existing.state);
     const jobs = existing ? state.jobs.map((j) => (j.id === snapshot.id ? snapshot : j)) : [...state.jobs, snapshot];
-    set({ jobs, drawerOpen: state.drawerOpen || !existing });
+    const finished = !wasTerminal && TERMINAL_TRANSFER_STATES.includes(snapshot.state);
+    set({
+      jobs,
+      panelExpanded: state.panelExpanded || !existing,
+      // Failures are announced by their toast. A trailing zero-width space alternates so a
+      // repeat of the same text still changes the live region and is read again.
+      ...(finished && snapshot.state !== "failed" && { announcement: nextAnnouncement(`${snapshot.label} ${snapshot.state}`) }),
+    });
     // A job just finished: freshen both panes so results appear.
-    if (!wasTerminal && TERMINAL_TRANSFER_STATES.includes(snapshot.state)) {
+    if (finished) {
       refresh("left");
       refresh("right");
       if (snapshot.state === "completed" && snapshot.errors.length === 0) {
-        // Quietly done; the drawer row shows it.
+        // Quietly done; the panel row shows it.
       } else if (snapshot.state === "failed") {
         pushToast(`Transfer failed: ${snapshot.errors[0]?.message ?? "unknown error"}`);
       }
@@ -53,6 +70,12 @@ export function initTransferEvents(): void {
     // The pane store's modal guard also covers conflict decisions, so file
     // shortcuts cannot fire while a transfer waits on the user.
     setConflictPromptCount(state.prompts.length);
+  });
+  // A reopened window starts empty; paused, waiting, and finished jobs don't re-emit on their own.
+  void window.pallet.transfer.snapshots().then((snapshots) => {
+    const known = new Set(state.jobs.map((j) => j.id));
+    const missing = snapshots.filter((s) => !known.has(s.id) && !removedIds.has(s.id));
+    if (missing.length > 0) set({ jobs: [...missing, ...state.jobs] });
   });
 }
 
@@ -65,8 +88,8 @@ function setPrompts(prompts: ConflictPrompt[]): void {
   setConflictPromptCount(prompts.length);
 }
 
-export function setDrawerOpen(open: boolean): void {
-  set({ drawerOpen: open });
+export function setPanelExpanded(expanded: boolean): void {
+  set({ panelExpanded: expanded });
 }
 
 export function answerConflict(action: ConflictAction, applyToAll: boolean): void {
@@ -86,15 +109,17 @@ export function itemAction(id: string, name: string, action: "pause" | "resume" 
 }
 
 export function removeJob(id: string): void {
+  removedIds.add(id);
   void window.pallet.transfer.remove(id);
-  set({ jobs: state.jobs.filter((j) => j.id !== id) });
+  set({ jobs: state.jobs.filter((j) => j.id !== id), announcement: "" });
 }
 
 export function clearFinishedJobs(): void {
   for (const job of state.jobs.filter((j) => TERMINAL_TRANSFER_STATES.includes(j.state))) {
+    removedIds.add(job.id);
     void window.pallet.transfer.remove(job.id);
   }
-  set({ jobs: state.jobs.filter((j) => !TERMINAL_TRANSFER_STATES.includes(j.state)) });
+  set({ jobs: state.jobs.filter((j) => !TERMINAL_TRANSFER_STATES.includes(j.state)), announcement: "" });
 }
 
 function endpointFor(id: PaneId): EndpointRef {
@@ -126,7 +151,7 @@ export async function enqueuePaneCopy(
       names,
       destDir: destDirOverride ?? panes[toPane].cwd,
     });
-    set({ drawerOpen: true });
+    set({ panelExpanded: true });
   } catch (err) {
     pushToast((err as Error).message);
   }
