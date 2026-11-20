@@ -5,6 +5,7 @@ import {
   FolderSizeChannels,
   FsChannels,
   HostKeyChannels,
+  KeybindingChannels,
   PrefChannels,
   SettingsChannels,
   SftpChannels,
@@ -13,6 +14,7 @@ import {
   UiChannels,
   WindowChannels,
 } from "@shared/ipc/ipc.constants";
+import type { CommandId, KeybindingsState } from "@shared/keybindings/keybinding.types";
 import type { ConflictAction, ConflictPrompt, TransferJobSnapshot, TransferRequest } from "@shared/transfer/transfer.types";
 import type { ConnectProfile, ConnectResult, HostKeyPrompt, SessionStatusEvent } from "@shared/sftp/sftp.types";
 import type { ContextMenuItem, IpcResult } from "@shared/ipc/ipc.types";
@@ -152,6 +154,15 @@ const pallet: PalletApi = {
     get: (): Promise<Preferences> => invoke(PrefChannels.get),
     set: (patch: Partial<Preferences>): Promise<Preferences> => invoke(PrefChannels.set, patch),
     onChange: (cb: (prefs: Preferences) => void): (() => void) => subscribe(PrefChannels.changed, cb),
+  },
+  keybindings: {
+    get: (): Promise<KeybindingsState> => invoke(KeybindingChannels.get),
+    set: (id: CommandId, key: string | null): Promise<void> => invoke(KeybindingChannels.set, id, key),
+    reset: (id: CommandId): Promise<void> => invoke(KeybindingChannels.reset, id),
+    resetAll: (): Promise<void> => invoke(KeybindingChannels.resetAll),
+    open: (): Promise<void> => invoke(KeybindingChannels.open),
+    setRecording: (active: boolean): Promise<void> => invoke(KeybindingChannels.recording, active),
+    onChange: (cb: (state: KeybindingsState) => void): (() => void) => subscribe(KeybindingChannels.changed, cb),
   },
   window: {
     onCloseRequest: (cb: () => void): (() => void) => subscribe(WindowChannels.closeRequest, cb),

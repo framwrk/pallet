@@ -47,8 +47,8 @@ remote hosts.
   request pipeline in flight — so throughput is not one round trip per chunk — and resume from the
   last destination-confirmed byte. Pallet abandons stalled channels and retries them on fresh ones.
 - **Keyboard-first:** F5 to copy across panes, F6 to move between local panes, ⌘K to connect, Return to rename, ⌘⌫
-  to move files to the Trash, and ⌘⇧. for hidden files. The full list, including the known
-  limitations, is in [FEATURES.md](FEATURES.md).
+  to move files to the Trash, and ⌘⇧. for hidden files. Every shortcut is customizable in Settings →
+  Keybindings. The full list, including the known limitations, is in [FEATURES.md](FEATURES.md).
 - **Favorites with encrypted secrets:** connections are saved in SQLite on your machine. Pallet
   encrypts passwords, key passphrases, and S3 credentials through macOS Keychain and stores no secrets
   in the database. SSH agent favorites store neither a key nor a secret.

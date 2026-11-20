@@ -12,6 +12,8 @@ import {
 import { newFolder, trashSelection } from "@/store/ops.store";
 import { cn } from "@/lib/utils";
 import { disconnectPane } from "@/store/sftp.store";
+import { displayParts } from "@shared/keybindings/keybinding.utils";
+import { useKeybindings } from "@/store/keybinding.store";
 
 function ToolButton({
   icon: Icon,
@@ -46,10 +48,13 @@ function ToolButtonGroup({ children }: { children: React.ReactNode }): React.JSX
 
 export function Toolbar(): React.JSX.Element {
   const app = useAppState();
+  const bindings = useKeybindings();
   const pane = app.panes[app.active];
   const leftIsLocal = app.panes.left.backend.kind === "local";
   const connecting = app.connecting;
   const terminalView = pane.view === "terminal";
+  const inspectorKey = bindings.effective["panels.toggleInspector"];
+  const inspectorLabel = inspectorKey ? `Get Info (${displayParts(inspectorKey).join("")})` : "Get Info";
   const folderTitle = terminalView
     ? `Terminal — ${pane.backend.kind === "sftp" ? pane.backend.host : ""}`
     : pane.cwd === "/"
@@ -111,7 +116,7 @@ export function Toolbar(): React.JSX.Element {
         />
         <ToolButton
           icon={Info}
-          label="Get Info (⌘I)"
+          label={inspectorLabel}
           onClick={() => setInspectorOpen(!app.inspectorOpen)}
         />
       </ToolButtonGroup>

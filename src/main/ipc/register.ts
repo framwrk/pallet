@@ -11,6 +11,7 @@ import { isAllowedExternalUrl } from "../utils/navigation-policy";
 import { logFilePath } from "../services/logger";
 import { popupContextMenu } from "../services/context-menu";
 import { registerFavoriteHandlers } from "./favorite";
+import { registerKeybindingHandlers } from "./keybindings";
 import { registerPrefHandlers } from "./prefs";
 import { registerSftpHandlers } from "./sftp";
 import { registerTerminalHandlers } from "./terminal";
@@ -65,6 +66,7 @@ export function registerIpcHandlers(): void {
   registerFavoriteHandlers();
   registerTransferHandlers();
   registerPrefHandlers();
+  registerKeybindingHandlers();
   registerTerminalHandlers();
 
   handle(AppChannels.version, () => app.getVersion());

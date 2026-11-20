@@ -19,6 +19,8 @@ import type { Favorite } from "@shared/favorite/favorite.types";
 import { LABEL_COLOR_CLASSES } from "@shared/favorite/favorite.constants";
 import type { VolumeInfo } from "@shared/fs/fs.types";
 import { cn } from "@/lib/utils";
+import { displayParts } from "@shared/keybindings/keybinding.utils";
+import { useKeybindings } from "@/store/keybinding.store";
 
 function SectionTitle({ children }: { children: React.ReactNode }): React.JSX.Element {
   return <h2 className="text-muted-foreground px-2 pb-1 text-[11px] font-medium tracking-[0.01em]">{children}</h2>;
@@ -177,7 +179,10 @@ function FavoriteItem({
 
 export function Sidebar(): React.JSX.Element {
   const app = useAppState();
+  const bindings = useKeybindings();
   const connecting = app.connecting;
+  const connectKey = bindings.effective["panels.connect"];
+  const connectHint = connectKey ? displayParts(connectKey).join("") : null;
   // Devices and folders drive the local pane: the left disk, or the right one
   // while the left pane is a server and the right is free.
   const localId = localPaneId();
@@ -235,16 +240,24 @@ export function Sidebar(): React.JSX.Element {
             "disabled:hover:bg-background/30 disabled:cursor-not-allowed disabled:opacity-50",
           )}
           onClick={() => openQuickConnect()}
-          title={connecting ? "A connection is already opening" : "Connect to Server (⌘K)"}
+          title={
+            connecting
+              ? "A connection is already opening"
+              : connectHint
+                ? `Connect to Server (${connectHint})`
+                : "Connect to Server"
+          }
         >
           <Plug className="text-muted-foreground group-hover:text-sidebar-foreground size-4 shrink-0 transition-colors duration-[140ms]" />
           <span className="truncate font-medium">Connect to Server</span>
-          <kbd
-            aria-hidden="true"
-            className="text-muted-foreground/75 ml-auto font-mono text-[10px] leading-none"
-          >
-            ⌘K
-          </kbd>
+          {connectHint && (
+            <kbd
+              aria-hidden="true"
+              className="text-muted-foreground/75 ml-auto font-mono text-[10px] leading-none"
+            >
+              {connectHint}
+            </kbd>
+          )}
         </button>
 
         <section aria-labelledby="sidebar-devices-title">
