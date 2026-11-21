@@ -10,6 +10,12 @@ import { DEFAULT_CONCURRENCY, MAX_CONCURRENCY } from "@shared/prefs/prefs.consta
 import { ListObjectsV2Command, type S3Client } from "@aws-sdk/client-s3";
 import { type S3Like, type S3Target } from "../s3/s3-ops";
 import {
+  type SmbConnection,
+  isConnectivityError as isSmbConnectivityError,
+  normalizePath as normalizeSmbPath,
+  openSmbConnection,
+} from "../smb/smb-client";
+import {
   createS3Client,
   credentialsFromProfile,
   isConnectivityError,
@@ -59,6 +65,7 @@ interface Session {
   ftp: FtpClient | null;
   s3: S3Client | null;
   s3Target: S3Target | null;
+  smb: SmbConnection | null;
   sftp: SFTPWrapper | null;
   pool: ChannelPool;
   ftpPool: FtpPool;
@@ -112,7 +119,9 @@ export function parseKeyType(keyBlob: Buffer): string {
 }
 
 export function protocolOf(profile: ConnectProfile): ConnectionProtocol {
-  if (profile.protocol === "ftp" || profile.protocol === "ftps" || profile.protocol === "s3") return profile.protocol;
+  if (profile.protocol === "ftp" || profile.protocol === "ftps" || profile.protocol === "s3" || profile.protocol === "smb") {
+    return profile.protocol;
+  }
   return "sftp";
 }
 
@@ -275,6 +284,7 @@ export class SessionManager {
       ftp: null,
       s3: null,
       s3Target: null,
+      smb: null,
       sftp: null,
       pool: { free: [], total: 0, waiters: [] },
       ftpPool: { free: [], total: 0, waiters: [] },
@@ -332,6 +342,7 @@ export class SessionManager {
     session.ftp?.close();
     session.s3?.destroy();
     session.s3 = null;
+    this.closeSmb(session);
     session.generation++;
     this.resetPool(session, new Error("Connection cancelled"));
     this.resetFtpPool(session, new Error("Connection cancelled"));
@@ -342,6 +353,10 @@ export class SessionManager {
     const protocol = protocolOf(session.profile);
     if (protocol === "s3") {
       await this.dialS3(session);
+      return;
+    }
+    if (protocol === "smb") {
+      await this.dialSmb(session);
       return;
     }
     if (protocol !== "sftp") {
@@ -440,6 +455,27 @@ export class SessionManager {
     this.setStatus(session, "connected");
   }
 
+  private async dialSmb(session: Session): Promise<void> {
+    const connection = await openSmbConnection(session.profile);
+    this.closeSmb(session);
+    session.smb = connection;
+    connection.onClose(() => {
+      if (session.smb !== connection) return;
+      session.smb = null;
+      this.handleDrop(session);
+    });
+    session.reconnectAttempt = 0;
+    session.dropNotified = false;
+    session.generation++;
+    this.setStatus(session, "connected");
+  }
+
+  private closeSmb(session: Session): void {
+    const connection = session.smb;
+    session.smb = null;
+    connection?.close();
+  }
+
   private watchFtpDrop(session: Session): void {
     const ftp = session.ftp;
     if (!ftp) return;
@@ -459,6 +495,14 @@ export class SessionManager {
     const want = session.profile.remotePath?.trim();
     if (protocolOf(session.profile) === "s3") {
       return "/";
+    }
+    if (protocolOf(session.profile) === "smb") {
+      const smb = session.smb;
+      if (!smb) throw new Error("No SMB connection");
+      if (!want) return "/";
+      const path = normalizeSmbPath(want);
+      const stats = await smb.run((client) => client.stat(smb.path(path))).catch(() => null);
+      return stats?.isDirectory ? path : "/";
     }
     if (protocolOf(session.profile) !== "sftp") {
       const ftp = session.ftp;
@@ -494,6 +538,7 @@ export class SessionManager {
     session.sftp = null;
     session.s3?.destroy();
     session.s3 = null;
+    this.closeSmb(session);
     session.generation++;
     this.resetPool(session, new Error("Connection lost"));
     this.resetFtpPool(session, new Error("Connection lost"));
@@ -505,6 +550,14 @@ export class SessionManager {
     const session = this.sessions.get(sessionId);
     if (!session || protocolOf(session.profile) !== "s3") return;
     if (session.status !== "connected" || !isConnectivityError(err)) return;
+    this.handleDrop(session);
+  }
+
+  /** Called by SMB operations: only connectivity failures schedule a reconnect. */
+  noteSmbFailure(sessionId: string, err: unknown): void {
+    const session = this.sessions.get(sessionId);
+    if (!session || protocolOf(session.profile) !== "smb") return;
+    if (session.status !== "connected" || !isSmbConnectivityError(err)) return;
     this.handleDrop(session);
   }
 
@@ -548,6 +601,7 @@ export class SessionManager {
     session.client = protocolOf(session.profile) === "sftp" ? new SshClient() : null;
     session.ftp?.close();
     session.ftp = null;
+    this.closeSmb(session);
     try {
       await this.dial(session);
       session.client?.on("close", () => this.handleDrop(session));
@@ -575,6 +629,7 @@ export class SessionManager {
     session.ftp?.close();
     session.s3?.destroy();
     session.s3 = null;
+    this.closeSmb(session);
     session.generation++;
     this.resetPool(session, new Error("Disconnected"));
     this.resetFtpPool(session, new Error("Disconnected"));
@@ -640,6 +695,17 @@ export class SessionManager {
       throw err;
     }
     return { client: session.s3 as unknown as S3Like, target: session.s3Target };
+  }
+
+  /** The session's SMB connection; shared by browsing and transfers. */
+  smbConnection(sessionId: string): SmbConnection {
+    const session = this.mustGet(sessionId);
+    if (!session.smb || session.smb.closed || session.status !== "connected") {
+      const err: NodeJS.ErrnoException = new Error("Not connected");
+      err.code = "ENOTCONN";
+      throw err;
+    }
+    return session.smb;
   }
 
   /**

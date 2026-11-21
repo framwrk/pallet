@@ -20,6 +20,9 @@ export interface Favorite {
   s3Region?: string;
   s3Bucket?: string;
   s3ForcePathStyle?: boolean;
+  /** SMB only: share name and optional NTLM domain or workgroup. */
+  smbShare?: string;
+  smbDomain?: string;
   /** Initial remote directory; for S3 the starting key prefix. */
   remotePath?: string;
   localPath?: string;
@@ -54,6 +57,8 @@ export interface FavoriteInput {
   s3Region?: string;
   s3Bucket?: string;
   s3ForcePathStyle?: boolean;
+  smbShare?: string;
+  smbDomain?: string;
   remotePath?: string;
   localPath?: string;
   note?: string;

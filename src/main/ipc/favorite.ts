@@ -86,10 +86,13 @@ async function connectFavorite(id: string, attemptId?: string): Promise<ConnectR
         username: favorite.username,
         auth: { method: "password", password: secret },
         ...(favorite.protocol === "ftps" ? { tlsRejectUnauthorized: favorite.tlsRejectUnauthorized !== false } : {}),
+        ...(favorite.protocol === "smb"
+          ? { smb: { share: favorite.smbShare ?? "", ...(favorite.smbDomain ? { domain: favorite.smbDomain } : {}) } }
+          : {}),
         ...(favorite.remotePath ? { remotePath: favorite.remotePath } : {}),
       };
     } else {
-      if (favorite.protocol !== "sftp") throw new Error("FTP and FTPS favorites require password authentication");
+      if (favorite.protocol !== "sftp") throw new Error("FTP, FTPS, and SMB favorites require password authentication");
       if (!favorite.privateKeyPath) {
         const err: NodeJS.ErrnoException = new Error("Favorite has no private key path");
         err.code = "ENOSECRET";

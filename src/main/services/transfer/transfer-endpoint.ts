@@ -6,6 +6,7 @@ import { isDirMode, isSymlinkMode } from "../../utils/file-mode";
 import { S3Endpoint } from "../s3/s3-endpoint";
 import type { SFTPWrapper } from "ssh2";
 import type { SessionManager } from "../sftp/session-manager";
+import { SmbEndpoint } from "../smb/smb-endpoint";
 import { TLSSocket } from "tls";
 
 export interface EndpointStat {
@@ -613,5 +614,6 @@ export function makeEndpoint(
   if (ref.kind === "local") return new LocalEndpoint();
   const protocol = sessions.protocol(ref.sessionId);
   if (protocol === "s3") return new S3Endpoint(sessions, ref.sessionId);
+  if (protocol === "smb") return new SmbEndpoint(sessions, ref.sessionId);
   return protocol === "sftp" ? new SftpEndpoint(sessions, ref.sessionId) : new FtpEndpoint(sessions, ref.sessionId);
 }

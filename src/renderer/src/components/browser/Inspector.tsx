@@ -198,7 +198,8 @@ export function Inspector(): React.JSX.Element | null {
   }, [pane.selected, pane.entries, pane.view]);
 
   const isS3 = pane.backend.kind === "sftp" && pane.backend.protocol === "s3";
-  const editable = pane.backend.kind === "sftp" && !isS3 && entry !== null;
+  const isSmb = pane.backend.kind === "sftp" && pane.backend.protocol === "smb";
+  const editable = pane.backend.kind === "sftp" && !isS3 && !isSmb && entry !== null;
   const [draft, setDraft] = useState<{ path: string; mode: number } | null>(null);
   const draftMode = entry && draft?.path === entry.path ? draft.mode : null;
   const setDraftMode = (m: number): void => {
@@ -324,9 +325,11 @@ export function Inspector(): React.JSX.Element | null {
               )}
             </dl>
 
-            {isS3 ? (
+            {isS3 || isSmb ? (
               <p className="text-muted-foreground border-t pt-2 text-[11px]">
-                Permissions and timestamps are managed by the object store.
+                {isS3
+                  ? "Permissions and timestamps are managed by the object store."
+                  : "Permissions are managed by the SMB server."}
               </p>
             ) : (
               <div className="border-t pt-2">

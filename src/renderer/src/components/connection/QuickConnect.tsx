@@ -26,7 +26,7 @@ export function ConnectDialog(): React.JSX.Element {
             </div>
             <div className="min-w-0">
               <DialogTitle className="text-[13px] font-semibold tracking-[-0.01em]">Connect to a server</DialogTitle>
-              <DialogDescription className="mt-0.5 text-[11px]">FTP, FTPS, SFTP, or S3</DialogDescription>
+              <DialogDescription className="mt-0.5 text-[11px]">FTP, FTPS, SFTP, S3, or SMB</DialogDescription>
             </div>
           </div>
         </DialogHeader>

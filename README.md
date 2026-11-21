@@ -4,8 +4,8 @@
 
 **A free and open-source dual-pane file manager for macOS.**
 
-Connect to servers over SFTP, FTP, or explicit FTPS, or to S3-compatible object storage, and move
-files between your Mac and remote locations.
+Connect to servers over SFTP, FTP, explicit FTPS, or SMB, or to S3-compatible object storage, and
+move files between your Mac and remote locations.
 
 [![Release](https://img.shields.io/github/v/release/framwrk/pallet?sort=semver&label=release)](https://github.com/framwrk/pallet/releases)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
@@ -35,6 +35,9 @@ remote hosts.
   custom http(s) origin such as MinIO, Cloudflare R2, or Wasabi, using a static access key and optional
   session token. See [S3 connections](docs/s3-connections.md) for fields, IAM permissions, and
   limitations.
+- **SMB file shares:** connect to one share on a Windows PC, Mac, NAS, or Samba server with a
+  username and password. Pallet speaks SMB 2.1 and 3.x with NTLMv2 sign-in, and signs and encrypts
+  traffic when the server offers it. See [SMB connections](docs/smb-connections.md).
 - **Remote to remote:** replace the local pane with a second server from the toolbar, then copy
   between the two remote panes with F5 or drag and drop.
 - **Real transfer totals:** Pallet enumerates every job before the first byte moves, so progress

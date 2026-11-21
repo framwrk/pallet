@@ -23,6 +23,8 @@ export type PaneBackend =
       statusDetail?: string;
       /** S3 identity; absent for SSH/FTP sessions. */
       s3?: { bucket: string; endpoint?: string; region: string; prefix?: string };
+      /** SMB share name; absent for other protocols. */
+      smbShare?: string;
     };
 
 /** Path semantics for a pane: POSIX either way, but kept distinct (§3.1). */

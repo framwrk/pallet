@@ -12,6 +12,7 @@ to send it to the other pane. The rest of this document covers the details.
 - [Connecting to a server](#connecting-to-a-server)
 - [SSH terminal](#ssh-terminal)
 - [S3 connections](#s3-connections)
+- [SMB connections](#smb-connections)
 - [Host key verification](#host-key-verification)
 - [Favorites](#favorites)
 - [Remote file management](#remote-file-management)
@@ -98,7 +99,8 @@ differs by location:
   walks run at a time.
 - **Remotely:** sizing a tree is the most expensive operation Pallet runs on a server, so it needs
   a second switch: **Include remote folders**. SFTP sizing walks the tree with one round trip per
-  directory. S3 sizing lists the prefix and sums object sizes without a delimiter. Only one remote
+  directory. S3 sizing lists the prefix and sums object sizes without a delimiter. SMB sizing walks
+  the share one directory listing at a time. Only one remote
   sizing job runs per session at a time to limit competition with transfers. Results are cached.
 
 Totals are _apparent size_ (the sum of the file sizes inside, excluding directory metadata), not
@@ -174,13 +176,13 @@ the selected pane when the right pane is already connected, and otherwise opens 
 
 | Field                               | Notes                                                                                                                               |
 | ----------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| **Protocol**                        | SFTP (with an SSH terminal), FTP, explicit FTPS, or S3. SFTP is selected by default.                                                 |
+| **Protocol**                        | SFTP (with an SSH terminal), FTP, explicit FTPS, S3, or SMB. SFTP is selected by default.                                            |
 | **Server**                          | Hostname or IP.                                                                                                                     |
-| **Port**                            | Defaults to 22 for SFTP and 21 for FTP and FTPS; Pallet preserves custom ports when you switch protocols.                           |
+| **Port**                            | Defaults to 22 for SFTP, 21 for FTP and FTPS, and 445 for SMB; Pallet preserves custom ports when you switch protocols.             |
 | **Username**                        |                                                                                                                                     |
 | **Authenticate**                    | Password for every protocol; **Private Key** and **SSH Agent** are also available for SFTP.                                         |
 | **Password** / **Key + Passphrase** | Key auth takes a path to your private key; the passphrase field appears with it. Agent auth uses keys already loaded in your agent. |
-| **Remote Path**                     | Where to start browsing. Blank means your server-side home directory.                                                               |
+| **Remote Path**                     | Where to start browsing. Blank means your server-side home directory, or the share root for SMB.                                    |
 | **Local Path**                      | Optional. Opens this folder in the left pane when connecting the right pane, if the left pane is still local.                     |
 | **Note**                            | Free text, shown when editing the favorite.                                                                                         |
 | **Color Label**                     | A dot for spotting the connection in a long favorites list.                                                                         |
@@ -242,7 +244,7 @@ login shell. Click the button again (**Show Files**) or press **⌃&#96;** to re
 - A file-session reconnect does not interrupt the shell, because the terminal has its own
   connection. Disconnecting the file session (the **×**, **⌘W**, or exhausted reconnect attempts)
   closes the shell too. Quitting Pallet closes every shell.
-- FTP, explicit FTPS, and S3 panes show no terminal button.
+- FTP, explicit FTPS, S3, and SMB panes show no terminal button.
 
 ---
 
@@ -296,6 +298,33 @@ never come from environment variables, shared AWS config, IAM roles, or SSO. Buc
 access points, S3 Express, anonymous access, custom CAs, Requester Pays, SSE-C, ACL/policy/CORS
 editing, version browsing, Object Lock, and Glacier are not supported.
 S3 verification checks are opt-in and are not part of default CI.
+
+---
+
+## SMB connections
+
+Choose **SMB** in Quick Connect to browse one shared folder on a Windows PC, Mac, NAS, or Samba
+server. Each connection is scoped to that share; the pane's `/` is the share root. See
+[SMB connections](docs/smb-connections.md) for the protocol details and test setup.
+
+| Field        | Notes                                                                               |
+| ------------ | ----------------------------------------------------------------------------------- |
+| **Server**   | Hostname or IP of the file server. Port 445 by default.                             |
+| **Share**    | The share name only, for example `Public`, without the server name or slashes.      |
+| **Domain**   | Optional Windows domain or workgroup. Leave it blank for most home and NAS servers. |
+| **Username** | An account on the server. Guest access is not supported.                            |
+| **Password** | Stored in the favorite's encrypted secret blob, like other passwords.               |
+
+Pallet speaks SMB 2.1 and 3.x directly and signs in with NTLMv2. It signs and encrypts messages
+whenever the server offers or requires it. SMB 1, Kerberos, and NTLMv1 are not supported.
+
+**Transfers.** Uploads stage as `.pallet-<id>.pallet-part` and replace the destination with an
+SMB rename, so an existing file survives a failed replacement. Interrupted SMB files restart from
+byte zero. Optional SHA-256 verification works as for other protocols.
+
+**Limits.** SMB shares expose no POSIX permissions to Pallet, so permissions are read-only and
+entries show synthetic modes. Copied files keep the upload time instead of the source modification
+time. Pallet does not identify server-side symlinks. Free space is not shown.
 
 ---
 
@@ -384,7 +413,8 @@ Local moves run directly and support undo.
    Local copies and SFTP servers that support POSIX rename replace atomically. Other SFTP servers
    and FTP and FTPS use the server's rename behavior; if the server refuses the replacement, the
    job reports an error instead of deleting the original. S3 copies the staged object server-side to
-   the final key, so the existing object survives a failed replacement. Pallet reports a lost rename
+   the final key, so the existing object survives a failed replacement. SMB replaces with a server
+   rename. Pallet reports a lost rename
    reply for inspection instead of retrying it silently.
 
 Folder scans reuse directory-entry metadata instead of requesting it again for every child.
@@ -398,8 +428,8 @@ Enable **Verify copied files with SHA-256** in **Settings → Transfers**. The d
 Pallet captures the choice when a job is enqueued and retains it through pause, recovery, and retry.
 For each file, it rereads the entire source and staged destination sequentially, checks source
 size/modification time around those reads, and compares SHA-256 digests before replacement. This
-also verifies the full file after checkpoint resume. It supports local, SFTP, FTP, FTPS, S3, and
-remote-to-remote copies without server shell access.
+also verifies the full file after checkpoint resume. It supports local, SFTP, FTP, FTPS, S3, SMB,
+and remote-to-remote copies without server shell access.
 
 Read-back adds disk and network traffic and requires read permission on both files. A mismatch,
 short read, or read-permission failure stops the file before replacement; verification never falls
@@ -456,7 +486,7 @@ automatically. You cannot resume it manually; it waits for the network.
 
 **If a transfer is interrupted,** local and SFTP transfers of at least 16 MiB resume from the last
 destination-confirmed byte during the same job. Only bytes beyond that checkpoint are repeated.
-Small files and transfers involving FTP, FTPS, or S3 restart the affected file. Completed files stay complete
+Small files and transfers involving FTP, FTPS, S3, or SMB restart the affected file. Completed files stay complete
 through pauses and automatic recovery. The **Retry** button re-scans and copies again: files the
 canceled or failed attempt already completed stay in place when the source is unchanged, and only
 the remaining files are copied. Conflicts are checked again for the rest.
@@ -501,8 +531,8 @@ Press **⌘I** to toggle it. The inspector shows details for a single selected i
 - **Inline preview** for supported images and text files up to the configured limit (1 MB by default)
 
 **On a remote file, the permissions are editable.** Select checkboxes or enter an octal value to
-change permissions on the server. S3 objects have no POSIX permissions, so their permissions are
-read-only. Local permissions are read-only.
+change permissions on the server. S3 objects and SMB shares have no POSIX permissions, so their
+permissions are read-only. Local permissions are read-only.
 
 ---
 
@@ -739,7 +769,7 @@ Deliberate omissions in the beta, not bugs:
 
 - **Moves involving remote panes**: copy, verify, then delete.
 - **Symlink transfers**: links are skipped, not copied or followed.
-- **Resume across app restarts or FTP, FTPS, and S3 checkpoints**: checkpoint resume covers only
+- **Resume across app restarts or FTP, FTPS, S3, and SMB checkpoints**: checkpoint resume covers only
   large local and SFTP files within a running job.
 - **Undo for transfers or deletes**: undo covers local rename and move only.
 - **Search**: a good remote search needs server-side `find` with cancellation; a weak one is worse
@@ -749,7 +779,8 @@ Deliberate omissions in the beta, not bugs:
   points, version browsing, Object Lock, Glacier, or ACL, policy, and CORS editing.
 - **Atomic S3 folder rename**: folders are renamed by copying and then deleting, so a partial
   failure can leave copies behind.
-- **SMB**: additional remote-storage protocols are not in this release.
+- **SMB beyond NTLMv2 sign-in**: no Kerberos or Active Directory single sign-on, guest access, SMB 1,
+  DFS, share browsing, or preserved modification times.
 - **Folder sync and mirroring**
 - **Archive preview**
 - **Custom themes**: light and dark, following the system or pinned in Settings.

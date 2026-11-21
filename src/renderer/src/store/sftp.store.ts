@@ -89,6 +89,7 @@ export async function connectRemote(profile: ConnectProfile, localPath?: string,
             },
           }
         : {}),
+      ...(profile.smb ? { smbShare: profile.smb.share } : {}),
     });
     setActive(paneId);
     dismissConnectionToast();

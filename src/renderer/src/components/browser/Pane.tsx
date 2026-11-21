@@ -197,11 +197,13 @@ export function Pane({ paneId }: { paneId: PaneId }): React.JSX.Element {
             title={
               s3
                 ? `S3 — ${s3.bucket} — ${s3.endpoint ? endpointHost(s3.endpoint) : "AWS"} — ${s3.region}${s3.prefix ? ` — ${s3.prefix}` : ""} — click × to ${paneId === "left" ? "return to the local disk" : "disconnect"}`
-                : `${pane.backend.protocol.toUpperCase()} — ${pane.backend.username}@${pane.backend.host} — click × to ${paneId === "left" ? "return to the local disk" : "disconnect"}`
+                : `${pane.backend.protocol.toUpperCase()} — ${pane.backend.username}@${pane.backend.host}${pane.backend.smbShare ? `/${pane.backend.smbShare}` : ""} — click × to ${paneId === "left" ? "return to the local disk" : "disconnect"}`
             }
           >
             <Server className="size-3" />
-            {s3 ? `${s3.bucket}${s3.endpoint ? ` — ${endpointHost(s3.endpoint)}` : ""}` : pane.backend.host}
+            {s3
+              ? `${s3.bucket}${s3.endpoint ? ` — ${endpointHost(s3.endpoint)}` : ""}`
+              : `${pane.backend.host}${pane.backend.smbShare ? `/${pane.backend.smbShare}` : ""}`}
             {pane.backend.protocol === "sftp" && !s3 && (
               <button
                 className="hover:bg-primary/20 rounded-full p-0.5 disabled:pointer-events-none disabled:opacity-40"

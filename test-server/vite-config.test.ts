@@ -18,3 +18,8 @@ test("the root Vite shim loads the same plugins as the electron-vite renderer", 
 test("the root Vite shim uses the same aliases as the electron-vite renderer", () => {
   expect(shim.resolve.alias).toEqual(renderer.resolve.alias);
 });
+
+test("the main bundle inlines smb3-client, whose ESM-only exports a CommonJS require cannot resolve", () => {
+  const main = (electronViteConfig as { main: { build?: { externalizeDeps?: { exclude?: string[] } } } }).main;
+  expect(main.build?.externalizeDeps?.exclude).toContain("smb3-client");
+});

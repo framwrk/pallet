@@ -82,6 +82,21 @@ services:
     tmpfs:
       - /data
 
+  smb:
+    profiles: ["smb"]
+    build:
+      context: ./test-smb
+    environment:
+      PALLET_TEST_PASSWORD: "${PALLET_TEST_PASSWORD:-pallet}"
+    ports:
+      - "127.0.0.1:${PALLET_SMB_TEST_PORT:-1445}:445"
+    healthcheck:
+      test: ["CMD", "pidof", "smbd"]
+      interval: 2s
+      timeout: 2s
+      retries: 10
+      start_period: 2s
+
 volumes:
   test-server-host-keys:
   test-server-ftps-certificate:

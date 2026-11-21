@@ -6,7 +6,7 @@ import tailwindcss from "@tailwindcss/vite";
 const shared = { "@shared": resolve("src/shared") };
 
 export default defineConfig({
-  main: { resolve: { alias: shared } },
+  main: { resolve: { alias: shared }, build: { externalizeDeps: { exclude: ["smb3-client"] } } },
   preload: { resolve: { alias: shared } },
   renderer: {
     resolve: {

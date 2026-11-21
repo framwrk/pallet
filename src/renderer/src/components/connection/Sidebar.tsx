@@ -96,7 +96,8 @@ function favoriteTooltip(favorite: Favorite): string {
     if (favorite.note) parts.push(favorite.note);
     return parts.join(" — ");
   }
-  return `${favorite.protocol.toUpperCase()} — ${favorite.username}@${favorite.host}:${favorite.port}${favorite.note ? ` — ${favorite.note}` : ""}`;
+  const share = favorite.protocol === "smb" && favorite.smbShare ? `/${favorite.smbShare}` : "";
+  return `${favorite.protocol.toUpperCase()} — ${favorite.username}@${favorite.host}:${favorite.port}${share}${favorite.note ? ` — ${favorite.note}` : ""}`;
 }
 
 function FavoriteItem({

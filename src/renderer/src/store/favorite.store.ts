@@ -95,6 +95,7 @@ export async function connectFavorite(favoriteId: string, paneId: PaneId = "righ
             },
           }
         : {}),
+      ...(result.favorite.protocol === "smb" && result.favorite.smbShare ? { smbShare: result.favorite.smbShare } : {}),
     });
     setActive(paneId);
     dismissConnectionToast();

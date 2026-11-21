@@ -4,6 +4,7 @@ import { S3Service } from "./s3/s3.service";
 import type { SFTPWrapper } from "ssh2";
 import type { SessionManager } from "./sftp/session-manager";
 import type { SizeTarget } from "@shared/fs/fs.types";
+import { SmbService } from "./smb/smb.service";
 import { isDirMode } from "../utils/file-mode";
 import { join } from "path";
 import { mapLimit } from "../utils/concurrency";
@@ -164,9 +165,11 @@ export class FolderSizes {
   private localGate = new Gate(LOCAL_JOBS);
   private remoteGates = new Map<string, Gate>();
   private s3: S3Service;
+  private smb: SmbService;
 
   constructor(private sessions: SessionManager) {
     this.s3 = new S3Service(sessions);
+    this.smb = new SmbService(sessions);
   }
 
   private remoteGate(sessionId: string): Gate {
@@ -215,6 +218,7 @@ export class FolderSizes {
     const { sessionId } = target;
     const protocol = this.sessions.protocol(sessionId);
     if (protocol === "s3") return this.s3.folderSize(sessionId, path);
+    if (protocol === "smb") return this.smb.folderSize(sessionId, path);
     if (protocol !== "sftp") return walkFtp(this.sessions, sessionId, path);
     return walkRemote(this.sessions, sessionId, path);
   }

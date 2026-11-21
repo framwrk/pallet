@@ -607,6 +607,7 @@ const PROTOCOL_LABELS: Record<Favorite["protocol"], string> = {
   ftp: "FTP",
   ftps: "FTPS",
   s3: "S3",
+  smb: "SMB",
 };
 
 function favoriteEndpoint(favorite: Favorite): string {
@@ -614,6 +615,7 @@ function favoriteEndpoint(favorite: Favorite): string {
     const bucket = favorite.s3Bucket ?? favorite.host;
     return favorite.s3Region ? `${bucket} · ${favorite.s3Region}` : bucket;
   }
+  if (favorite.protocol === "smb") return `${favorite.username}@${favorite.host}/${favorite.smbShare ?? ""}`;
   return `${favorite.username}@${favorite.host}:${favorite.port}`;
 }
 

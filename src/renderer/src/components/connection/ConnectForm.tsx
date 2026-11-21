@@ -33,11 +33,13 @@ const PROTOCOLS: Record<ConnectionProtocol, string> = {
   ftp: "FTP",
   ftps: "FTPS",
   s3: "S3",
+  smb: "SMB",
 };
 
 function defaultPort(protocol: ConnectionProtocol): number {
   if (protocol === "sftp") return 22;
   if (protocol === "s3") return 443;
+  if (protocol === "smb") return 445;
   return 21;
 }
 
@@ -219,6 +221,8 @@ export function ConnectForm({
   const pathStyleTouched = useRef(seedS3?.s3ForcePathStyle !== undefined);
   const [secretAccessKey, setSecretAccessKey] = useState("");
   const [sessionToken, setSessionToken] = useState("");
+  const [smbShare, setSmbShare] = useState(seed?.protocol === "smb" ? (seed.smbShare ?? "") : "");
+  const [smbDomain, setSmbDomain] = useState(seed?.protocol === "smb" ? (seed.smbDomain ?? "") : "");
   const [remotePathField, setRemotePathField] = useState(seed?.remotePath ?? "");
   const [localPathField, setLocalPathField] = useState(seed?.localPath ?? "");
   const [note, setNote] = useState(seed?.note ?? "");
@@ -281,6 +285,10 @@ export function ConnectForm({
     const portNum = Number.parseInt(port, 10);
     if (!server.trim() || !username.trim()) return "Server and username are required";
     if (!Number.isInteger(portNum) || portNum < 1 || portNum > 65535) return "Port must be 1–65535";
+    if (protocol === "smb" && !smbShare.trim()) return "Share is required";
+    if (protocol === "smb" && /[\\/]/.test(smbShare.trim().replace(/^[\\/]+|[\\/]+$/g, ""))) {
+      return "Enter only the share name, without slashes";
+    }
     if (authMethod === "key" && !keyPath.trim()) return "Choose a private key file";
     if (creating && authMethod === "password" && !password) return "Password is required";
     return null;
@@ -321,6 +329,9 @@ export function ConnectForm({
       authMethod,
       ...(authMethod === "key" && keyPath.trim() ? { privateKeyPath: keyPath.trim() } : {}),
       ...(protocol === "ftps" ? { tlsRejectUnauthorized } : {}),
+      ...(protocol === "smb"
+        ? { smbShare: smbShare.trim(), ...(smbDomain.trim() ? { smbDomain: smbDomain.trim() } : {}) }
+        : {}),
       ...(remotePathField.trim() ? { remotePath: remotePathField.trim() } : {}),
       ...(localPathField.trim() ? { localPath: localPathField.trim() } : {}),
       ...(note.trim() ? { note: note.trim() } : {}),
@@ -371,6 +382,9 @@ export function ConnectForm({
             Math.max(0, Number.isFinite(keepaliveSeconds) ? keepaliveSeconds : defaultKeepaliveSeconds) * 1000,
           compression,
           ...(protocol === "ftps" ? { tlsRejectUnauthorized } : {}),
+          ...(protocol === "smb"
+            ? { smb: { share: smbShare.trim(), ...(smbDomain.trim() ? { domain: smbDomain.trim() } : {}) } }
+            : {}),
           concurrency: Number.parseInt(concurrency, 10) || defaultConcurrency,
         };
   }
@@ -503,6 +517,37 @@ export function ConnectForm({
         </>
       )}
     </div>
+  );
+
+  const smbShareRow = (
+    <Row
+      label="Share"
+      hint="Name of the shared folder on the server, e.g. Public. Leave out the server name and slashes."
+      layout={fieldLayout}
+    >
+      <Input
+        className={fieldInputCls}
+        value={smbShare}
+        onChange={(e) => setSmbShare(e.target.value)}
+        placeholder="Public"
+        spellCheck={false}
+      />
+    </Row>
+  );
+  const smbDomainRow = (
+    <Row
+      label="Domain"
+      hint="Windows domain or workgroup. Leave blank for most home and NAS servers."
+      layout={fieldLayout}
+    >
+      <Input
+        className={fieldInputCls}
+        value={smbDomain}
+        onChange={(e) => setSmbDomain(e.target.value)}
+        placeholder="Optional"
+        spellCheck={false}
+      />
+    </Row>
   );
 
   const s3Fields = (
@@ -736,6 +781,13 @@ export function ConnectForm({
               )}
             </div>
 
+            {protocol === "smb" && (
+              <div className="grid grid-cols-2 gap-2.5">
+                {smbShareRow}
+                {smbDomainRow}
+              </div>
+            )}
+
             {authMethod === "key" && (
               <Row
                 label="Private key"
@@ -810,6 +862,12 @@ export function ConnectForm({
                   spellCheck={false}
                 />
               </Row>
+              {protocol === "smb" && (
+                <>
+                  {smbShareRow}
+                  {smbDomainRow}
+                </>
+              )}
               <Row label="Username">
                 <Input
                   className={inputCls}
@@ -935,7 +993,13 @@ export function ConnectForm({
               className={fieldInputCls}
               value={remotePathField}
               onChange={(e) => setRemotePathField(e.target.value)}
-              placeholder={protocol === "s3" ? "Optional starting prefix" : "Optional, defaults to home"}
+              placeholder={
+                protocol === "s3"
+                  ? "Optional starting prefix"
+                  : protocol === "smb"
+                    ? "Optional, defaults to the share root"
+                    : "Optional, defaults to home"
+              }
               spellCheck={false}
             />
           </Row>

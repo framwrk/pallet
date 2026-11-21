@@ -6,7 +6,7 @@ export type AuthSpec =
   | { method: "s3"; secretAccessKey: string; sessionToken?: string };
 
 /** Remote connection protocol. Missing values from older callers mean SFTP. */
-export type ConnectionProtocol = "sftp" | "ftp" | "ftps" | "s3";
+export type ConnectionProtocol = "sftp" | "ftp" | "ftps" | "s3" | "smb";
 
 /** S3 connection settings; one connection is scoped to one bucket and prefix. */
 export interface S3ConnectionOptions {
@@ -18,6 +18,13 @@ export interface S3ConnectionOptions {
   forcePathStyle?: boolean;
 }
 
+/** SMB connection settings; one connection is scoped to one share. */
+export interface SmbConnectionOptions {
+  share: string;
+  /** NTLM domain or workgroup; blank lets the server decide. */
+  domain?: string;
+}
+
 export interface ConnectProfile {
   protocol?: ConnectionProtocol;
   host: string;
@@ -26,6 +33,8 @@ export interface ConnectProfile {
   auth: AuthSpec;
   /** Present when protocol is "s3". */
   s3?: S3ConnectionOptions;
+  /** Present when protocol is "smb". */
+  smb?: SmbConnectionOptions;
   /** Initial remote directory; empty means the server-side home. */
   remotePath?: string;
   keepaliveIntervalMs?: number;
