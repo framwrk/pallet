@@ -6,6 +6,7 @@ files:
   - out/**
   - package.json
 mac:
+  identity: "-"
   entitlementsInherit: build/entitlements.mac.plist
   # arm64 only for the beta. A universal build needs every native dependency
   # compiled for both slices; ssh2's optional `sshcrypto.node` addon is a
