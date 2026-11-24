@@ -16,6 +16,10 @@ test("macOS folder usage descriptions are top-level plist strings", () => {
   }
 });
 
+test("macOS local network usage description is a top-level plist string", () => {
+  expect(config.mac?.extendInfo?.NSLocalNetworkUsageDescription).toBe("Pallet connects to file servers on your local network.");
+});
+
 test("packaging includes runtime output and excludes project-only files", () => {
   const matcher = new FileMatcher(root, root, (pattern) => pattern, config.files as string[]);
   // Ignore-only patterns cause Electron Builder to implicitly include everything.

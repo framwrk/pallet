@@ -5,8 +5,10 @@ production dependencies from `node_modules` separately and automatically unpacks
 modules. Source files, tests, scripts, documentation, local agent files, and other project
 files must stay outside `app.asar`. Runtime assets imported by Vite belong in `out/`.
 
-`mac.extendInfo` must be a dictionary. Its five `NS*FolderUsageDescription` strings become
-top-level keys in `Pallet.app/Contents/Info.plist`. An array instead produces numeric keys
+`mac.extendInfo` must be a dictionary. Its five `NS*FolderUsageDescription` strings and
+`NSLocalNetworkUsageDescription` become top-level keys in `Pallet.app/Contents/Info.plist`.
+Without `NSLocalNetworkUsageDescription`, macOS never asks for Local Network access and
+connections to LAN hosts such as a NAS fail with `EHOSTUNREACH`. An array instead produces numeric keys
 and a `length` key, which macOS does not use as folder usage descriptions.
 
 Run the configuration regressions before packaging:
@@ -32,8 +34,8 @@ node_modules/.bin/asar list dist/mac-arm64/Pallet.app/Contents/Resources/app.asa
 
 Verify that:
 
-- Documents, Downloads, Movies, Music, and Pictures descriptions are top-level strings,
-  with no numeric keys or `length` key.
+- Documents, Downloads, Movies, Music, and Pictures descriptions and
+  `NSLocalNetworkUsageDescription` are top-level strings, with no numeric keys or `length` key.
 - The archive has only `out`, `package.json`, and `node_modules` at its root. Main and
   preload entry points, renderer HTML, JavaScript, CSS, fonts, and other built assets exist.
 - Production dependencies remain present, including `better-sqlite3`, `ssh2`, and

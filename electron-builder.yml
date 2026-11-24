@@ -24,6 +24,7 @@ mac:
     NSMoviesFolderUsageDescription: Pallet browses and transfers files in your Movies folder.
     NSMusicFolderUsageDescription: Pallet browses and transfers files in your Music folder.
     NSPicturesFolderUsageDescription: Pallet browses and transfers files in your Pictures folder.
+    NSLocalNetworkUsageDescription: Pallet connects to file servers on your local network.
   notarize: false
 dmg:
   artifactName: ${name}-${version}.${ext}
