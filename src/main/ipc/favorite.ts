@@ -1,9 +1,9 @@
 import * as store from "../services/favorite-store.service";
 import type { ConnectProfile, ConnectResult } from "@shared/sftp/sftp.types";
 import type { Favorite, FavoriteInput, FavoriteSecret } from "@shared/favorite/favorite.types";
+import { isWebDav, verifiesTls } from "@shared/sftp/sftp.utils";
 import { FavoriteChannels } from "@shared/ipc/ipc.constants";
 import type { IpcResult } from "@shared/ipc/ipc.types";
-import { ftpTlsMode } from "@shared/sftp/sftp.utils";
 import { ipcMain } from "electron";
 import { parseS3Secret } from "../services/s3/s3-secret";
 import { readSecret } from "../services/secrets";
@@ -86,14 +86,15 @@ async function connectFavorite(id: string, attemptId?: string): Promise<ConnectR
         port: favorite.port,
         username: favorite.username,
         auth: { method: "password", password: secret },
-        ...(ftpTlsMode(favorite.protocol) ? { tlsRejectUnauthorized: favorite.tlsRejectUnauthorized !== false } : {}),
+        ...(verifiesTls(favorite.protocol) ? { tlsRejectUnauthorized: favorite.tlsRejectUnauthorized !== false } : {}),
         ...(favorite.protocol === "smb"
           ? { smb: { share: favorite.smbShare ?? "", ...(favorite.smbDomain ? { domain: favorite.smbDomain } : {}) } }
           : {}),
+        ...(isWebDav(favorite.protocol) && favorite.webdavRoot ? { webdav: { root: favorite.webdavRoot } } : {}),
         ...(favorite.remotePath ? { remotePath: favorite.remotePath } : {}),
       };
     } else {
-      if (favorite.protocol !== "sftp") throw new Error("FTP, FTPS, and SMB favorites require password authentication");
+      if (favorite.protocol !== "sftp") throw new Error("FTP, FTPS, SMB, and WebDAV favorites require password authentication");
       if (!favorite.privateKeyPath) {
         const err: NodeJS.ErrnoException = new Error("Favorite has no private key path");
         err.code = "ENOSECRET";

@@ -20,13 +20,13 @@ import { type PaneId, getState, pushToast, useAppState } from "@/store/pane.stor
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cancelConnection, connectRemote, isCancelledConnection } from "@/store/sftp.store";
+import { isWebDav, verifiesTls } from "@shared/sftp/sftp.utils";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
-import { ftpTlsMode } from "@shared/sftp/sftp.utils";
 import { saveFavorite } from "@/store/favorite.store";
 
 const PROTOCOLS: Record<ConnectionProtocol, string> = {
@@ -36,11 +36,14 @@ const PROTOCOLS: Record<ConnectionProtocol, string> = {
   "ftps-implicit": "FTPS (Implicit)",
   s3: "S3",
   smb: "SMB",
+  webdav: "WebDAV",
+  webdavs: "WebDAVS",
 };
 
 function defaultPort(protocol: ConnectionProtocol): number {
   if (protocol === "sftp") return 22;
-  if (protocol === "s3") return 443;
+  if (protocol === "s3" || protocol === "webdavs") return 443;
+  if (protocol === "webdav") return 80;
   if (protocol === "smb") return 445;
   if (protocol === "ftps-implicit") return 990;
   return 21;
@@ -205,7 +208,7 @@ export function ConnectForm({
   const seedS3 = seed?.protocol === "s3" ? seed : null;
   const initialProtocol = seed?.protocol ?? "sftp";
   const [protocol, setProtocol] = useState<ConnectionProtocol>(initialProtocol);
-  const usesTls = ftpTlsMode(protocol) !== null;
+  const usesTls = verifiesTls(protocol);
   const [name, setName] = useState(seed?.name ?? "");
   const [server, setServer] = useState(seed?.host ?? "");
   const [port, setPort] = useState(String(seed?.port ?? defaultPort(initialProtocol)));
@@ -227,6 +230,7 @@ export function ConnectForm({
   const [sessionToken, setSessionToken] = useState("");
   const [smbShare, setSmbShare] = useState(seed?.protocol === "smb" ? (seed.smbShare ?? "") : "");
   const [smbDomain, setSmbDomain] = useState(seed?.protocol === "smb" ? (seed.smbDomain ?? "") : "");
+  const [webdavRoot, setWebdavRoot] = useState(seed && isWebDav(seed.protocol) ? (seed.webdavRoot ?? "") : "");
   const [remotePathField, setRemotePathField] = useState(seed?.remotePath ?? "");
   const [localPathField, setLocalPathField] = useState(seed?.localPath ?? "");
   const [note, setNote] = useState(seed?.note ?? "");
@@ -293,6 +297,9 @@ export function ConnectForm({
     if (protocol === "smb" && /[\\/]/.test(smbShare.trim().replace(/^[\\/]+|[\\/]+$/g, ""))) {
       return "Enter only the share name, without slashes";
     }
+    if (isWebDav(protocol) && /^[a-z][a-z0-9+.-]*:\/\//i.test(server.trim())) {
+      return "Enter only the server name; choose WebDAV or WebDAVS for the scheme";
+    }
     if (authMethod === "key" && !keyPath.trim()) return "Choose a private key file";
     if (creating && authMethod === "password" && !password) return "Password is required";
     return null;
@@ -336,6 +343,7 @@ export function ConnectForm({
       ...(protocol === "smb"
         ? { smbShare: smbShare.trim(), ...(smbDomain.trim() ? { smbDomain: smbDomain.trim() } : {}) }
         : {}),
+      ...(isWebDav(protocol) && webdavRoot.trim() ? { webdavRoot: webdavRoot.trim() } : {}),
       ...(remotePathField.trim() ? { remotePath: remotePathField.trim() } : {}),
       ...(localPathField.trim() ? { localPath: localPathField.trim() } : {}),
       ...(note.trim() ? { note: note.trim() } : {}),
@@ -389,6 +397,7 @@ export function ConnectForm({
           ...(protocol === "smb"
             ? { smb: { share: smbShare.trim(), ...(smbDomain.trim() ? { domain: smbDomain.trim() } : {}) } }
             : {}),
+          ...(isWebDav(protocol) && webdavRoot.trim() ? { webdav: { root: webdavRoot.trim() } } : {}),
           concurrency: Number.parseInt(concurrency, 10) || defaultConcurrency,
         };
   }
@@ -549,6 +558,26 @@ export function ConnectForm({
         value={smbDomain}
         onChange={(e) => setSmbDomain(e.target.value)}
         placeholder="Optional"
+        spellCheck={false}
+      />
+    </Row>
+  );
+
+  const webdavRootRow = (
+    <Row
+      label="Server Path"
+      hint={
+        protocol === "webdav"
+          ? "WebDAV folder URL path, e.g. /remote.php/dav/files/alice for Nextcloud. Plain WebDAV sends your password unencrypted; use WebDAVS when the server supports it."
+          : "WebDAV folder URL path, e.g. /remote.php/dav/files/alice for Nextcloud. Leave blank for the server root."
+      }
+      layout={fieldLayout}
+    >
+      <Input
+        className={fieldInputCls}
+        value={webdavRoot}
+        onChange={(e) => setWebdavRoot(e.target.value)}
+        placeholder="Optional, defaults to /"
         spellCheck={false}
       />
     </Row>
@@ -792,6 +821,8 @@ export function ConnectForm({
               </div>
             )}
 
+            {isWebDav(protocol) && webdavRootRow}
+
             {authMethod === "key" && (
               <Row
                 label="Private key"
@@ -872,6 +903,7 @@ export function ConnectForm({
                   {smbDomainRow}
                 </>
               )}
+              {isWebDav(protocol) && webdavRootRow}
               <Row label="Username">
                 <Input
                   className={inputCls}
@@ -1002,7 +1034,9 @@ export function ConnectForm({
                   ? "Optional starting prefix"
                   : protocol === "smb"
                     ? "Optional, defaults to the share root"
-                    : "Optional, defaults to home"
+                    : isWebDav(protocol)
+                      ? "Optional, defaults to the server path"
+                      : "Optional, defaults to home"
               }
               spellCheck={false}
             />

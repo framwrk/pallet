@@ -16,17 +16,23 @@ import {
   openSmbConnection,
 } from "../smb/smb-client";
 import {
+  type WebDavConnection,
+  isConnectivityError as isWebDavConnectivityError,
+  normalizePath as normalizeWebDavPath,
+  openWebDavConnection,
+} from "../webdav/webdav-client";
+import {
   createS3Client,
   credentialsFromProfile,
   isConnectivityError,
   normalizeS3Error,
   s3ConfigFromProfile,
 } from "../s3/s3-client";
+import { ftpTlsMode, isWebDav } from "@shared/sftp/sftp.utils";
 import { locationFor, prefixForPath } from "../s3/s3-path";
 import { Client as FtpClient } from "basic-ftp";
 import { createHash } from "crypto";
 import { promises as fs } from "fs";
-import { ftpTlsMode } from "@shared/sftp/sftp.utils";
 
 export interface HostKeyDecisionInput {
   host: string;
@@ -67,6 +73,7 @@ interface Session {
   s3: S3Client | null;
   s3Target: S3Target | null;
   smb: SmbConnection | null;
+  webdav: WebDavConnection | null;
   sftp: SFTPWrapper | null;
   pool: ChannelPool;
   ftpPool: FtpPool;
@@ -125,7 +132,9 @@ export function protocolOf(profile: ConnectProfile): ConnectionProtocol {
     profile.protocol === "ftps" ||
     profile.protocol === "ftps-implicit" ||
     profile.protocol === "s3" ||
-    profile.protocol === "smb"
+    profile.protocol === "smb" ||
+    profile.protocol === "webdav" ||
+    profile.protocol === "webdavs"
   ) {
     return profile.protocol;
   }
@@ -292,6 +301,7 @@ export class SessionManager {
       s3: null,
       s3Target: null,
       smb: null,
+      webdav: null,
       sftp: null,
       pool: { free: [], total: 0, waiters: [] },
       ftpPool: { free: [], total: 0, waiters: [] },
@@ -350,6 +360,7 @@ export class SessionManager {
     session.s3?.destroy();
     session.s3 = null;
     this.closeSmb(session);
+    this.closeWebDav(session);
     session.generation++;
     this.resetPool(session, new Error("Connection cancelled"));
     this.resetFtpPool(session, new Error("Connection cancelled"));
@@ -364,6 +375,10 @@ export class SessionManager {
     }
     if (protocol === "smb") {
       await this.dialSmb(session);
+      return;
+    }
+    if (isWebDav(protocol)) {
+      await this.dialWebDav(session);
       return;
     }
     if (protocol !== "sftp") {
@@ -482,6 +497,22 @@ export class SessionManager {
     connection?.close();
   }
 
+  private async dialWebDav(session: Session): Promise<void> {
+    const connection = await openWebDavConnection(session.profile);
+    this.closeWebDav(session);
+    session.webdav = connection;
+    session.reconnectAttempt = 0;
+    session.dropNotified = false;
+    session.generation++;
+    this.setStatus(session, "connected");
+  }
+
+  private closeWebDav(session: Session): void {
+    const connection = session.webdav;
+    session.webdav = null;
+    connection?.close();
+  }
+
   private watchFtpDrop(session: Session): void {
     const ftp = session.ftp;
     if (!ftp) return;
@@ -509,6 +540,14 @@ export class SessionManager {
       const path = normalizeSmbPath(want);
       const stats = await smb.run((client) => client.stat(smb.path(path))).catch(() => null);
       return stats?.isDirectory ? path : "/";
+    }
+    if (isWebDav(protocolOf(session.profile))) {
+      const webdav = session.webdav;
+      if (!webdav) throw new Error("No WebDAV connection");
+      if (!want) return "/";
+      const path = normalizeWebDavPath(want);
+      const [resource] = await webdav.propfind(path, 0, true).catch(() => []);
+      return resource?.isDir ? path : "/";
     }
     if (protocolOf(session.profile) !== "sftp") {
       const ftp = session.ftp;
@@ -545,6 +584,7 @@ export class SessionManager {
     session.s3?.destroy();
     session.s3 = null;
     this.closeSmb(session);
+    this.closeWebDav(session);
     session.generation++;
     this.resetPool(session, new Error("Connection lost"));
     this.resetFtpPool(session, new Error("Connection lost"));
@@ -564,6 +604,14 @@ export class SessionManager {
     const session = this.sessions.get(sessionId);
     if (!session || protocolOf(session.profile) !== "smb") return;
     if (session.status !== "connected" || !isSmbConnectivityError(err)) return;
+    this.handleDrop(session);
+  }
+
+  /** Called by WebDAV operations: only connectivity failures schedule a reconnect. */
+  noteWebDavFailure(sessionId: string, err: unknown): void {
+    const session = this.sessions.get(sessionId);
+    if (!session || !isWebDav(protocolOf(session.profile))) return;
+    if (session.status !== "connected" || !isWebDavConnectivityError(err)) return;
     this.handleDrop(session);
   }
 
@@ -608,6 +656,7 @@ export class SessionManager {
     session.ftp?.close();
     session.ftp = null;
     this.closeSmb(session);
+    this.closeWebDav(session);
     try {
       await this.dial(session);
       session.client?.on("close", () => this.handleDrop(session));
@@ -636,6 +685,7 @@ export class SessionManager {
     session.s3?.destroy();
     session.s3 = null;
     this.closeSmb(session);
+    this.closeWebDav(session);
     session.generation++;
     this.resetPool(session, new Error("Disconnected"));
     this.resetFtpPool(session, new Error("Disconnected"));
@@ -712,6 +762,17 @@ export class SessionManager {
       throw err;
     }
     return session.smb;
+  }
+
+  /** The session's WebDAV connection; shared by browsing and transfers. */
+  webdavConnection(sessionId: string): WebDavConnection {
+    const session = this.mustGet(sessionId);
+    if (!session.webdav || session.webdav.closed || session.status !== "connected") {
+      const err: NodeJS.ErrnoException = new Error("Not connected");
+      err.code = "ENOTCONN";
+      throw err;
+    }
+    return session.webdav;
   }
 
   /**

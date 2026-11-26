@@ -7,6 +7,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { isDirLike } from "@/lib/entry.utils";
+import { isWebDav } from "@shared/sftp/sftp.utils";
 import { localPath } from "@shared/path/path.utils";
 
 const TEXT_EXTS = new Set([
@@ -199,7 +200,8 @@ export function Inspector(): React.JSX.Element | null {
 
   const isS3 = pane.backend.kind === "sftp" && pane.backend.protocol === "s3";
   const isSmb = pane.backend.kind === "sftp" && pane.backend.protocol === "smb";
-  const editable = pane.backend.kind === "sftp" && !isS3 && !isSmb && entry !== null;
+  const isWebDavPane = pane.backend.kind === "sftp" && isWebDav(pane.backend.protocol);
+  const editable = pane.backend.kind === "sftp" && !isS3 && !isSmb && !isWebDavPane && entry !== null;
   const [draft, setDraft] = useState<{ path: string; mode: number } | null>(null);
   const draftMode = entry && draft?.path === entry.path ? draft.mode : null;
   const setDraftMode = (m: number): void => {
@@ -325,11 +327,13 @@ export function Inspector(): React.JSX.Element | null {
               )}
             </dl>
 
-            {isS3 || isSmb ? (
+            {isS3 || isSmb || isWebDavPane ? (
               <p className="text-muted-foreground border-t pt-2 text-[11px]">
                 {isS3
                   ? "Permissions and timestamps are managed by the object store."
-                  : "Permissions are managed by the SMB server."}
+                  : isSmb
+                    ? "Permissions are managed by the SMB server."
+                    : "Permissions and timestamps are managed by the WebDAV server."}
               </p>
             ) : (
               <div className="border-t pt-2">

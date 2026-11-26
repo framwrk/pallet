@@ -1,6 +1,7 @@
 import type { ColorLabel, Favorite, FavoriteInput, FavoriteSecret } from "@shared/favorite/favorite.types";
 import { deleteSecret, storeSecret } from "./secrets";
 import { getDb } from "./database";
+import { isWebDav } from "@shared/sftp/sftp.utils";
 import { randomUUID } from "crypto";
 import { serializeS3Secret } from "./s3/s3-secret";
 
@@ -34,10 +35,19 @@ interface Row {
   s3_force_path_style: number;
   smb_share: string | null;
   smb_domain: string | null;
+  webdav_root: string | null;
 }
 
 function protocolFrom(value: string): Favorite["protocol"] {
-  return value === "ftp" || value === "ftps" || value === "ftps-implicit" || value === "s3" || value === "smb" ? value : "sftp";
+  return value === "ftp" ||
+    value === "ftps" ||
+    value === "ftps-implicit" ||
+    value === "s3" ||
+    value === "smb" ||
+    value === "webdav" ||
+    value === "webdavs"
+    ? value
+    : "sftp";
 }
 
 function fromRow(row: Row): Favorite {
@@ -67,6 +77,7 @@ function fromRow(row: Row): Favorite {
     ...(protocol === "s3" ? { s3ForcePathStyle: row.s3_force_path_style !== 0 } : {}),
     ...(protocol === "smb" && row.smb_share ? { smbShare: row.smb_share } : {}),
     ...(protocol === "smb" && row.smb_domain ? { smbDomain: row.smb_domain } : {}),
+    ...(isWebDav(protocol) && row.webdav_root ? { webdavRoot: row.webdav_root } : {}),
     ...(row.remote_path ? { remotePath: row.remote_path } : {}),
     ...(row.local_path ? { localPath: row.local_path } : {}),
     ...(row.note ? { note: row.note } : {}),
@@ -124,6 +135,9 @@ export function saveFavorite(input: FavoriteInput, secret?: FavoriteSecret | nul
   if (!isSmb && (input.smbShare !== undefined || input.smbDomain !== undefined)) {
     throw invalid("SMB settings are only valid for SMB favorites");
   }
+  if (!isWebDav(protocol) && input.webdavRoot !== undefined) {
+    throw invalid("WebDAV settings are only valid for WebDAV favorites");
+  }
   if (isS3 && typeof secret === "string") throw invalid("S3 favorites store an S3 credential, not a password");
   if (!isS3 && secret !== null && typeof secret === "object") {
     throw invalid("Only S3 favorites store an S3 credential");
@@ -141,6 +155,7 @@ export function saveFavorite(input: FavoriteInput, secret?: FavoriteSecret | nul
   const s3ForcePathStyle = isS3 && input.s3ForcePathStyle === true ? 1 : 0;
   const smbShare = isSmb ? (input.smbShare?.trim() ?? null) : null;
   const smbDomain = isSmb ? input.smbDomain?.trim() || null : null;
+  const webdavRoot = isWebDav(protocol) ? input.webdavRoot?.trim() || null : null;
 
   let secretStored = existing?.secretStored ?? false;
   if (authMethod === "agent" || secret === null || (secret === undefined && existing && existing.authMethod !== authMethod)) {
@@ -159,7 +174,7 @@ export function saveFavorite(input: FavoriteInput, secret?: FavoriteSecret | nul
       `UPDATE favorites SET name=?, protocol=?, host=?, port=?, username=?, auth_method=?,
          secret_stored=?, private_key_path=?, tls_reject_unauthorized=?, remote_path=?, local_path=?,
          note=?, color_label=?, s3_endpoint=?, s3_region=?, s3_bucket=?, s3_force_path_style=?,
-         smb_share=?, smb_domain=?
+         smb_share=?, smb_domain=?, webdav_root=?
        WHERE id=?`,
     ).run(
       input.name,
@@ -181,6 +196,7 @@ export function saveFavorite(input: FavoriteInput, secret?: FavoriteSecret | nul
       s3ForcePathStyle,
       smbShare,
       smbDomain,
+      webdavRoot,
       id,
     );
   } else {
@@ -188,9 +204,9 @@ export function saveFavorite(input: FavoriteInput, secret?: FavoriteSecret | nul
       `INSERT INTO favorites
          (id, name, protocol, host, port, username, auth_method, secret_stored,
           private_key_path, tls_reject_unauthorized, remote_path, local_path, note, color_label,
-          s3_endpoint, s3_region, s3_bucket, s3_force_path_style, smb_share, smb_domain,
+          s3_endpoint, s3_region, s3_bucket, s3_force_path_style, smb_share, smb_domain, webdav_root,
           sort_order, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)`,
     ).run(
       id,
       input.name,
@@ -212,6 +228,7 @@ export function saveFavorite(input: FavoriteInput, secret?: FavoriteSecret | nul
       s3ForcePathStyle,
       smbShare,
       smbDomain,
+      webdavRoot,
       Date.now(),
     );
   }

@@ -13,7 +13,7 @@ export interface Favorite {
   /** True when an encrypted secret exists for this favorite (never the secret itself). */
   secretStored: boolean;
   privateKeyPath?: string;
-  /** Whether FTPS rejects untrusted TLS certificates. Defaults to true. */
+  /** Whether FTPS and WebDAVS reject untrusted TLS certificates. Defaults to true. */
   tlsRejectUnauthorized?: boolean;
   /** S3 only: custom endpoint origin, region, bucket, and addressing style. */
   s3Endpoint?: string;
@@ -23,6 +23,8 @@ export interface Favorite {
   /** SMB only: share name and optional NTLM domain or workgroup. */
   smbShare?: string;
   smbDomain?: string;
+  /** WebDAV only: server path the connection treats as its root. */
+  webdavRoot?: string;
   /** Initial remote directory; for S3 the starting key prefix. */
   remotePath?: string;
   localPath?: string;
@@ -59,6 +61,7 @@ export interface FavoriteInput {
   s3ForcePathStyle?: boolean;
   smbShare?: string;
   smbDomain?: string;
+  webdavRoot?: string;
   remotePath?: string;
   localPath?: string;
   note?: string;

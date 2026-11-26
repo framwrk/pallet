@@ -1,7 +1,7 @@
 {
   "name": "pallet",
   "version": "0.8.2",
-  "description": "A free and open-source macOS SFTP (with SSH terminal), FTP, FTPS, SMB, and S3 file manager",
+  "description": "A free and open-source macOS SFTP (with SSH terminal), FTP, FTPS, SMB, WebDAV, and S3 file manager",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
@@ -57,6 +57,7 @@
     "@fontsource/ibm-plex-mono": "^5.3.0",
     "basic-ftp": "^6.2.1",
     "better-sqlite3": "^13.0.2",
+    "fast-xml-parser": "^5.12.1",
     "ssh2": "^1.17.0"
   },
   "devDependencies": {

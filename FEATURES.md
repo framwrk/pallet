@@ -13,6 +13,7 @@ to send it to the other pane. The rest of this document covers the details.
 - [SSH terminal](#ssh-terminal)
 - [S3 connections](#s3-connections)
 - [SMB connections](#smb-connections)
+- [WebDAV connections](#webdav-connections)
 - [Host key verification](#host-key-verification)
 - [Favorites](#favorites)
 - [Remote file management](#remote-file-management)
@@ -100,7 +101,8 @@ differs by location:
 - **Remotely:** sizing a tree is the most expensive operation Pallet runs on a server, so it needs
   a second switch: **Include remote folders**. SFTP sizing walks the tree with one round trip per
   directory. S3 sizing lists the prefix and sums object sizes without a delimiter. SMB sizing walks
-  the share one directory listing at a time. Only one remote
+  the share one directory listing at a time, and WebDAV sizing does the same with one `PROPFIND`
+  per folder. Only one remote
   sizing job runs per session at a time to limit competition with transfers. Results are cached.
 
 Totals are _apparent size_ (the sum of the file sizes inside, excluding directory metadata), not
@@ -176,18 +178,18 @@ the selected pane when the right pane is already connected, and otherwise opens 
 
 | Field                               | Notes                                                                                                                               |
 | ----------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| **Protocol**                        | SFTP (with an SSH terminal), FTP, explicit FTPS, implicit FTPS, S3, or SMB. SFTP is selected by default.                            |
+| **Protocol**                        | SFTP (with an SSH terminal), FTP, explicit FTPS, implicit FTPS, S3, SMB, WebDAV, or WebDAVS. SFTP is selected by default.           |
 | **Server**                          | Hostname or IP.                                                                                                                     |
-| **Port**                            | Defaults to 22 for SFTP, 21 for FTP and FTPS, 990 for implicit FTPS, and 445 for SMB; Pallet keeps custom ports across switches.    |
+| **Port**                            | Defaults to 22 for SFTP, 21 for FTP and FTPS, 990 for implicit FTPS, 445 for SMB, and 80 or 443 for WebDAV or WebDAVS.              |
 | **Username**                        |                                                                                                                                     |
 | **Authenticate**                    | Password for every protocol; **Private Key** and **SSH Agent** are also available for SFTP.                                         |
 | **Password** / **Key + Passphrase** | Key auth takes a path to your private key; the passphrase field appears with it. Agent auth uses keys already loaded in your agent. |
-| **Remote Path**                     | Where to start browsing. Blank means your server-side home directory, or the share root for SMB.                                    |
+| **Remote Path**                     | Where to start browsing. Blank means your home directory, the SMB share root, or the WebDAV server path.                            |
 | **Local Path**                      | Optional. Opens this folder in the left pane when connecting the right pane, if the left pane is still local.                     |
 | **Note**                            | Free text, shown when editing the favorite.                                                                                         |
 | **Color Label**                     | A dot for spotting the connection in a long favorites list.                                                                         |
 
-In **Local Path**, `~` expands to your home folder (for example `~/Downloads`).
+Pallet keeps a custom port when you switch protocols. In **Local Path**, `~` expands to your home folder (for example `~/Downloads`).
 
 **Options** reveals connection-specific controls:
 
@@ -244,7 +246,7 @@ login shell. Click the button again (**Show Files**) or press **⌃&#96;** to re
 - A file-session reconnect does not interrupt the shell, because the terminal has its own
   connection. Disconnecting the file session (the **×**, **⌘W**, or exhausted reconnect attempts)
   closes the shell too. Quitting Pallet closes every shell.
-- FTP, explicit FTPS, implicit FTPS, S3, and SMB panes show no terminal button.
+- FTP, explicit FTPS, implicit FTPS, S3, SMB, and WebDAV panes show no terminal button.
 
 ---
 
@@ -325,6 +327,33 @@ byte zero. Optional SHA-256 verification works as for other protocols.
 **Limits.** SMB shares expose no POSIX permissions to Pallet, so permissions are read-only and
 entries show synthetic modes. Copied files keep the upload time instead of the source modification
 time. Pallet does not identify server-side symlinks. Free space is not shown.
+
+---
+
+## WebDAV connections
+
+Choose **WebDAV** or **WebDAVS** (WebDAV over HTTPS) in Quick Connect to browse a Nextcloud,
+ownCloud, Synology, Apache, nginx, or other WebDAV server. See
+[WebDAV connections](docs/webdav-connections.md) for the protocol details.
+
+| Field           | Notes                                                                                                   |
+| --------------- | ------------------------------------------------------------------------------------------------------- |
+| **Server**      | Hostname or IP, without `https://` or a path. Port 80 for WebDAV and 443 for WebDAVS by default.        |
+| **Server Path** | Optional URL path that becomes the pane's `/`, for example `/remote.php/dav/files/alice` for Nextcloud. |
+| **Username**    | An account on the server.                                                                               |
+| **Password**    | Sent with HTTP Basic authentication. Use WebDAVS, or plain WebDAV only on a network you trust.          |
+
+WebDAVS verifies the server certificate by default; **TLS Security** in the connection options can
+turn the check off for a self-signed server you trust.
+
+**Transfers.** Uploads stage as `.pallet-<id>.pallet-part`, finish only after the server confirms
+the upload, and replace the destination with a `MOVE`, so an existing file survives a failed
+upload. Interrupted WebDAV files restart from byte zero. Optional SHA-256 verification works as for
+other protocols.
+
+**Limits.** WebDAV exposes no POSIX permissions, so permissions are read-only and entries show
+synthetic modes. Copied files keep the upload time instead of the source modification time. Digest,
+NTLM, and OAuth sign-in are not supported, and free space is not shown.
 
 ---
 
@@ -414,7 +443,7 @@ Local moves run directly and support undo.
    and FTP and FTPS use the server's rename behavior; if the server refuses the replacement, the
    job reports an error instead of deleting the original. S3 copies the staged object server-side to
    the final key, so the existing object survives a failed replacement. SMB replaces with a server
-   rename. Pallet reports a lost rename
+   rename, and WebDAV with a `MOVE`. Pallet reports a lost rename
    reply for inspection instead of retrying it silently.
 
 Folder scans reuse directory-entry metadata instead of requesting it again for every child.
@@ -429,7 +458,7 @@ Pallet captures the choice when a job is enqueued and retains it through pause, 
 For each file, it rereads the entire source and staged destination sequentially, checks source
 size/modification time around those reads, and compares SHA-256 digests before replacement. This
 also verifies the full file after checkpoint resume. It supports local, SFTP, FTP, FTPS, S3, SMB,
-and remote-to-remote copies without server shell access.
+WebDAV, and remote-to-remote copies without server shell access.
 
 Read-back adds disk and network traffic and requires read permission on both files. A mismatch,
 short read, or read-permission failure stops the file before replacement; verification never falls
@@ -486,7 +515,7 @@ automatically. You cannot resume it manually; it waits for the network.
 
 **If a transfer is interrupted,** local and SFTP transfers of at least 16 MiB resume from the last
 destination-confirmed byte during the same job. Only bytes beyond that checkpoint are repeated.
-Small files and transfers involving FTP, FTPS, S3, or SMB restart the affected file. Completed files stay complete
+Small files and transfers involving FTP, FTPS, S3, SMB, or WebDAV restart the affected file. Completed files stay complete
 through pauses and automatic recovery. The **Retry** button re-scans and copies again: files the
 canceled or failed attempt already completed stay in place when the source is unchanged, and only
 the remaining files are copied. Conflicts are checked again for the rest.
@@ -531,8 +560,8 @@ Press **⌘I** to toggle it. The inspector shows details for a single selected i
 - **Inline preview** for supported images and text files up to the configured limit (1 MB by default)
 
 **On a remote file, the permissions are editable.** Select checkboxes or enter an octal value to
-change permissions on the server. S3 objects and SMB shares have no POSIX permissions, so their
-permissions are read-only. Local permissions are read-only.
+change permissions on the server. S3 objects, SMB shares, and WebDAV servers have no POSIX permissions,
+so their permissions are read-only. Local permissions are read-only.
 
 ---
 
@@ -769,7 +798,7 @@ Deliberate omissions in the beta, not bugs:
 
 - **Moves involving remote panes**: copy, verify, then delete.
 - **Symlink transfers**: links are skipped, not copied or followed.
-- **Resume across app restarts or FTP, FTPS, S3, and SMB checkpoints**: checkpoint resume covers only
+- **Resume across app restarts or FTP, FTPS, S3, SMB, and WebDAV checkpoints**: checkpoint resume covers only
   large local and SFTP files within a running job.
 - **Undo for transfers or deletes**: undo covers local rename and move only.
 - **Search**: a good remote search needs server-side `find` with cancellation; a weak one is worse
@@ -781,6 +810,8 @@ Deliberate omissions in the beta, not bugs:
   failure can leave copies behind.
 - **SMB beyond NTLMv2 sign-in**: no Kerberos or Active Directory single sign-on, guest access, SMB 1,
   DFS, share browsing, or preserved modification times.
+- **WebDAV beyond Basic sign-in**: no Digest, NTLM, or OAuth sign-in, locks, or preserved
+  modification times.
 - **Folder sync and mirroring**
 - **Archive preview**
 - **Custom themes**: light and dark, following the system or pinned in Settings.

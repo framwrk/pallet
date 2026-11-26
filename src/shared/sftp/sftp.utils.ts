@@ -5,3 +5,12 @@ export function ftpTlsMode(protocol: ConnectionProtocol): "explicit" | "implicit
   if (protocol === "ftps-implicit") return "implicit";
   return null;
 }
+
+export function isWebDav(protocol: ConnectionProtocol): boolean {
+  return protocol === "webdav" || protocol === "webdavs";
+}
+
+/** Protocols whose connection has a TLS certificate check the user can relax. */
+export function verifiesTls(protocol: ConnectionProtocol): boolean {
+  return ftpTlsMode(protocol) !== null || protocol === "webdavs";
+}

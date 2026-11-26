@@ -6,7 +6,7 @@ export type AuthSpec =
   | { method: "s3"; secretAccessKey: string; sessionToken?: string };
 
 /** Remote connection protocol. Missing values from older callers mean SFTP. */
-export type ConnectionProtocol = "sftp" | "ftp" | "ftps" | "ftps-implicit" | "s3" | "smb";
+export type ConnectionProtocol = "sftp" | "ftp" | "ftps" | "ftps-implicit" | "s3" | "smb" | "webdav" | "webdavs";
 
 /** S3 connection settings; one connection is scoped to one bucket and prefix. */
 export interface S3ConnectionOptions {
@@ -25,6 +25,12 @@ export interface SmbConnectionOptions {
   domain?: string;
 }
 
+/** WebDAV connection settings; the pane's "/" is the server path below. */
+export interface WebDavConnectionOptions {
+  /** Server path such as /remote.php/dav/files/alice; blank means the server root. */
+  root?: string;
+}
+
 export interface ConnectProfile {
   protocol?: ConnectionProtocol;
   host: string;
@@ -35,6 +41,8 @@ export interface ConnectProfile {
   s3?: S3ConnectionOptions;
   /** Present when protocol is "smb". */
   smb?: SmbConnectionOptions;
+  /** Present when protocol is "webdav" or "webdavs". */
+  webdav?: WebDavConnectionOptions;
   /** Initial remote directory; empty means the server-side home. */
   remotePath?: string;
   keepaliveIntervalMs?: number;
@@ -42,7 +50,7 @@ export interface ConnectProfile {
   compression?: boolean;
   /** Max concurrent transfer channels for this session (1–8). */
   concurrency?: number;
-  /** Whether FTPS validates the server certificate. Defaults to true. */
+  /** Whether FTPS and WebDAVS validate the server certificate. Defaults to true. */
   tlsRejectUnauthorized?: boolean;
 }
 

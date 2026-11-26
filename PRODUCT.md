@@ -10,7 +10,7 @@ Pallet is an Electron desktop application for macOS. Its interface should feel a
 
 ## Users
 
-Pallet is primarily for developers and technical operators who need to browse and move files between a Mac and remote servers over SFTP, FTP, explicit FTPS, SMB, or S3-compatible object storage.
+Pallet is primarily for developers and technical operators who need to browse and move files between a Mac and remote servers over SFTP, FTP, FTPS, SMB, WebDAV, or S3-compatible object storage.
 
 ## Product Purpose
 
@@ -18,7 +18,7 @@ Pallet makes routine remote file management approachable through a macOS-native-
 
 ## Positioning
 
-Pallet is a free and open-source, native-feeling macOS file-transfer client for SFTP, FTP, explicit FTPS, SMB, and S3-compatible object storage.
+Pallet is a free and open-source, native-feeling macOS file-transfer client for SFTP, FTP, FTPS, SMB, WebDAV, and S3-compatible object storage.
 
 ## Operating Context
 
@@ -26,8 +26,9 @@ The workspace starts with local Mac files on the left and a remote server on the
 
 ## Capabilities and Constraints
 
-- SFTP supports password, private-key, and SSH-agent authentication. FTP, explicit FTPS, and SMB use passwords.
+- SFTP supports password, private-key, and SSH-agent authentication. FTP, FTPS, SMB, and WebDAV use passwords.
 - SMB connections target one share over SMB 2.1 or 3.x with NTLMv2 sign-in, signing and encrypting when the server offers it. Kerberos, guest access, SMB 1, and DFS are out of scope.
+- WebDAV connections use HTTP or HTTPS with Basic sign-in, scoped to an optional server path. Digest, NTLM, OAuth, and locks are out of scope.
 - SFTP connections can open an interactive SSH terminal in the pane. It reuses the connection's stored credentials over a second SSH connection, starts in the login home, and stays usable while the file session reconnects.
 - S3 connections target one general-purpose bucket with an optional starting key prefix on AWS S3 or a custom http(s) endpoint such as MinIO, Cloudflare R2, or Wasabi. They use explicit static credentials with an optional session token, stored in the same Keychain-backed secret blob as other favorites. Bucket administration, multi-bucket panes, and advanced S3 features are out of scope.
 - FTPS validates server certificates by default; users may explicitly relax verification for a trusted private or test server. S3 HTTPS verification is always on.

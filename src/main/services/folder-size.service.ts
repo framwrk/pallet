@@ -5,7 +5,9 @@ import type { SFTPWrapper } from "ssh2";
 import type { SessionManager } from "./sftp/session-manager";
 import type { SizeTarget } from "@shared/fs/fs.types";
 import { SmbService } from "./smb/smb.service";
+import { WebDavService } from "./webdav/webdav.service";
 import { isDirMode } from "../utils/file-mode";
+import { isWebDav } from "@shared/sftp/sftp.utils";
 import { join } from "path";
 import { mapLimit } from "../utils/concurrency";
 import { remotePath } from "@shared/path/path.utils";
@@ -166,10 +168,12 @@ export class FolderSizes {
   private remoteGates = new Map<string, Gate>();
   private s3: S3Service;
   private smb: SmbService;
+  private webdav: WebDavService;
 
   constructor(private sessions: SessionManager) {
     this.s3 = new S3Service(sessions);
     this.smb = new SmbService(sessions);
+    this.webdav = new WebDavService(sessions);
   }
 
   private remoteGate(sessionId: string): Gate {
@@ -219,6 +223,7 @@ export class FolderSizes {
     const protocol = this.sessions.protocol(sessionId);
     if (protocol === "s3") return this.s3.folderSize(sessionId, path);
     if (protocol === "smb") return this.smb.folderSize(sessionId, path);
+    if (isWebDav(protocol)) return this.webdav.folderSize(sessionId, path);
     if (protocol !== "sftp") return walkFtp(this.sessions, sessionId, path);
     return walkRemote(this.sessions, sessionId, path);
   }

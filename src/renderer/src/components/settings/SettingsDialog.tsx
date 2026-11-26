@@ -609,6 +609,8 @@ const PROTOCOL_LABELS: Record<Favorite["protocol"], string> = {
   "ftps-implicit": "FTPS (Implicit)",
   s3: "S3",
   smb: "SMB",
+  webdav: "WebDAV",
+  webdavs: "WebDAVS",
 };
 
 function favoriteEndpoint(favorite: Favorite): string {

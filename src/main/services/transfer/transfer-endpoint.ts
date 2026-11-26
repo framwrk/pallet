@@ -2,13 +2,14 @@ import { type FileInfo, FileType, type Client as FtpClient } from "basic-ftp";
 import { PassThrough, type Readable, Writable } from "stream";
 import { createPipelinedReadStream, createPipelinedWriteStream } from "../sftp/pipelined-streams";
 import { createReadStream, createWriteStream, promises as fs } from "fs";
+import { ftpTlsMode, isWebDav } from "@shared/sftp/sftp.utils";
 import { isDirMode, isSymlinkMode } from "../../utils/file-mode";
 import { S3Endpoint } from "../s3/s3-endpoint";
 import type { SFTPWrapper } from "ssh2";
 import type { SessionManager } from "../sftp/session-manager";
 import { SmbEndpoint } from "../smb/smb-endpoint";
 import { TLSSocket } from "tls";
-import { ftpTlsMode } from "@shared/sftp/sftp.utils";
+import { WebDavEndpoint } from "../webdav/webdav-endpoint";
 
 export interface EndpointStat {
   size: number;
@@ -616,5 +617,6 @@ export function makeEndpoint(
   const protocol = sessions.protocol(ref.sessionId);
   if (protocol === "s3") return new S3Endpoint(sessions, ref.sessionId);
   if (protocol === "smb") return new SmbEndpoint(sessions, ref.sessionId);
+  if (isWebDav(protocol)) return new WebDavEndpoint(sessions, ref.sessionId);
   return protocol === "sftp" ? new SftpEndpoint(sessions, ref.sessionId) : new FtpEndpoint(sessions, ref.sessionId);
 }
