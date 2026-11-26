@@ -11,6 +11,7 @@ S3-compatible services use the same configuration, but are not separately verifi
 | Field                     | Notes                                                                                                                                                                                        |
 | ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Protocol**              | S3.                                                                                                                                                                                          |
+| **Provider**              | **AWS or custom endpoint**, or a provider preset such as **Backblaze B2**. A preset hides **Endpoint** and **Session Token**, derives the endpoint from **Region**, and relabels the keys.   |
 | **Endpoint**              | Optional `http://` or `https://` origin for MinIO, Cloudflare R2, Wasabi, and similar. The scheme may be omitted, in which case `https://` is assumed. Blank uses the AWS regional endpoint. |
 | **Region**                | Required for AWS. Optional with a custom endpoint, where blank defaults to `us-east-1`; it is always sent as the request-signing region.                                                     |
 | **Bucket**                | One existing general-purpose bucket. Pallet does not list your buckets, create them, or delete them.                                                                                         |
@@ -24,6 +25,47 @@ The endpoint must be an origin: no credentials, query, fragment, or base path. H
 platform trust store with verification always on; there is no insecure-verification switch. When the
 scheme is omitted, `https://` is assumed; plain `http` is accepted when the endpoint is specified
 with that scheme.
+
+## Provider presets
+
+A preset is a static entry in `src/shared/s3/s3-presets.ts` with an id, a label, an endpoint template,
+a region placeholder, and the provider's names for the key fields. It is not a separate client:
+connections still use the S3 client described here. The favorite stores the preset id next to the
+derived endpoint, and the main process recomputes the endpoint from the region on save, so a preset
+favorite cannot point anywhere but its provider. A region must be one DNS label, such as
+`us-west-004`.
+
+### Backblaze B2
+
+Choose **Provider → Backblaze B2**, enter the region from the bucket's S3 endpoint (for example
+`us-west-004` for `s3.us-west-004.backblazeb2.com`), the bucket, and an application key's **Key ID**
+and **Application key**. Path-style addressing defaults on and can still be toggled; B2 accepts both
+styles. Changing a saved favorite's provider requires re-entering the secret. Live B2 behavior is
+not verified by the automated checks.
+
+- **Checksums.** Newer AWS SDKs add CRC32 checksum headers to uploads by default, which B2 rejects
+  with `Unsupported header`. Pallet sets the SDK's request checksum calculation and response
+  validation to `WHEN_REQUIRED` for every custom endpoint, B2 included, so uploads and copies carry
+  no optional checksum headers. `DeleteObjects` still needs a checksum under that setting, and the
+  SDK sends CRC32 rather than `Content-MD5`. Pallet uses `DeleteObjects` for every delete, including
+  the source cleanup after a rename, so this is unverified against live B2: if delete or rename fails
+  with an unsupported-header error, this is the likely cause, and a failed rename leaves both the
+  source and the copy.
+- **Part sizes.** B2's minimum part size is 5 MB, except for the last part, and its maximum is 5 GB.
+  Pallet uploads in 8 MiB parts and copies objects over 5,000,000,000 bytes with `UploadPartCopy`
+  parts of at least 5 MiB, so both are inside B2's limits. The single-copy cutoff uses decimal
+  gigabytes for every provider because B2 documents its copy limit as 5 GB.
+- **Copy and rename.** File and folder rename use plain `CopyObject` (or `UploadPartCopy` over 5 GB)
+  followed by `DeleteObjects`, without conditional or metadata-replacing headers; B2 supports both.
+  B2 buckets keep file versions, so an S3 delete only hides the old version. Renamed sources, deleted
+  files, and Pallet's `.pallet-<id>.pallet-part` staging keys stay billed as hidden versions until a
+  lifecycle rule removes them. Set the bucket's lifecycle to **Keep only the last version** (or a
+  rule with `daysFromHidingToDeleting`) if that matters.
+- **Bucket-scoped keys.** Pallet never lists buckets, so a key restricted to one bucket works. A key
+  restricted to a file-name prefix only lists inside that prefix: set **Starting Prefix** to the key's
+  prefix or a folder under it, or the connection test fails with access denied. The key needs the
+  `listFiles`, `readFiles`, `writeFiles`, and `deleteFiles` capabilities.
+- **Credentials.** B2 application keys are long-lived, so the preset has no session token field.
 
 ## Required IAM permissions
 
@@ -92,7 +134,7 @@ merging them. The connection root cannot be renamed or deleted.
 Each favorite has one encrypted, Keychain-backed secret file with mode `0600`, written through
 Electron's `safeStorage`. It contains a versioned JSON payload with the secret access key and optional
 session token. For S3 settings, SQLite stores only the endpoint origin, region, bucket, addressing
-style, prefix, and access key ID; the renderer receives favorites with `secretStored` and never the
+style, provider preset, prefix, and access key ID; the renderer receives favorites with `secretStored` and never the
 secret itself.
 
 When editing a favorite:
@@ -111,8 +153,8 @@ staged upload and the server-side copy succeed, so a failed replacement leaves i
 staging key or aborting an upload is best effort.
 
 Interrupted files that involve S3 restart from byte zero; Pallet does not persist multipart upload
-IDs or resume partial objects. Objects larger than 5 GB are copied server-side with multipart
-`UploadPartCopy`.
+IDs or resume partial objects. Objects larger than 5,000,000,000 bytes are copied server-side with
+multipart `UploadPartCopy`.
 
 A crash or unreachable endpoint can leave staging objects and incomplete multipart uploads behind,
 which may incur storage cost. Pallet never changes a bucket's lifecycle configuration. If that risk

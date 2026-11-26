@@ -260,6 +260,7 @@ behavior.
 
 | Field                       | Notes                                                                                                  |
 | --------------------------- | ------------------------------------------------------------------------------------------------------ |
+| **Provider**                | **AWS or custom endpoint**, or **Backblaze B2**, which derives the endpoint from the region and labels the keys **Key ID** and **Application key**. |
 | **Endpoint**                | Optional `http(s)` origin for MinIO, Cloudflare R2, Wasabi, or another compatible service. Blank uses AWS. It must be an origin, without credentials or a path prefix. |
 | **Region**                  | Required for request signing, including with a custom endpoint.                                        |
 | **Bucket**                  | One existing general-purpose bucket.                                                                   |
@@ -274,7 +275,7 @@ insecure switch.
 
 **Credential storage.** Each favorite keeps one encrypted, Keychain-backed secret blob containing a
 versioned JSON payload with the secret access key and optional session token. For S3, the database
-stores only the endpoint, region, bucket, addressing style, prefix, and access key ID. The renderer
+stores only the endpoint, region, bucket, addressing style, provider preset, prefix, and access key ID. The renderer
 never receives the secret. When editing, a blank secret keeps the existing one; replacing the access key without a
 session token stores long-term credentials; replacing only the session token requires re-entering the
 access key and secret.
