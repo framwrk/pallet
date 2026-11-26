@@ -1,5 +1,6 @@
 import type { ColorLabel, Favorite, FavoriteInput, FavoriteSecret } from "@shared/favorite/favorite.types";
 import { deleteSecret, storeSecret } from "./secrets";
+import { findS3Preset, normalizePresetRegion, presetEndpoint } from "@shared/s3/s3-presets";
 import { getDb } from "./database";
 import { isWebDav } from "@shared/sftp/sftp.utils";
 import { randomUUID } from "crypto";
@@ -33,6 +34,7 @@ interface Row {
   s3_region: string | null;
   s3_bucket: string | null;
   s3_force_path_style: number;
+  s3_preset: string | null;
   smb_share: string | null;
   smb_domain: string | null;
   webdav_root: string | null;
@@ -75,6 +77,7 @@ function fromRow(row: Row): Favorite {
     ...(row.s3_region ? { s3Region: row.s3_region } : {}),
     ...(row.s3_bucket ? { s3Bucket: row.s3_bucket } : {}),
     ...(protocol === "s3" ? { s3ForcePathStyle: row.s3_force_path_style !== 0 } : {}),
+    ...(protocol === "s3" && row.s3_preset ? { s3Preset: row.s3_preset } : {}),
     ...(protocol === "smb" && row.smb_share ? { smbShare: row.smb_share } : {}),
     ...(protocol === "smb" && row.smb_domain ? { smbDomain: row.smb_domain } : {}),
     ...(isWebDav(protocol) && row.webdav_root ? { webdavRoot: row.webdav_root } : {}),
@@ -122,7 +125,8 @@ export function saveFavorite(input: FavoriteInput, secret?: FavoriteSecret | nul
     input.s3Endpoint !== undefined ||
     input.s3Region !== undefined ||
     input.s3Bucket !== undefined ||
-    input.s3ForcePathStyle !== undefined;
+    input.s3ForcePathStyle !== undefined ||
+    input.s3Preset !== undefined;
 
   if (isS3) {
     if (input.authMethod !== "s3") throw invalid("S3 favorites require S3 authentication");
@@ -149,8 +153,19 @@ export function saveFavorite(input: FavoriteInput, secret?: FavoriteSecret | nul
       ? input.authMethod
       : "password";
   const privateKeyPath = authMethod === "key" ? (input.privateKeyPath ?? null) : null;
-  const s3Endpoint = isS3 ? (input.s3Endpoint ?? null) : null;
-  const s3Region = isS3 ? (input.s3Region ?? null) : null;
+  const s3Preset = isS3 && input.s3Preset ? findS3Preset(input.s3Preset) : undefined;
+  if (isS3 && input.s3Preset && !s3Preset) throw invalid(`Unknown S3 provider preset: ${input.s3Preset}`);
+  // A preset's endpoint always follows from its region, whatever the renderer sent.
+  const presetOrigin = s3Preset ? presetEndpoint(s3Preset, input.s3Region ?? "") : null;
+  if (s3Preset && !presetOrigin) throw invalid(`Invalid ${s3Preset.label} region: ${input.s3Region ?? ""}`);
+  const s3Endpoint = isS3 ? (presetOrigin ?? input.s3Endpoint ?? null) : null;
+  const s3Region = isS3 ? ((s3Preset ? normalizePresetRegion(input.s3Region ?? "") : input.s3Region) ?? null) : null;
+  if (s3Preset && secret && typeof secret === "object" && secret.sessionToken) {
+    throw invalid(`${s3Preset.label} favorites do not use a session token`);
+  }
+  if (isS3 && existing?.secretStored && secret === undefined && (existing.s3Preset ?? "") !== (s3Preset?.id ?? "")) {
+    throw invalid("Re-enter the S3 credentials when changing the provider");
+  }
   const s3Bucket = isS3 ? (input.s3Bucket ?? null) : null;
   const s3ForcePathStyle = isS3 && input.s3ForcePathStyle === true ? 1 : 0;
   const smbShare = isSmb ? (input.smbShare?.trim() ?? null) : null;
@@ -174,7 +189,7 @@ export function saveFavorite(input: FavoriteInput, secret?: FavoriteSecret | nul
       `UPDATE favorites SET name=?, protocol=?, host=?, port=?, username=?, auth_method=?,
          secret_stored=?, private_key_path=?, tls_reject_unauthorized=?, remote_path=?, local_path=?,
          note=?, color_label=?, s3_endpoint=?, s3_region=?, s3_bucket=?, s3_force_path_style=?,
-         smb_share=?, smb_domain=?, webdav_root=?
+         s3_preset=?, smb_share=?, smb_domain=?, webdav_root=?
        WHERE id=?`,
     ).run(
       input.name,
@@ -194,6 +209,7 @@ export function saveFavorite(input: FavoriteInput, secret?: FavoriteSecret | nul
       s3Region,
       s3Bucket,
       s3ForcePathStyle,
+      s3Preset?.id ?? null,
       smbShare,
       smbDomain,
       webdavRoot,
@@ -204,9 +220,9 @@ export function saveFavorite(input: FavoriteInput, secret?: FavoriteSecret | nul
       `INSERT INTO favorites
          (id, name, protocol, host, port, username, auth_method, secret_stored,
           private_key_path, tls_reject_unauthorized, remote_path, local_path, note, color_label,
-          s3_endpoint, s3_region, s3_bucket, s3_force_path_style, smb_share, smb_domain, webdav_root,
-          sort_order, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)`,
+          s3_endpoint, s3_region, s3_bucket, s3_force_path_style, s3_preset, smb_share, smb_domain,
+          webdav_root, sort_order, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)`,
     ).run(
       id,
       input.name,
@@ -226,6 +242,7 @@ export function saveFavorite(input: FavoriteInput, secret?: FavoriteSecret | nul
       s3Region,
       s3Bucket,
       s3ForcePathStyle,
+      s3Preset?.id ?? null,
       smbShare,
       smbDomain,
       webdavRoot,

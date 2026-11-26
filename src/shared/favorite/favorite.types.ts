@@ -20,6 +20,8 @@ export interface Favorite {
   s3Region?: string;
   s3Bucket?: string;
   s3ForcePathStyle?: boolean;
+  /** S3 only: provider preset id from S3_PRESETS; absent for AWS or a custom endpoint. */
+  s3Preset?: string;
   /** SMB only: share name and optional NTLM domain or workgroup. */
   smbShare?: string;
   smbDomain?: string;
@@ -59,6 +61,7 @@ export interface FavoriteInput {
   s3Region?: string;
   s3Bucket?: string;
   s3ForcePathStyle?: boolean;
+  s3Preset?: string;
   smbShare?: string;
   smbDomain?: string;
   webdavRoot?: string;
