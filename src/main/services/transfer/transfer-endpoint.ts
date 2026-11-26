@@ -6,6 +6,7 @@ import { ftpTlsMode, isWebDav } from "@shared/sftp/sftp.utils";
 import { isDirMode, isSymlinkMode } from "../../utils/file-mode";
 import { S3Endpoint } from "../s3/s3-endpoint";
 import type { SFTPWrapper } from "ssh2";
+import { ScpEndpoint } from "../scp/scp-endpoint";
 import type { SessionManager } from "../sftp/session-manager";
 import { SmbEndpoint } from "../smb/smb-endpoint";
 import { TLSSocket } from "tls";
@@ -29,6 +30,8 @@ export interface ReadOptions {
 
 export interface WriteOptions {
   start?: number;
+  /** Bytes this write will deliver; required by endpoints that announce the size first (SCP). */
+  size?: number;
   signal?: AbortSignal;
   /** Final mode/mtime to apply to the staged file when the endpoint supports it. */
   meta?: { mtimeMs: number; mode?: number };
@@ -617,6 +620,7 @@ export function makeEndpoint(
   const protocol = sessions.protocol(ref.sessionId);
   if (protocol === "s3") return new S3Endpoint(sessions, ref.sessionId);
   if (protocol === "smb") return new SmbEndpoint(sessions, ref.sessionId);
+  if (protocol === "scp") return new ScpEndpoint(sessions, ref.sessionId);
   if (isWebDav(protocol)) return new WebDavEndpoint(sessions, ref.sessionId);
   return protocol === "sftp" ? new SftpEndpoint(sessions, ref.sessionId) : new FtpEndpoint(sessions, ref.sessionId);
 }

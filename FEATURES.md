@@ -13,6 +13,7 @@ to send it to the other pane. The rest of this document covers the details.
 - [SSH terminal](#ssh-terminal)
 - [S3 connections](#s3-connections)
 - [SMB connections](#smb-connections)
+- [SCP connections](#scp-connections)
 - [WebDAV connections](#webdav-connections)
 - [Host key verification](#host-key-verification)
 - [Favorites](#favorites)
@@ -101,8 +102,8 @@ differs by location:
 - **Remotely:** sizing a tree is the most expensive operation Pallet runs on a server, so it needs
   a second switch: **Include remote folders**. SFTP sizing walks the tree with one round trip per
   directory. S3 sizing lists the prefix and sums object sizes without a delimiter. SMB sizing walks
-  the share one directory listing at a time, and WebDAV sizing does the same with one `PROPFIND`
-  per folder. Only one remote
+  the share one directory listing at a time, WebDAV sizing does the same with one `PROPFIND`
+  per folder, and SCP sizing with one shell listing per folder. Only one remote
   sizing job runs per session at a time to limit competition with transfers. Results are cached.
 
 Totals are _apparent size_ (the sum of the file sizes inside, excluding directory metadata), not
@@ -178,11 +179,11 @@ the selected pane when the right pane is already connected, and otherwise opens 
 
 | Field                               | Notes                                                                                                                               |
 | ----------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| **Protocol**                        | SFTP (with an SSH terminal), FTP, explicit FTPS, implicit FTPS, S3, SMB, WebDAV, or WebDAVS. SFTP is selected by default.           |
+| **Protocol**                        | SFTP or SCP (with an SSH terminal), FTP, explicit FTPS, implicit FTPS, S3, SMB, WebDAV, or WebDAVS. SFTP is selected by default.    |
 | **Server**                          | Hostname or IP.                                                                                                                     |
-| **Port**                            | Defaults to 22 for SFTP, 21 for FTP and FTPS, 990 for implicit FTPS, 445 for SMB, and 80 or 443 for WebDAV or WebDAVS.              |
+| **Port**                            | Defaults to 22 for SFTP and SCP, 21 for FTP and FTPS, 990 for implicit FTPS, 445 for SMB, and 80 or 443 for WebDAV or WebDAVS.              |
 | **Username**                        |                                                                                                                                     |
-| **Authenticate**                    | Password for every protocol; **Private Key** and **SSH Agent** are also available for SFTP.                                         |
+| **Authenticate**                    | Password for every protocol; **Private Key** and **SSH Agent** are also available for SFTP and SCP.                                 |
 | **Password** / **Key + Passphrase** | Key auth takes a path to your private key; the passphrase field appears with it. Agent auth uses keys already loaded in your agent. |
 | **Remote Path**                     | Where to start browsing. Blank means your home directory, the SMB share root, or the WebDAV server path.                            |
 | **Local Path**                      | Optional. Opens this folder in the left pane when connecting the right pane, if the left pane is still local.                     |
@@ -193,18 +194,18 @@ Pallet keeps a custom port when you switch protocols. In **Local Path**, `~` exp
 
 **Options** reveals connection-specific controls:
 
-- **Keepalive (s)**: SFTP only; how often to ping an idle connection. The default is 15.
+- **Keepalive (s)**: SFTP and SCP only; how often to ping an idle connection. The default is 15.
 - **Concurrency**: parallel transfer channels, 1-7. Seeded from **Default concurrency** in
   [Settings](#settings), which starts at 4. Raise it for many small files; lower it if your server
   limits sessions. Pallet clamps values outside the range rather than rejecting them.
-- **Compression**: SFTP only; negotiates zlib. Useful on slow links, at the cost of CPU.
+- **Compression**: SFTP and SCP only; negotiates zlib. Useful on slow links, at the cost of CPU.
 - **Verify TLS certificate**: explicit and implicit FTPS only, and enabled by default. Disable it only for a trusted
   private or test server that uses a self-signed certificate.
 
 Click **Connect** to connect. Turn on **Add to Favorites** at the bottom of the form to save the
 settings once the connection succeeds.
 
-**SSH agent authentication** (SFTP only) signs with a key held by your SSH agent over `SSH_AUTH_SOCK`,
+**SSH agent authentication** (SFTP and SCP only) signs with a key held by your SSH agent over `SSH_AUTH_SOCK`,
 including 1Password's SSH agent. Pallet never reads or stores the key. The agent must be running with
 at least one usable key loaded; if `SSH_AUTH_SOCK` is unset, the socket is unreachable, or the agent
 has no usable keys, the connection form says what to fix.
@@ -223,7 +224,7 @@ remote pane. The window stays open; the right pane shows Quick Connect, or the l
 
 ## SSH terminal
 
-Pallet's SFTP panes include an interactive terminal on the same server. Click the terminal button in
+Pallet's SFTP and SCP panes include an interactive terminal on the same server. Click the terminal button in
 the pane's server chip, or press **⌃&#96;** (Control-backtick), to swap that pane's file browser for a
 login shell. Click the button again (**Show Files**) or press **⌃&#96;** to return to the files.
 
@@ -327,6 +328,30 @@ byte zero. Optional SHA-256 verification works as for other protocols.
 **Limits.** SMB shares expose no POSIX permissions to Pallet, so permissions are read-only and
 entries show synthetic modes. Copied files keep the upload time instead of the source modification
 time. Pallet does not identify server-side symlinks. Free space is not shown.
+
+---
+
+## SCP connections
+
+Choose **SCP** in Quick Connect for an SSH server that has no SFTP subsystem, such as a router,
+NAS, or embedded device. An SFTP attempt against such a server fails with a hint to use SCP; Pallet
+never switches on its own. SCP uses the same SSH sign-in (password, private key, or SSH agent),
+host key checks, keepalive, compression, and terminal as SFTP. See
+[SCP connections](docs/scp-connections.md) for the details.
+
+**Requirements.** The account must be able to run `sh`, and the server needs `scp`, `stat` (GNU,
+BusyBox, or BSD), and `xargs -0`, which standard Linux, BusyBox, BSD, and macOS systems include.
+Pallet browses by running short scripts over SSH exec channels; paths are always single-quoted and
+sent on stdin, never through your login shell. Accounts restricted to `scp` alone (forced
+commands, `scponly`, `rssh`) are not supported.
+
+**Transfers.** Uploads stage as `.pallet-<id>.pallet-part` through `scp -t` with the exact size,
+mode, and modification time, then replace the destination with `mv`. An upload counts only after
+the remote `scp` confirms it. Interrupted SCP files restart from byte zero. Optional SHA-256
+verification works as for other protocols.
+
+**Limits.** No mid-file resume, no free space, and Dropbear servers cannot transfer filenames that
+contain a newline.
 
 ---
 
@@ -443,7 +468,7 @@ Local moves run directly and support undo.
    and FTP and FTPS use the server's rename behavior; if the server refuses the replacement, the
    job reports an error instead of deleting the original. S3 copies the staged object server-side to
    the final key, so the existing object survives a failed replacement. SMB replaces with a server
-   rename, and WebDAV with a `MOVE`. Pallet reports a lost rename
+   rename, WebDAV with a `MOVE`, and SCP with `mv`. Pallet reports a lost rename
    reply for inspection instead of retrying it silently.
 
 Folder scans reuse directory-entry metadata instead of requesting it again for every child.
@@ -457,8 +482,8 @@ Enable **Verify copied files with SHA-256** in **Settings → Transfers**. The d
 Pallet captures the choice when a job is enqueued and retains it through pause, recovery, and retry.
 For each file, it rereads the entire source and staged destination sequentially, checks source
 size/modification time around those reads, and compares SHA-256 digests before replacement. This
-also verifies the full file after checkpoint resume. It supports local, SFTP, FTP, FTPS, S3, SMB,
-WebDAV, and remote-to-remote copies without server shell access.
+also verifies the full file after checkpoint resume. It supports local, SFTP, SCP, FTP, FTPS, S3,
+SMB, WebDAV, and remote-to-remote copies without server shell access (SCP itself needs a shell).
 
 Read-back adds disk and network traffic and requires read permission on both files. A mismatch,
 short read, or read-permission failure stops the file before replacement; verification never falls
@@ -515,7 +540,7 @@ automatically. You cannot resume it manually; it waits for the network.
 
 **If a transfer is interrupted,** local and SFTP transfers of at least 16 MiB resume from the last
 destination-confirmed byte during the same job. Only bytes beyond that checkpoint are repeated.
-Small files and transfers involving FTP, FTPS, S3, SMB, or WebDAV restart the affected file. Completed files stay complete
+Small files and transfers involving SCP, FTP, FTPS, S3, SMB, or WebDAV restart the affected file. Completed files stay complete
 through pauses and automatic recovery. The **Retry** button re-scans and copies again: files the
 canceled or failed attempt already completed stay in place when the source is unchanged, and only
 the remaining files are copied. Conflicts are checked again for the rest.
@@ -798,7 +823,7 @@ Deliberate omissions in the beta, not bugs:
 
 - **Moves involving remote panes**: copy, verify, then delete.
 - **Symlink transfers**: links are skipped, not copied or followed.
-- **Resume across app restarts or FTP, FTPS, S3, SMB, and WebDAV checkpoints**: checkpoint resume covers only
+- **Resume across app restarts or SCP, FTP, FTPS, S3, SMB, and WebDAV checkpoints**: checkpoint resume covers only
   large local and SFTP files within a running job.
 - **Undo for transfers or deletes**: undo covers local rename and move only.
 - **Search**: a good remote search needs server-side `find` with cancellation; a weak one is worse
@@ -812,6 +837,8 @@ Deliberate omissions in the beta, not bugs:
   DFS, share browsing, or preserved modification times.
 - **WebDAV beyond Basic sign-in**: no Digest, NTLM, or OAuth sign-in, locks, or preserved
   modification times.
+- **SCP without a shell**: SCP browsing runs `sh` commands, so `scp`-only restricted accounts are
+  not supported.
 - **Folder sync and mirroring**
 - **Archive preview**
 - **Custom themes**: light and dark, following the system or pinned in Settings.

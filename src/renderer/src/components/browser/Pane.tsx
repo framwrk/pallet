@@ -17,6 +17,7 @@ import type { SortKey } from "@shared/fs/fs.types";
 import { TerminalView } from "./TerminalView";
 import { cn } from "@/lib/utils";
 import { formatBytes } from "@/lib/format.utils";
+import { isSsh } from "@shared/sftp/sftp.utils";
 import { toggleTerminal } from "@/store/terminal.store";
 import { visibleEntries } from "@/lib/entry.utils";
 
@@ -204,7 +205,7 @@ export function Pane({ paneId }: { paneId: PaneId }): React.JSX.Element {
             {s3
               ? `${s3.bucket}${s3.endpoint ? ` — ${endpointHost(s3.endpoint)}` : ""}`
               : `${pane.backend.host}${pane.backend.smbShare ? `/${pane.backend.smbShare}` : ""}`}
-            {pane.backend.protocol === "sftp" && !s3 && (
+            {isSsh(pane.backend.protocol) && !s3 && (
               <button
                 className="hover:bg-primary/20 rounded-full p-0.5 disabled:pointer-events-none disabled:opacity-40"
                 aria-label={terminalView ? "Show Files" : "Open Terminal"}

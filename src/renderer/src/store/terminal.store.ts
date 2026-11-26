@@ -1,4 +1,5 @@
 import { type PaneId, getState, isModalOpen, pushToast, setPaneTerminal } from "./pane.store";
+import { isSsh } from "@shared/sftp/sftp.utils";
 
 type Sink = (data: Uint8Array) => void;
 
@@ -14,10 +15,10 @@ export function unregisterTerminalSink(terminalId: string): void {
   sinks.delete(terminalId);
 }
 
-/** A shell exists only for live SFTP connections, never FTP/FTPS/S3. */
+/** A shell exists only for live SSH (SFTP or SCP) connections, never FTP/FTPS/S3. */
 export function canUseTerminal(paneId: PaneId): boolean {
   const backend = getState().panes[paneId].backend;
-  return backend.kind === "sftp" && backend.protocol === "sftp" && !backend.s3;
+  return backend.kind === "sftp" && isSsh(backend.protocol) && !backend.s3;
 }
 
 function hostLabel(paneId: PaneId): string {

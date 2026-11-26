@@ -4,6 +4,7 @@ import { isDirMode, kindFromMode } from "../../utils/file-mode";
 import { PassThrough } from "stream";
 import { S3Service } from "../s3/s3.service";
 import type { SFTPWrapper } from "ssh2";
+import { ScpService } from "../scp/scp.service";
 import type { SessionManager } from "./session-manager";
 import { SmbService } from "../smb/smb.service";
 import { WebDavService } from "../webdav/webdav.service";
@@ -44,11 +45,13 @@ function assertSafeFtpPath(path: string): void {
 export class SftpService {
   private ftpTails = new Map<string, Promise<void>>();
   private s3: S3Service;
+  private scp: ScpService;
   private smb: SmbService;
   private webdav: WebDavService;
 
   constructor(private sessions: SessionManager) {
     this.s3 = new S3Service(sessions);
+    this.scp = new ScpService(sessions);
     this.smb = new SmbService(sessions);
     this.webdav = new WebDavService(sessions);
   }
@@ -75,6 +78,7 @@ export class SftpService {
     if (this.sessions.protocol(sessionId) === "s3") return this.s3.list(sessionId, dirPath);
     if (this.sessions.protocol(sessionId) === "smb") return this.smb.list(sessionId, dirPath);
     if (isWebDav(this.sessions.protocol(sessionId))) return this.webdav.list(sessionId, dirPath);
+    if (this.sessions.protocol(sessionId) === "scp") return this.scp.list(sessionId, dirPath);
     if (this.sessions.protocol(sessionId) !== "sftp") {
       assertSafeFtpPath(dirPath);
       const entries = await this.withFtp(sessionId, (ftp) => ftp.list(dirPath));
@@ -122,6 +126,7 @@ export class SftpService {
     if (this.sessions.protocol(sessionId) === "s3") return this.s3.stat(sessionId, p);
     if (this.sessions.protocol(sessionId) === "smb") return this.smb.stat(sessionId, p);
     if (isWebDav(this.sessions.protocol(sessionId))) return this.webdav.stat(sessionId, p);
+    if (this.sessions.protocol(sessionId) === "scp") return this.scp.stat(sessionId, p);
     if (this.sessions.protocol(sessionId) !== "sftp") {
       assertSafeFtpPath(p);
       if (p === "/") {
@@ -170,6 +175,7 @@ export class SftpService {
     if (this.sessions.protocol(sessionId) === "s3") return this.s3.realpath(sessionId, p);
     if (this.sessions.protocol(sessionId) === "smb") return this.smb.realpath(sessionId, p);
     if (isWebDav(this.sessions.protocol(sessionId))) return this.webdav.realpath(sessionId, p);
+    if (this.sessions.protocol(sessionId) === "scp") return this.scp.realpath(sessionId, p);
     if (this.sessions.protocol(sessionId) !== "sftp") {
       assertSafeFtpPath(p);
       return this.withFtp(sessionId, async (ftp) => {
@@ -185,6 +191,7 @@ export class SftpService {
     if (this.sessions.protocol(sessionId) === "s3") return this.s3.mkdir(sessionId, p);
     if (this.sessions.protocol(sessionId) === "smb") return this.smb.mkdir(sessionId, p);
     if (isWebDav(this.sessions.protocol(sessionId))) return this.webdav.mkdir(sessionId, p);
+    if (this.sessions.protocol(sessionId) === "scp") return this.scp.mkdir(sessionId, p);
     if (this.sessions.protocol(sessionId) !== "sftp") {
       assertSafeFtpPath(p);
       return this.withFtp(sessionId, (ftp) => ftp.ensureDir(p));
@@ -212,6 +219,7 @@ export class SftpService {
     if (this.sessions.protocol(sessionId) === "s3") return this.s3.rename(sessionId, from, to);
     if (this.sessions.protocol(sessionId) === "smb") return this.smb.rename(sessionId, from, to);
     if (isWebDav(this.sessions.protocol(sessionId))) return this.webdav.rename(sessionId, from, to);
+    if (this.sessions.protocol(sessionId) === "scp") return this.scp.rename(sessionId, from, to);
     if (this.sessions.protocol(sessionId) !== "sftp") {
       assertSafeFtpPath(from);
       assertSafeFtpPath(to);
@@ -244,6 +252,7 @@ export class SftpService {
     if (this.sessions.protocol(sessionId) === "s3") return this.s3.removeRecursive(sessionId, p);
     if (this.sessions.protocol(sessionId) === "smb") return this.smb.removeRecursive(sessionId, p);
     if (isWebDav(this.sessions.protocol(sessionId))) return this.webdav.removeRecursive(sessionId, p);
+    if (this.sessions.protocol(sessionId) === "scp") return this.scp.removeRecursive(sessionId, p);
     if (this.sessions.protocol(sessionId) !== "sftp") {
       assertSafeFtpPath(p);
       const entry = await this.stat(sessionId, p);
@@ -278,6 +287,7 @@ export class SftpService {
     }
     if (this.sessions.protocol(sessionId) === "smb") return this.smb.chmod();
     if (isWebDav(this.sessions.protocol(sessionId))) return this.webdav.chmod();
+    if (this.sessions.protocol(sessionId) === "scp") return this.scp.chmod(sessionId, p, mode);
     if (this.sessions.protocol(sessionId) !== "sftp") {
       assertSafeFtpPath(p);
       return this.withFtp(sessionId, async (ftp) => {
@@ -293,6 +303,7 @@ export class SftpService {
     if (this.sessions.protocol(sessionId) === "s3") return this.s3.readBytes(sessionId, p, maxBytes);
     if (this.sessions.protocol(sessionId) === "smb") return this.smb.readBytes(sessionId, p, maxBytes);
     if (isWebDav(this.sessions.protocol(sessionId))) return this.webdav.readBytes(sessionId, p, maxBytes);
+    if (this.sessions.protocol(sessionId) === "scp") return this.scp.readBytes(sessionId, p, maxBytes);
     if (this.sessions.protocol(sessionId) !== "sftp") {
       assertSafeFtpPath(p);
       if (maxBytes <= 0) return Buffer.alloc(0);

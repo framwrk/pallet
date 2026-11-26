@@ -6,6 +6,11 @@ export function ftpTlsMode(protocol: ConnectionProtocol): "explicit" | "implicit
   return null;
 }
 
+/** Protocols carried over an SSH connection (shared auth, host keys, terminal). */
+export function isSsh(protocol: ConnectionProtocol): boolean {
+  return protocol === "sftp" || protocol === "scp";
+}
+
 export function isWebDav(protocol: ConnectionProtocol): boolean {
   return protocol === "webdav" || protocol === "webdavs";
 }

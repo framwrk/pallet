@@ -948,6 +948,7 @@ export class TransferQueue {
           job.to
             .createWriteStream(partPath, verify ? 0o600 : file.mode, {
               start: offset,
+              size: file.size - offset,
               signal: controller.signal,
               ...(job.to.writesMeta && !verify ? { meta: { mtimeMs: file.mtimeMs, mode: file.mode } } : {}),
             })
