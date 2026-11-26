@@ -1,4 +1,5 @@
-import type { ConnectProfile, S3ConnectionOptions } from "@shared/sftp/sftp.types";
+import type { ConnectProfile, S3ConnectionOptions, S3Provider } from "@shared/sftp/sftp.types";
+import { GCS_ENDPOINT, GCS_REGION } from "@shared/sftp/sftp.utils";
 import { S3Client, type S3ClientConfig } from "@aws-sdk/client-s3";
 
 export interface S3Credentials {
@@ -8,6 +9,7 @@ export interface S3Credentials {
 }
 
 export interface ResolvedS3Config {
+  provider: S3Provider;
   region: string;
   bucket: string;
   endpoint?: string;
@@ -46,6 +48,7 @@ export function validateEndpoint(endpoint: string | undefined): string | undefin
 }
 
 export function resolveS3Config(options: S3ConnectionOptions): ResolvedS3Config {
+  if (options.provider === "gcs") return resolveGcsConfig(options);
   const endpoint = validateEndpoint(options.endpoint);
   const region = options.region?.trim();
   const bucket = options.bucket?.trim();
@@ -53,11 +56,24 @@ export function resolveS3Config(options: S3ConnectionOptions): ResolvedS3Config 
   if (!bucket) throw s3Error("EINVAL", "S3 bucket is required");
   if (/[^\w.-]/.test(bucket)) throw s3Error("EINVAL", `Invalid S3 bucket name: ${bucket}`);
   return {
+    provider: "s3",
     region,
     bucket,
     forcePathStyle: options.forcePathStyle ?? endpoint !== undefined,
     ...(endpoint ? { endpoint } : {}),
   };
+}
+
+/**
+ * The preset owns the endpoint, signing region, and addressing: path-style
+ * keeps dotted bucket names valid under the storage.googleapis.com
+ * certificate, so stored values for those fields are ignored.
+ */
+function resolveGcsConfig(options: S3ConnectionOptions): ResolvedS3Config {
+  const bucket = options.bucket?.trim();
+  if (!bucket) throw s3Error("EINVAL", "Cloud Storage bucket is required");
+  if (/[^\w.-]/.test(bucket)) throw s3Error("EINVAL", `Invalid Cloud Storage bucket name: ${bucket}`);
+  return { provider: "gcs", region: GCS_REGION, bucket, endpoint: GCS_ENDPOINT, forcePathStyle: true };
 }
 
 export function s3ConfigFromProfile(profile: ConnectProfile): ResolvedS3Config {
@@ -70,10 +86,12 @@ export function credentialsFromProfile(profile: ConnectProfile): S3Credentials {
   const accessKeyId = profile.username?.trim();
   if (!accessKeyId) throw s3Error("EINVAL", "S3 access key ID is required");
   if (!profile.auth.secretAccessKey) throw s3Error("EINVAL", "S3 secret access key is required");
+  // HMAC keys have no session token; a leftover one would only break signing.
+  const sessionToken = profile.s3?.provider === "gcs" ? undefined : profile.auth.sessionToken;
   return {
     accessKeyId,
     secretAccessKey: profile.auth.secretAccessKey,
-    ...(profile.auth.sessionToken ? { sessionToken: profile.auth.sessionToken } : {}),
+    ...(sessionToken ? { sessionToken } : {}),
   };
 }
 
@@ -87,13 +105,27 @@ export function createS3Client(config: ResolvedS3Config, credentials: S3Credenti
       ...(credentials.sessionToken ? { sessionToken: credentials.sessionToken } : {}),
     },
     maxAttempts: 3,
-    // Custom endpoints frequently predate optional checksums; asking only
-    // when an operation requires one keeps older compatibles working.
+    // Custom endpoints, Cloud Storage included, frequently reject the SDK's
+    // default CRC32 trailers; asking only when an operation requires one
+    // keeps them working.
     requestChecksumCalculation: config.endpoint ? "WHEN_REQUIRED" : "WHEN_SUPPORTED",
     responseChecksumValidation: config.endpoint ? "WHEN_REQUIRED" : "WHEN_SUPPORTED",
     ...(config.endpoint ? { endpoint: config.endpoint } : {}),
   };
-  return new S3Client(options);
+  const client = new S3Client(options);
+  if (config.provider === "gcs") {
+    // Cloud Storage ignores Range when it decompresses a gzip-encoded object;
+    // accepting gzip makes it serve the stored bytes, so ranges and sizes agree.
+    client.middlewareStack.add(
+      (next, context) => async (args) => {
+        const request = args.request as { headers?: Record<string, string> };
+        if (context.commandName === "GetObjectCommand" && request.headers) request.headers["accept-encoding"] = "gzip";
+        return next(args);
+      },
+      { step: "build", name: "gcsStoredBytes" },
+    );
+  }
+  return client;
 }
 
 function statusOf(err: unknown): number | undefined {

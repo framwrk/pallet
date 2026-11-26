@@ -35,6 +35,9 @@ remote hosts.
   custom http(s) origin such as MinIO, Cloudflare R2, or Wasabi, using a static access key and optional
   session token. See [S3 connections](docs/s3-connections.md) for fields, IAM permissions, and
   limitations.
+- **Google Cloud Storage:** a provider preset on S3 connections that signs in with an HMAC key and
+  fills in the Cloud Storage endpoint and region. See
+  [Google Cloud Storage](docs/s3-connections.md#google-cloud-storage) for key setup and IAM roles.
 - **SMB file shares:** connect to one share on a Windows PC, Mac, NAS, or Samba server with a
   username and password. Pallet speaks SMB 2.1 and 3.x with NTLMv2 sign-in, and signs and encrypts
   traffic when the server offers it. See [SMB connections](docs/smb-connections.md).

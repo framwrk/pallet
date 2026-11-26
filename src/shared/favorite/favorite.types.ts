@@ -1,4 +1,4 @@
-import type { ConnectionProtocol } from "../sftp/sftp.types";
+import type { ConnectionProtocol, S3Provider } from "../sftp/sftp.types";
 
 export type ColorLabel = "none" | "red" | "orange" | "yellow" | "green" | "blue" | "purple" | "gray";
 
@@ -15,7 +15,8 @@ export interface Favorite {
   privateKeyPath?: string;
   /** Whether FTPS and WebDAVS reject untrusted TLS certificates. Defaults to true. */
   tlsRejectUnauthorized?: boolean;
-  /** S3 only: custom endpoint origin, region, bucket, and addressing style. */
+  /** S3 only: provider preset, custom endpoint origin, region, bucket, and addressing style. */
+  s3Provider?: S3Provider;
   s3Endpoint?: string;
   s3Region?: string;
   s3Bucket?: string;
@@ -55,6 +56,7 @@ export interface FavoriteInput {
   authMethod: "password" | "key" | "agent" | "s3";
   privateKeyPath?: string;
   tlsRejectUnauthorized?: boolean;
+  s3Provider?: S3Provider;
   s3Endpoint?: string;
   s3Region?: string;
   s3Bucket?: string;

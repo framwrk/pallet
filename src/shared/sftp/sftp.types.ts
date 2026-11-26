@@ -9,7 +9,11 @@ export type AuthSpec =
 export type ConnectionProtocol = "sftp" | "ftp" | "ftps" | "ftps-implicit" | "s3" | "smb" | "webdav" | "webdavs";
 
 /** S3 connection settings; one connection is scoped to one bucket and prefix. */
+/** "gcs" is the Google Cloud Storage preset; absent means AWS or a generic S3-compatible endpoint. */
+export type S3Provider = "s3" | "gcs";
+
 export interface S3ConnectionOptions {
+  provider?: S3Provider;
   /** Absolute http(s) origin; blank uses the AWS regional endpoint. */
   endpoint?: string;
   region: string;

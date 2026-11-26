@@ -258,6 +258,12 @@ AWS S3 and MinIO are verified. Other S3-compatible services use the same setting
 verified. See [S3 connections](docs/s3-connections.md) for required IAM permissions and complete
 behavior.
 
+Set **Provider** to **Google Cloud Storage** to connect with a Cloud Storage HMAC key. The preset
+fills in `https://storage.googleapis.com` and region `auto`, uses path-style addressing, labels the
+credentials **HMAC Access ID** and **HMAC Secret**, and is saved with the favorite. See
+[Google Cloud Storage](docs/s3-connections.md#google-cloud-storage) for key setup, IAM roles, and
+limitations.
+
 | Field                       | Notes                                                                                                  |
 | --------------------------- | ------------------------------------------------------------------------------------------------------ |
 | **Endpoint**                | Optional `http(s)` origin for MinIO, Cloudflare R2, Wasabi, or another compatible service. Blank uses AWS. It must be an origin, without credentials or a path prefix. |
@@ -283,12 +289,13 @@ access key and secret.
 existing destination. A folder rename snapshots and preflights every key, copies all objects, and only
 then deletes the sources. It is **not atomic**: a copy failure leaves the sources intact, reports
 how many objects were copied, and leaves any copies already made at the destination. A partial delete
-reports the affected keys. Folder deletes are recursive and permanent, batched in groups of 1000.
+reports the affected keys. Folder deletes are recursive, batched in groups of 1000, and remove the
+live objects; bucket versioning or Cloud Storage soft delete may keep a recoverable copy.
 
 **Transfers and cost.** Uploads stage as `.pallet-<id>.pallet-part`, then copy server-side to the
 final key, so an existing object survives a failed replacement. Interrupted files involving S3 restart
-from byte zero; Pallet does not resume multipart uploads. Objects over 5 GB use multipart server-side
-copy. Crashing or losing the endpoint can leave staging objects and incomplete multipart uploads
+from byte zero; Pallet does not resume multipart uploads. Objects over 5 GiB use multipart server-side
+copy, except with the Google Cloud Storage preset, which always uses a single copy. Crashing or losing the endpoint can leave staging objects and incomplete multipart uploads
 behind, which may cost storage; Pallet never changes bucket lifecycle rules, so expire the `.pallet-`
 prefix yourself if needed.
 
