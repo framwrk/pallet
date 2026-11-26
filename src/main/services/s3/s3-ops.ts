@@ -44,8 +44,8 @@ interface ListedObject {
 
 const MB = 1024 * 1024;
 const GIB = 1024 * MB;
-/** S3's single CopyObject limit. */
-export const SINGLE_COPY_LIMIT = 5 * GIB;
+/** Single CopyObject limit: 5 GB in decimal bytes, the strictest of AWS (5 GiB) and Backblaze B2. */
+export const SINGLE_COPY_LIMIT = 5_000_000_000;
 const MULTIPART_MIN_PART = 5 * MB;
 const MULTIPART_MAX_PART = 5 * GIB;
 const MULTIPART_MAX_PARTS = 10_000;

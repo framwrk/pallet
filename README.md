@@ -36,8 +36,9 @@ remote hosts.
   connection, keeps running while you browse files, and closes with the file session.
 - **S3-compatible storage:** connect to one bucket with an optional starting prefix on AWS S3 or a
   custom http(s) origin such as MinIO, Cloudflare R2, or Wasabi, using a static access key and optional
-  session token. See [S3 connections](docs/s3-connections.md) for fields, IAM permissions, and
-  limitations.
+  session token. A **Backblaze B2** preset derives the endpoint from the region and uses B2's Key ID
+  and Application key. See [S3 connections](docs/s3-connections.md) for fields, IAM permissions, B2
+  notes, and limitations.
 - **SMB file shares:** connect to one share on a Windows PC, Mac, NAS, or Samba server with a
   username and password. Pallet speaks SMB 2.1 and 3.x with NTLMv2 sign-in, and signs and encrypts
   traffic when the server offers it. See [SMB connections](docs/smb-connections.md).

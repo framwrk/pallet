@@ -17,6 +17,7 @@ import { COLOR_LABELS, LABEL_COLOR_CLASSES } from "@shared/favorite/favorite.con
 import type { ColorLabel, Favorite, FavoriteInput, FavoriteSecret } from "@shared/favorite/favorite.types";
 import type { ConnectProfile, ConnectionProtocol } from "@shared/sftp/sftp.types";
 import { type PaneId, getState, pushToast, useAppState } from "@/store/pane.store";
+import { S3_PRESETS, findS3Preset, presetEndpoint } from "@shared/s3/s3-presets";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cancelConnection, connectRemote, isCancelledConnection } from "@/store/sftp.store";
@@ -77,6 +78,11 @@ function validateS3Endpoint(endpoint: string): string | null {
   if (url.pathname !== "/" || url.search || url.hash) return "Endpoint can’t include a path, query, or fragment";
   return null;
 }
+
+const S3_PROVIDERS: Record<string, string> = {
+  custom: "AWS or custom endpoint",
+  ...Object.fromEntries(S3_PRESETS.map((preset) => [preset.id, preset.label])),
+};
 
 function ProtocolSelect({
   protocol,
@@ -222,6 +228,7 @@ export function ConnectForm({
   const [showSecret, setShowSecret] = useState(false);
   const [keyPath, setKeyPath] = useState(seed?.privateKeyPath ?? "");
   const [passphrase, setPassphrase] = useState("");
+  const [s3Preset, setS3Preset] = useState(seedS3?.s3Preset ?? "");
   const [s3Endpoint, setS3Endpoint] = useState(seedS3?.s3Endpoint ?? "");
   const [s3Region, setS3Region] = useState(seedS3?.s3Region ?? "us-east-1");
   const [s3Bucket, setS3Bucket] = useState(seedS3?.s3Bucket ?? "");
@@ -259,9 +266,13 @@ export function ConnectForm({
   const secretPlaceholder =
     seed?.secretStored && !editing ? "Stored password" : editing?.secretStored ? "Leave blank to keep saved" : "";
   const s3SecretPlaceholder = seedS3?.secretStored ? "Leave blank to keep saved" : "";
-  const s3EndpointValue = s3Endpoint.trim();
-  const s3RegionValue = s3Region.trim();
+  const preset = findS3Preset(s3Preset);
+  const s3RegionValue = preset ? s3Region.trim().toLowerCase() : s3Region.trim();
+  // A stored secret belongs to the provider it was saved with.
+  const providerChanged = Boolean(editing) && (seedS3?.s3Preset ?? "") !== s3Preset;
+  const s3EndpointValue = preset ? (presetEndpoint(preset, s3RegionValue) ?? "") : s3Endpoint.trim();
   const s3RegionResolved = s3RegionValue || (s3EndpointValue ? "us-east-1" : "");
+  const s3EndpointLabel = preset?.label ?? (s3EndpointValue ? (endpointHost(s3EndpointValue) ?? s3EndpointValue) : "AWS");
 
   function changeProtocol(nextProtocol: ConnectionProtocol): void {
     const currentDefault = defaultPort(protocol);
@@ -283,10 +294,17 @@ export function ConnectForm({
 
   function validate(): string | null {
     if (protocol === "s3") {
+      if (preset && !s3RegionValue) return "Region is required";
+      if (preset && !s3EndpointValue) return `Enter a ${preset.label} region like ${preset.regionPlaceholder}`;
       if (!s3RegionResolved) return "Region is required";
       if (!s3Bucket.trim()) return "Bucket is required";
-      if (!username.trim()) return "Access key ID is required";
-      if (!secretAccessKey && !(editing && seedS3?.secretStored)) return "Secret access key is required";
+      if (!username.trim()) return `${preset?.keyIdLabel ?? "Access key ID"} is required`;
+      if (!secretAccessKey && providerChanged && seedS3?.secretStored) {
+        return `Re-enter the ${preset?.secretLabel ?? "secret access key"} after changing the provider`;
+      }
+      if (!secretAccessKey && !(editing && seedS3?.secretStored)) {
+        return `${preset?.secretLabel ?? "Secret access key"} is required`;
+      }
       const endpointError = validateS3Endpoint(s3EndpointValue);
       if (endpointError) return endpointError;
       return null;
@@ -314,8 +332,7 @@ export function ConnectForm({
     if (protocol === "s3") {
       return {
         ...(editing ? { id: editing.id } : {}),
-        name:
-          name.trim() || `${s3Bucket.trim()} (${s3EndpointValue ? (endpointHost(s3EndpointValue) ?? s3EndpointValue) : "AWS"})`,
+        name: name.trim() || `${s3Bucket.trim()} (${s3EndpointLabel})`,
         protocol: "s3",
         host: s3Host(),
         port: 443,
@@ -325,6 +342,7 @@ export function ConnectForm({
         s3Region: s3RegionResolved,
         s3Bucket: s3Bucket.trim(),
         s3ForcePathStyle,
+        ...(preset ? { s3Preset: preset.id } : {}),
         ...(remotePathField.trim() ? { remotePath: remotePathField.trim() } : {}),
         ...(localPathField.trim() ? { localPath: localPathField.trim() } : {}),
         ...(note.trim() ? { note: note.trim() } : {}),
@@ -587,45 +605,98 @@ export function ConnectForm({
   const s3Fields = (
     <>
       <Row
-        label="Endpoint"
-        hint="Hostname of your S3-compatible provider, e.g. s3.example.com. Leave blank for AWS S3."
+        label="Provider"
+        hint="A provider preset fills in the endpoint from the region."
         layout={fieldLayout}
       >
-        <div className="flex flex-col gap-1">
-          <Input
-            className={fieldInputCls}
-            value={s3Endpoint}
-            onChange={(e) => {
-              const value = e.target.value;
-              setS3Endpoint(value);
-              // Custom endpoints nearly always need path-style addressing; AWS does not.
-              if (value.trim()) setS3ForcePathStyle(true);
-              else if (!pathStyleTouched.current) setS3ForcePathStyle(false);
-            }}
-            placeholder="AWS S3"
-            spellCheck={false}
-            autoFocus={autoFocus && !seed}
-          />
-          {/^http:\/\//i.test(s3EndpointValue) && (
-            <p
-              className="text-destructive text-[11px]"
-              role="alert"
-            >
-              Credentials and data would travel without TLS.
-            </p>
-          )}
-        </div>
+        <Select
+          items={S3_PROVIDERS}
+          value={s3Preset || "custom"}
+          onValueChange={(value) => {
+            const next = value && value !== "custom" ? value : "";
+            setS3Preset(next);
+            setError(null);
+            if (next) {
+              setSessionToken("");
+              // AWS's default region is never a valid provider region.
+              if (s3RegionValue === "us-east-1") setS3Region("");
+              if (!pathStyleTouched.current) setS3ForcePathStyle(true);
+            } else {
+              if (!s3RegionValue) setS3Region("us-east-1");
+              if (!pathStyleTouched.current) setS3ForcePathStyle(Boolean(s3Endpoint.trim()));
+            }
+          }}
+        >
+          <SelectTrigger
+            size="sm"
+            aria-label="S3 provider"
+            className="h-8 w-full text-[13px] data-[size=sm]:h-8"
+          >
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent
+            align="start"
+            alignItemWithTrigger={false}
+            className="w-auto p-1"
+          >
+            {Object.entries(S3_PROVIDERS).map(([value, label]) => (
+              <SelectItem
+                key={value}
+                value={value}
+                className="py-1 text-xs"
+              >
+                {label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </Row>
+      {!preset && (
+        <Row
+          label="Endpoint"
+          hint="Hostname of your S3-compatible provider, e.g. s3.example.com. Leave blank for AWS S3."
+          layout={fieldLayout}
+        >
+          <div className="flex flex-col gap-1">
+            <Input
+              className={fieldInputCls}
+              value={s3Endpoint}
+              onChange={(e) => {
+                const value = e.target.value;
+                setS3Endpoint(value);
+                // Custom endpoints nearly always need path-style addressing; AWS does not.
+                if (value.trim()) setS3ForcePathStyle(true);
+                else if (!pathStyleTouched.current) setS3ForcePathStyle(false);
+              }}
+              placeholder="AWS S3"
+              spellCheck={false}
+              autoFocus={autoFocus && !seed}
+            />
+            {/^http:\/\//i.test(s3EndpointValue) && (
+              <p
+                className="text-destructive text-[11px]"
+                role="alert"
+              >
+                Credentials and data would travel without TLS.
+              </p>
+            )}
+          </div>
+        </Row>
+      )}
       <Row
         label="Region"
-        hint="Required for AWS S3. With a custom endpoint you can leave this blank. us-east-1 is used by default."
+        hint={
+          preset
+            ? `Region from your ${preset.label} endpoint, e.g. ${preset.regionPlaceholder}.${s3EndpointValue ? ` Connects to ${s3EndpointValue}.` : ""}`
+            : "Required for AWS S3. With a custom endpoint you can leave this blank. us-east-1 is used by default."
+        }
         layout={fieldLayout}
       >
         <Input
           className={fieldInputCls}
           value={s3Region}
           onChange={(e) => setS3Region(e.target.value)}
-          placeholder="us-east-1"
+          placeholder={preset?.regionPlaceholder ?? "us-east-1"}
           spellCheck={false}
         />
       </Row>
@@ -643,22 +714,30 @@ export function ConnectForm({
         />
       </Row>
       <Row
-        label="Access Key ID"
-        hint="Access key ID from your S3 credentials. AWS keys usually start with AKIA."
+        label={preset?.keyIdLabel ?? "Access Key ID"}
+        hint={
+          preset
+            ? `${preset.keyIdLabel} from your ${preset.label} application key.`
+            : "Access key ID from your S3 credentials. AWS keys usually start with AKIA."
+        }
         layout={fieldLayout}
       >
         <Input
           className={fieldInputCls}
           value={username}
           onChange={(e) => setUsername(e.target.value)}
-          placeholder="AKIA…"
+          placeholder={preset ? "" : "AKIA…"}
           spellCheck={false}
           autoCapitalize="off"
         />
       </Row>
       <Row
-        label="Secret Access Key"
-        hint="Secret access key that pairs with the access key ID."
+        label={preset?.secretLabel ?? "Secret Access Key"}
+        hint={
+          preset
+            ? `${preset.secretLabel} shown once when you created the key.`
+            : "Secret access key that pairs with the access key ID."
+        }
         layout={fieldLayout}
       >
         <Input
@@ -670,19 +749,21 @@ export function ConnectForm({
           autoFocus={isPane && autoFocus && !!seed}
         />
       </Row>
-      <Row
-        label="Session Token"
-        hint="Optional token for temporary credentials. Leave blank when using long-lived access keys."
-        layout={fieldLayout}
-      >
-        <Input
-          className={fieldInputCls}
-          type="password"
-          value={sessionToken}
-          onChange={(e) => setSessionToken(e.target.value)}
-          placeholder="Optional"
-        />
-      </Row>
+      {!preset && (
+        <Row
+          label="Session Token"
+          hint="Optional token for temporary credentials. Leave blank when using long-lived access keys."
+          layout={fieldLayout}
+        >
+          <Input
+            className={fieldInputCls}
+            type="password"
+            value={sessionToken}
+            onChange={(e) => setSessionToken(e.target.value)}
+            placeholder="Optional"
+          />
+        </Row>
+      )}
     </>
   );
 
@@ -862,9 +943,7 @@ export function ConnectForm({
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder={
-                protocol === "s3"
-                  ? `${s3Bucket || "bucket"} (${s3EndpointValue ? (endpointHost(s3EndpointValue) ?? s3EndpointValue) : "AWS"})`
-                  : `${username || "user"}@${server || "host"}`
+                protocol === "s3" ? `${s3Bucket || "bucket"} (${s3EndpointLabel})` : `${username || "user"}@${server || "host"}`
               }
             />
           </Row>
