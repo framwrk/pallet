@@ -29,14 +29,14 @@ function gcsProfile(s3: Partial<NonNullable<ConnectProfile["s3"]>> = {}): Connec
     port: 443,
     username: credentials.accessKeyId,
     auth: { method: "s3", secretAccessKey: credentials.secretAccessKey },
-    s3: { provider: "gcs", region: "auto", bucket: "my.bucket", ...s3 },
+    s3: { preset: "gcs", region: "auto", bucket: "my.bucket", ...s3 },
   };
 }
 
 describe("Google Cloud Storage preset config", () => {
   test("pins the XML API endpoint, auto region, and path-style addressing", () => {
     expect(s3ConfigFromProfile(gcsProfile())).toEqual({
-      provider: "gcs",
+      preset: "gcs",
       region: "auto",
       bucket: "my.bucket",
       endpoint: "https://storage.googleapis.com",
@@ -46,7 +46,7 @@ describe("Google Cloud Storage preset config", () => {
 
   test("ignores stored endpoint, region, and addressing overrides", () => {
     const config = resolveS3Config({
-      provider: "gcs",
+      preset: "gcs",
       endpoint: "https://s3.example.com",
       region: "us-west-2",
       bucket: " my-bucket ",
@@ -61,26 +61,22 @@ describe("Google Cloud Storage preset config", () => {
   });
 
   test("still requires a valid bucket", () => {
-    expect(() => resolveS3Config({ provider: "gcs", region: "", bucket: " " })).toThrow("Cloud Storage bucket is required");
-    expect(() => resolveS3Config({ provider: "gcs", region: "", bucket: "a/b" })).toThrow("Invalid Cloud Storage bucket name");
+    expect(() => resolveS3Config({ preset: "gcs", region: "", bucket: " " })).toThrow("Cloud Storage bucket is required");
+    expect(() => resolveS3Config({ preset: "gcs", region: "", bucket: "a/b" })).toThrow("Invalid Cloud Storage bucket name");
   });
 
   test("leaves AWS and generic endpoints on their existing defaults", () => {
     expect(resolveS3Config({ region: "eu-west-1", bucket: "b" })).toEqual({
-      provider: "s3",
       region: "eu-west-1",
       bucket: "b",
       forcePathStyle: false,
     });
-    expect(resolveS3Config({ provider: "s3", endpoint: "https://minio.local:9000", region: "us-east-1", bucket: "b" })).toEqual(
-      {
-        provider: "s3",
-        region: "us-east-1",
-        bucket: "b",
-        endpoint: "https://minio.local:9000",
-        forcePathStyle: true,
-      },
-    );
+    expect(resolveS3Config({ endpoint: "https://minio.local:9000", region: "us-east-1", bucket: "b" })).toEqual({
+      region: "us-east-1",
+      bucket: "b",
+      endpoint: "https://minio.local:9000",
+      forcePathStyle: true,
+    });
   });
 
   test("builds a client that only sends checksums when an operation requires one", async () => {
@@ -188,8 +184,8 @@ class LargeObjectS3 {
   }
 }
 
-function target(provider?: "gcs"): S3Target {
-  return { bucket: "bucket", location: locationFor(""), ...(provider ? { provider } : {}) };
+function target(preset?: string): S3Target {
+  return { bucket: "bucket", location: locationFor(""), ...(preset ? { preset } : {}) };
 }
 
 describe("Google Cloud Storage server-side copy", () => {
@@ -209,9 +205,10 @@ describe("Google Cloud Storage server-side copy", () => {
     expect(client.names()).toContain("CopyObjectCommand");
   });
 
-  test("AWS and generic targets keep multipart copy above 5 GiB", async () => {
+  test("AWS, generic, and B2 targets keep multipart copy above 5 GB", async () => {
     expect(copyOptionsFor(target())).toEqual({});
-    expect(SINGLE_COPY_LIMIT).toBe(5 * GIB);
+    expect(copyOptionsFor(target("b2"))).toEqual({});
+    expect(SINGLE_COPY_LIMIT).toBe(5_000_000_000);
     const client = new LargeObjectS3();
     await renamePath(client, target(), "/big.bin", "/renamed.bin");
     expect(client.names()).toContain("UploadPartCopyCommand");
@@ -227,7 +224,7 @@ describe("Google Cloud Storage credentials", () => {
   });
 
   test("generic S3 keeps its session token", () => {
-    const profile = gcsProfile({ provider: undefined, region: "us-east-1" });
+    const profile = gcsProfile({ preset: undefined, region: "us-east-1" });
     profile.auth = { method: "s3", secretAccessKey: "secret", sessionToken: "aws-token" };
     expect(credentialsFromProfile(profile).sessionToken).toBe("aws-token");
   });

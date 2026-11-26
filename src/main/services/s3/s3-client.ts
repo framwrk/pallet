@@ -1,5 +1,5 @@
-import type { ConnectProfile, S3ConnectionOptions, S3Provider } from "@shared/sftp/sftp.types";
-import { GCS_ENDPOINT, GCS_REGION } from "@shared/sftp/sftp.utils";
+import type { ConnectProfile, S3ConnectionOptions } from "@shared/sftp/sftp.types";
+import { GCS_ENDPOINT, GCS_PRESET_ID, GCS_REGION } from "@shared/s3/s3-presets";
 import { S3Client, type S3ClientConfig } from "@aws-sdk/client-s3";
 
 export interface S3Credentials {
@@ -9,7 +9,8 @@ export interface S3Credentials {
 }
 
 export interface ResolvedS3Config {
-  provider: S3Provider;
+  /** Provider preset id; only the Google Cloud Storage preset changes the client. */
+  preset?: string;
   region: string;
   bucket: string;
   endpoint?: string;
@@ -48,7 +49,7 @@ export function validateEndpoint(endpoint: string | undefined): string | undefin
 }
 
 export function resolveS3Config(options: S3ConnectionOptions): ResolvedS3Config {
-  if (options.provider === "gcs") return resolveGcsConfig(options);
+  if (options.preset === GCS_PRESET_ID) return resolveGcsConfig(options);
   const endpoint = validateEndpoint(options.endpoint);
   const region = options.region?.trim();
   const bucket = options.bucket?.trim();
@@ -56,7 +57,7 @@ export function resolveS3Config(options: S3ConnectionOptions): ResolvedS3Config 
   if (!bucket) throw s3Error("EINVAL", "S3 bucket is required");
   if (/[^\w.-]/.test(bucket)) throw s3Error("EINVAL", `Invalid S3 bucket name: ${bucket}`);
   return {
-    provider: "s3",
+    ...(options.preset ? { preset: options.preset } : {}),
     region,
     bucket,
     forcePathStyle: options.forcePathStyle ?? endpoint !== undefined,
@@ -73,7 +74,7 @@ function resolveGcsConfig(options: S3ConnectionOptions): ResolvedS3Config {
   const bucket = options.bucket?.trim();
   if (!bucket) throw s3Error("EINVAL", "Cloud Storage bucket is required");
   if (/[^\w.-]/.test(bucket)) throw s3Error("EINVAL", `Invalid Cloud Storage bucket name: ${bucket}`);
-  return { provider: "gcs", region: GCS_REGION, bucket, endpoint: GCS_ENDPOINT, forcePathStyle: true };
+  return { preset: GCS_PRESET_ID, region: GCS_REGION, bucket, endpoint: GCS_ENDPOINT, forcePathStyle: true };
 }
 
 export function s3ConfigFromProfile(profile: ConnectProfile): ResolvedS3Config {
@@ -87,7 +88,7 @@ export function credentialsFromProfile(profile: ConnectProfile): S3Credentials {
   if (!accessKeyId) throw s3Error("EINVAL", "S3 access key ID is required");
   if (!profile.auth.secretAccessKey) throw s3Error("EINVAL", "S3 secret access key is required");
   // HMAC keys have no session token; a leftover one would only break signing.
-  const sessionToken = profile.s3?.provider === "gcs" ? undefined : profile.auth.sessionToken;
+  const sessionToken = profile.s3?.preset === GCS_PRESET_ID ? undefined : profile.auth.sessionToken;
   return {
     accessKeyId,
     secretAccessKey: profile.auth.secretAccessKey,
@@ -113,7 +114,7 @@ export function createS3Client(config: ResolvedS3Config, credentials: S3Credenti
     ...(config.endpoint ? { endpoint: config.endpoint } : {}),
   };
   const client = new S3Client(options);
-  if (config.provider === "gcs") {
+  if (config.preset === GCS_PRESET_ID) {
     // Cloud Storage ignores Range when it decompresses a gzip-encoded object;
     // accepting gzip makes it serve the stored bytes, so ranges and sizes agree.
     client.middlewareStack.add(

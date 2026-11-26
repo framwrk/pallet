@@ -24,7 +24,7 @@ import {
 } from "./s3-path";
 import { normalizeS3Error, s3Call, s3Error } from "./s3-client";
 import type { Entry } from "@shared/fs/fs.types";
-import type { S3Provider } from "@shared/sftp/sftp.types";
+import { GCS_PRESET_ID } from "@shared/s3/s3-presets";
 
 /** Minimal command sender; the real S3Client and tests both satisfy it. */
 export interface S3Like {
@@ -34,7 +34,8 @@ export interface S3Like {
 export interface S3Target {
   bucket: string;
   location: S3Location;
-  provider?: S3Provider;
+  /** Provider preset id; only the Google Cloud Storage preset changes copies. */
+  preset?: string;
 }
 
 interface ListedObject {
@@ -46,8 +47,8 @@ interface ListedObject {
 
 const MB = 1024 * 1024;
 const GIB = 1024 * MB;
-/** S3's single CopyObject limit. */
-export const SINGLE_COPY_LIMIT = 5 * GIB;
+/** Single CopyObject limit: 5 GB in decimal bytes, the strictest of AWS (5 GiB) and Backblaze B2. */
+export const SINGLE_COPY_LIMIT = 5_000_000_000;
 /** Cloud Storage has no UploadPartCopy; its CopyObject covers the 5 TiB object maximum. */
 export const GCS_SINGLE_COPY_LIMIT = 5 * 1024 * GIB;
 const MULTIPART_MIN_PART = 5 * MB;
@@ -316,7 +317,7 @@ export interface CopyOptions {
 }
 
 export function copyOptionsFor(target: S3Target): CopyOptions {
-  return target.provider === "gcs" ? { singleCopyLimit: GCS_SINGLE_COPY_LIMIT } : {};
+  return target.preset === GCS_PRESET_ID ? { singleCopyLimit: GCS_SINGLE_COPY_LIMIT } : {};
 }
 
 function multipartPartSize(size: number, requested?: number): number {

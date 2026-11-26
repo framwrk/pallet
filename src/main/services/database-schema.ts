@@ -23,7 +23,7 @@ CREATE TABLE IF NOT EXISTS favorites (
   s3_region TEXT,
   s3_bucket TEXT,
   s3_force_path_style INTEGER NOT NULL DEFAULT 0,
-  s3_provider TEXT,
+  s3_preset TEXT,
   smb_share TEXT,
   smb_domain TEXT,
   webdav_root TEXT
@@ -68,10 +68,10 @@ export function initializeDatabase(db: Database.Database): void {
     { column: "s3_region", definition: "TEXT" },
     { column: "s3_bucket", definition: "TEXT" },
     { column: "s3_force_path_style", definition: "INTEGER NOT NULL DEFAULT 0" },
+    { column: "s3_preset", definition: "TEXT" },
     { column: "smb_share", definition: "TEXT" },
     { column: "smb_domain", definition: "TEXT" },
     { column: "webdav_root", definition: "TEXT" },
-    { column: "s3_provider", definition: "TEXT" },
   ];
   for (const { column, definition } of favoriteMigrations) {
     if (!favoriteColumns.has(column)) {

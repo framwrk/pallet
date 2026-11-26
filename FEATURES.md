@@ -258,14 +258,9 @@ AWS S3 and MinIO are verified. Other S3-compatible services use the same setting
 verified. See [S3 connections](docs/s3-connections.md) for required IAM permissions and complete
 behavior.
 
-Set **Provider** to **Google Cloud Storage** to connect with a Cloud Storage HMAC key. The preset
-fills in `https://storage.googleapis.com` and region `auto`, uses path-style addressing, labels the
-credentials **HMAC Access ID** and **HMAC Secret**, and is saved with the favorite. See
-[Google Cloud Storage](docs/s3-connections.md#google-cloud-storage) for key setup, IAM roles, and
-limitations.
-
 | Field                       | Notes                                                                                                  |
 | --------------------------- | ------------------------------------------------------------------------------------------------------ |
+| **Provider**                | **AWS or custom endpoint**; **Backblaze B2**, which derives the endpoint from the region and labels the keys **Key ID** and **Application key**; or **Google Cloud Storage**, which fixes the endpoint to `https://storage.googleapis.com`, the region to `auto`, and path-style addressing, and labels the keys **HMAC Access ID** and **HMAC Secret**. See [Google Cloud Storage](docs/s3-connections.md#google-cloud-storage). |
 | **Endpoint**                | Optional `http(s)` origin for MinIO, Cloudflare R2, Wasabi, or another compatible service. Blank uses AWS. It must be an origin, without credentials or a path prefix. |
 | **Region**                  | Required for request signing, including with a custom endpoint.                                        |
 | **Bucket**                  | One existing general-purpose bucket.                                                                   |
@@ -280,7 +275,7 @@ insecure switch.
 
 **Credential storage.** Each favorite keeps one encrypted, Keychain-backed secret blob containing a
 versioned JSON payload with the secret access key and optional session token. For S3, the database
-stores only the endpoint, region, bucket, addressing style, prefix, and access key ID. The renderer
+stores only the endpoint, region, bucket, addressing style, provider preset, prefix, and access key ID. The renderer
 never receives the secret. When editing, a blank secret keeps the existing one; replacing the access key without a
 session token stores long-term credentials; replacing only the session token requires re-entering the
 access key and secret.
@@ -294,7 +289,7 @@ live objects; bucket versioning or Cloud Storage soft delete may keep a recovera
 
 **Transfers and cost.** Uploads stage as `.pallet-<id>.pallet-part`, then copy server-side to the
 final key, so an existing object survives a failed replacement. Interrupted files involving S3 restart
-from byte zero; Pallet does not resume multipart uploads. Objects over 5 GiB use multipart server-side
+from byte zero; Pallet does not resume multipart uploads. Objects over 5 GB use multipart server-side
 copy, except with the Google Cloud Storage preset, which always uses a single copy. Crashing or losing the endpoint can leave staging objects and incomplete multipart uploads
 behind, which may cost storage; Pallet never changes bucket lifecycle rules, so expire the `.pallet-`
 prefix yourself if needed.

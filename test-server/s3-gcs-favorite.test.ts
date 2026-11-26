@@ -42,7 +42,7 @@ function input(overrides: Partial<FavoriteInput> = {}): FavoriteInput {
     port: 443,
     username: "GOOG1EXAMPLE",
     authMethod: "s3",
-    s3Provider: "gcs",
+    s3Preset: "gcs",
     s3Endpoint: "https://storage.googleapis.com",
     s3Region: "auto",
     s3Bucket: "backups",
@@ -52,11 +52,11 @@ function input(overrides: Partial<FavoriteInput> = {}): FavoriteInput {
   };
 }
 
-test("an existing S3 favorites table gains the provider column and reopens with the GCS preset", () => {
+test("an existing S3 favorites table gains the preset column and reopens with the GCS preset", () => {
   const saved = store.saveFavorite(input(), { secretAccessKey: "hmac-secret" });
   expect(store.getFavorite(saved.id)).toMatchObject({
     protocol: "s3",
-    s3Provider: "gcs",
+    s3Preset: "gcs",
     s3Endpoint: "https://storage.googleapis.com",
     s3Region: "auto",
     s3Bucket: "backups",
@@ -80,13 +80,14 @@ test("a GCS favorite stores the preset's endpoint, region, and addressing, not s
 test("switching a favorite back to generic S3 clears the preset", () => {
   const saved = store.saveFavorite(input(), { secretAccessKey: "hmac-secret" });
   const updated = store.saveFavorite(
-    input({ id: saved.id, s3Provider: undefined, s3Endpoint: undefined, s3Region: "us-east-1", s3ForcePathStyle: false }),
+    input({ id: saved.id, s3Preset: undefined, s3Endpoint: undefined, s3Region: "us-east-1", s3ForcePathStyle: false }),
+    { secretAccessKey: "aws-secret" },
   );
-  expect(updated.s3Provider).toBeUndefined();
+  expect(updated.s3Preset).toBeUndefined();
   expect(updated.secretStored).toBe(true);
 });
 
-test("non-S3 favorites reject the provider", () => {
+test("non-S3 favorites reject the preset", () => {
   expect(() =>
     store.saveFavorite(
       {
@@ -96,7 +97,7 @@ test("non-S3 favorites reject the provider", () => {
         port: 22,
         username: "u",
         authMethod: "password",
-        s3Provider: "gcs",
+        s3Preset: "gcs",
         colorLabel: "none",
       },
       "pw",

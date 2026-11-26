@@ -15,12 +15,13 @@ import {
 } from "lucide-react";
 import { COLOR_LABELS, LABEL_COLOR_CLASSES } from "@shared/favorite/favorite.constants";
 import type { ColorLabel, Favorite, FavoriteInput, FavoriteSecret } from "@shared/favorite/favorite.types";
-import type { ConnectProfile, ConnectionProtocol, S3Provider } from "@shared/sftp/sftp.types";
-import { GCS_ENDPOINT, GCS_REGION, isWebDav, verifiesTls } from "@shared/sftp/sftp.utils";
+import type { ConnectProfile, ConnectionProtocol } from "@shared/sftp/sftp.types";
 import { type PaneId, getState, pushToast, useAppState } from "@/store/pane.store";
+import { S3_PRESETS, findS3Preset, presetEndpoint } from "@shared/s3/s3-presets";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cancelConnection, connectRemote, isCancelledConnection } from "@/store/sftp.store";
+import { isWebDav, verifiesTls } from "@shared/sftp/sftp.utils";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -38,11 +39,6 @@ const PROTOCOLS: Record<ConnectionProtocol, string> = {
   smb: "SMB",
   webdav: "WebDAV",
   webdavs: "WebDAVS",
-};
-
-const S3_PROVIDERS: Record<S3Provider, string> = {
-  s3: "AWS or S3-compatible",
-  gcs: "Google Cloud Storage",
 };
 
 function defaultPort(protocol: ConnectionProtocol): number {
@@ -81,6 +77,11 @@ function validateS3Endpoint(endpoint: string): string | null {
   if (url.pathname !== "/" || url.search || url.hash) return "Endpoint can’t include a path, query, or fragment";
   return null;
 }
+
+const S3_PROVIDERS: Record<string, string> = {
+  custom: "AWS or custom endpoint",
+  ...Object.fromEntries(S3_PRESETS.map((preset) => [preset.id, preset.label])),
+};
 
 function ProtocolSelect({
   protocol,
@@ -226,26 +227,16 @@ export function ConnectForm({
   const [showSecret, setShowSecret] = useState(false);
   const [keyPath, setKeyPath] = useState(seed?.privateKeyPath ?? "");
   const [passphrase, setPassphrase] = useState("");
-  const seedProvider = seedS3?.s3Provider ?? "s3";
-  const seedGcs = seedProvider === "gcs";
-  const [s3Provider, setS3Provider] = useState<S3Provider>(seedProvider);
-  const isGcs = protocol === "s3" && s3Provider === "gcs";
-  // A GCS favorite always shows the preset's values, whatever was stored.
-  const [s3Endpoint, setS3Endpoint] = useState(seedGcs ? GCS_ENDPOINT : (seedS3?.s3Endpoint ?? ""));
-  const [s3Region, setS3Region] = useState(seedGcs ? GCS_REGION : (seedS3?.s3Region ?? "us-east-1"));
+  const [s3Preset, setS3Preset] = useState(seedS3?.s3Preset ?? "");
+  const seedPreset = findS3Preset(seedS3?.s3Preset);
+  const [s3Endpoint, setS3Endpoint] = useState(seedS3?.s3Endpoint ?? "");
+  // A fixed-region preset always shows its own region, whatever was stored.
+  const [s3Region, setS3Region] = useState(seedPreset?.fixedRegion ?? seedS3?.s3Region ?? "us-east-1");
   const [s3Bucket, setS3Bucket] = useState(seedS3?.s3Bucket ?? "");
   const [s3ForcePathStyle, setS3ForcePathStyle] = useState(
-    seedGcs || (seedS3?.s3ForcePathStyle ?? Boolean(seedS3?.s3Endpoint)),
+    Boolean(seedPreset?.pathStyleOnly) || (seedS3?.s3ForcePathStyle ?? Boolean(seedS3?.s3Endpoint)),
   );
-  const pathStyleTouched = useRef(!seedGcs && seedS3?.s3ForcePathStyle !== undefined);
-  /** Generic S3 values set aside while the GCS preset is selected, restored on switching back. */
-  const genericS3Draft = useRef({
-    endpoint: "",
-    region: "us-east-1",
-    forcePathStyle: false,
-    pathStyleTouched: false,
-    sessionToken: "",
-  });
+  const pathStyleTouched = useRef(seedS3?.s3ForcePathStyle !== undefined);
   const [secretAccessKey, setSecretAccessKey] = useState("");
   const [sessionToken, setSessionToken] = useState("");
   const [smbShare, setSmbShare] = useState(seed?.protocol === "smb" ? (seed.smbShare ?? "") : "");
@@ -278,9 +269,13 @@ export function ConnectForm({
   const secretPlaceholder =
     seed?.secretStored && !editing ? "Stored password" : editing?.secretStored ? "Leave blank to keep saved" : "";
   const s3SecretPlaceholder = seedS3?.secretStored ? "Leave blank to keep saved" : "";
-  const s3EndpointValue = s3Endpoint.trim();
-  const s3RegionValue = s3Region.trim();
+  const preset = findS3Preset(s3Preset);
+  const s3RegionValue = preset ? s3Region.trim().toLowerCase() : s3Region.trim();
+  // A stored secret belongs to the provider it was saved with.
+  const providerChanged = Boolean(editing) && (seedS3?.s3Preset ?? "") !== s3Preset;
+  const s3EndpointValue = preset ? (presetEndpoint(preset, s3RegionValue) ?? "") : s3Endpoint.trim();
   const s3RegionResolved = s3RegionValue || (s3EndpointValue ? "us-east-1" : "");
+  const s3EndpointLabel = preset?.label ?? (s3EndpointValue ? (endpointHost(s3EndpointValue) ?? s3EndpointValue) : "AWS");
 
   function changeProtocol(nextProtocol: ConnectionProtocol): void {
     const currentDefault = defaultPort(protocol);
@@ -295,32 +290,6 @@ export function ConnectForm({
     setError(null);
   }
 
-  function changeS3Provider(nextProvider: S3Provider): void {
-    if (nextProvider === s3Provider) return;
-    setS3Provider(nextProvider);
-    if (nextProvider === "gcs") {
-      genericS3Draft.current = {
-        endpoint: s3Endpoint,
-        region: s3Region,
-        forcePathStyle: s3ForcePathStyle,
-        pathStyleTouched: pathStyleTouched.current,
-        sessionToken,
-      };
-      setS3Endpoint(GCS_ENDPOINT);
-      setS3Region(GCS_REGION);
-      setS3ForcePathStyle(true);
-      setSessionToken("");
-    } else {
-      const draft = genericS3Draft.current;
-      setS3Endpoint(draft.endpoint);
-      setS3Region(draft.region);
-      setS3ForcePathStyle(draft.forcePathStyle);
-      pathStyleTouched.current = draft.pathStyleTouched;
-      setSessionToken(draft.sessionToken);
-    }
-    setError(null);
-  }
-
   function changeAuthMethod(nextMethod: "password" | "key" | "agent"): void {
     setShowSecret(false);
     setAuthMethod(nextMethod);
@@ -328,17 +297,16 @@ export function ConnectForm({
 
   function validate(): string | null {
     if (protocol === "s3") {
+      if (preset && !s3RegionValue) return "Region is required";
+      if (preset && !s3EndpointValue) return `Enter a ${preset.label} region like ${preset.regionPlaceholder}`;
       if (!s3RegionResolved) return "Region is required";
       if (!s3Bucket.trim()) return "Bucket is required";
-      if (!username.trim()) return isGcs ? "HMAC access ID is required" : "Access key ID is required";
-      // A saved secret belongs to the provider it was entered for; never carry it across.
-      if (!secretAccessKey && editing && seedS3?.secretStored && s3Provider !== seedProvider) {
-        return isGcs
-          ? "Enter a new HMAC access ID and secret for Google Cloud Storage"
-          : "Enter a new access key ID and secret access key for this provider";
+      if (!username.trim()) return `${preset?.keyIdLabel ?? "Access key ID"} is required`;
+      if (!secretAccessKey && providerChanged && seedS3?.secretStored) {
+        return `Re-enter the ${preset?.secretLabel ?? "secret access key"} after changing the provider`;
       }
       if (!secretAccessKey && !(editing && seedS3?.secretStored)) {
-        return isGcs ? "HMAC secret is required" : "Secret access key is required";
+        return `${preset?.secretLabel ?? "Secret access key"} is required`;
       }
       const endpointError = validateS3Endpoint(s3EndpointValue);
       if (endpointError) return endpointError;
@@ -367,18 +335,17 @@ export function ConnectForm({
     if (protocol === "s3") {
       return {
         ...(editing ? { id: editing.id } : {}),
-        name:
-          name.trim() || `${s3Bucket.trim()} (${s3EndpointValue ? (endpointHost(s3EndpointValue) ?? s3EndpointValue) : "AWS"})`,
+        name: name.trim() || `${s3Bucket.trim()} (${s3EndpointLabel})`,
         protocol: "s3",
         host: s3Host(),
         port: 443,
         username: username.trim(),
         authMethod: "s3",
-        ...(isGcs ? { s3Provider: "gcs" as const } : {}),
         ...(s3EndpointValue ? { s3Endpoint: normalizeS3Endpoint(s3EndpointValue) } : {}),
         s3Region: s3RegionResolved,
         s3Bucket: s3Bucket.trim(),
         s3ForcePathStyle,
+        ...(preset ? { s3Preset: preset.id } : {}),
         ...(remotePathField.trim() ? { remotePath: remotePathField.trim() } : {}),
         ...(localPathField.trim() ? { localPath: localPathField.trim() } : {}),
         ...(note.trim() ? { note: note.trim() } : {}),
@@ -409,7 +376,7 @@ export function ConnectForm({
   function enteredSecret(): FavoriteSecret | undefined {
     if (protocol === "s3") {
       if (!secretAccessKey) return undefined;
-      return { secretAccessKey, ...(sessionToken && !isGcs ? { sessionToken } : {}) };
+      return { secretAccessKey, ...(sessionToken ? { sessionToken } : {}) };
     }
     const secret = authMethod === "password" ? password : authMethod === "key" ? passphrase : "";
     return secret.length > 0 ? secret : undefined;
@@ -423,9 +390,9 @@ export function ConnectForm({
           host: s3Host(),
           port: 443,
           username: username.trim(),
-          auth: { method: "s3", secretAccessKey, ...(sessionToken && !isGcs ? { sessionToken } : {}) },
+          auth: { method: "s3", secretAccessKey, ...(sessionToken ? { sessionToken } : {}) },
           s3: {
-            ...(isGcs ? { provider: "gcs" as const } : {}),
+            ...(preset ? { preset: preset.id } : {}),
             ...(s3EndpointValue ? { endpoint: normalizeS3Endpoint(s3EndpointValue) } : {}),
             region: s3RegionResolved,
             bucket: s3Bucket.trim(),
@@ -643,14 +610,28 @@ export function ConnectForm({
     <>
       <Row
         label="Provider"
-        hint="Google Cloud Storage fills in its endpoint and region and signs in with an HMAC key."
+        hint="A provider preset fills in the endpoint from the region."
         layout={fieldLayout}
       >
         <Select
           items={S3_PROVIDERS}
-          value={s3Provider}
+          value={s3Preset || "custom"}
           onValueChange={(value) => {
-            if (value) changeS3Provider(value as S3Provider);
+            const next = value && value !== "custom" ? value : "";
+            const nextPreset = findS3Preset(next);
+            setS3Preset(next);
+            setError(null);
+            // A fixed region (such as Cloud Storage's "auto") never carries over to another provider.
+            const region = preset?.fixedRegion ? "" : s3RegionValue;
+            if (next) {
+              setSessionToken("");
+              // AWS's default region is never a valid provider region.
+              setS3Region(nextPreset?.fixedRegion ?? (region === "us-east-1" ? "" : region));
+              if (nextPreset?.pathStyleOnly || !pathStyleTouched.current) setS3ForcePathStyle(true);
+            } else {
+              setS3Region(region || "us-east-1");
+              if (!pathStyleTouched.current) setS3ForcePathStyle(Boolean(s3Endpoint.trim()));
+            }
           }}
         >
           <SelectTrigger
@@ -677,56 +658,55 @@ export function ConnectForm({
           </SelectContent>
         </Select>
       </Row>
-      <Row
-        label="Endpoint"
-        hint={
-          isGcs
-            ? "Set by the Google Cloud Storage preset."
-            : "Hostname of your S3-compatible provider, e.g. s3.example.com. Leave blank for AWS S3."
-        }
-        layout={fieldLayout}
-      >
-        <div className="flex flex-col gap-1">
-          <Input
-            className={fieldInputCls}
-            readOnly={isGcs}
-            value={s3Endpoint}
-            onChange={(e) => {
-              const value = e.target.value;
-              setS3Endpoint(value);
-              // Custom endpoints nearly always need path-style addressing; AWS does not.
-              if (value.trim()) setS3ForcePathStyle(true);
-              else if (!pathStyleTouched.current) setS3ForcePathStyle(false);
-            }}
-            placeholder="AWS S3"
-            spellCheck={false}
-            autoFocus={autoFocus && !seed}
-          />
-          {/^http:\/\//i.test(s3EndpointValue) && (
-            <p
-              className="text-destructive text-[11px]"
-              role="alert"
-            >
-              Credentials and data would travel without TLS.
-            </p>
-          )}
-        </div>
-      </Row>
+      {!preset && (
+        <Row
+          label="Endpoint"
+          hint="Hostname of your S3-compatible provider, e.g. s3.example.com. Leave blank for AWS S3."
+          layout={fieldLayout}
+        >
+          <div className="flex flex-col gap-1">
+            <Input
+              className={fieldInputCls}
+              value={s3Endpoint}
+              onChange={(e) => {
+                const value = e.target.value;
+                setS3Endpoint(value);
+                // Custom endpoints nearly always need path-style addressing; AWS does not.
+                if (value.trim()) setS3ForcePathStyle(true);
+                else if (!pathStyleTouched.current) setS3ForcePathStyle(false);
+              }}
+              placeholder="AWS S3"
+              spellCheck={false}
+              autoFocus={autoFocus && !seed}
+            />
+            {/^http:\/\//i.test(s3EndpointValue) && (
+              <p
+                className="text-destructive text-[11px]"
+                role="alert"
+              >
+                Credentials and data would travel without TLS.
+              </p>
+            )}
+          </div>
+        </Row>
+      )}
       <Row
         label="Region"
         hint={
-          isGcs
-            ? "Set by the Google Cloud Storage preset."
-            : "Required for AWS S3. With a custom endpoint you can leave this blank. us-east-1 is used by default."
+          preset?.fixedRegion
+            ? `Set by the ${preset.label} preset. Connects to ${s3EndpointValue}.`
+            : preset
+              ? `Region from your ${preset.label} endpoint, e.g. ${preset.regionPlaceholder}.${s3EndpointValue ? ` Connects to ${s3EndpointValue}.` : ""}`
+              : "Required for AWS S3. With a custom endpoint you can leave this blank. us-east-1 is used by default."
         }
         layout={fieldLayout}
       >
         <Input
           className={fieldInputCls}
-          readOnly={isGcs}
           value={s3Region}
+          readOnly={Boolean(preset?.fixedRegion)}
           onChange={(e) => setS3Region(e.target.value)}
-          placeholder="us-east-1"
+          placeholder={preset?.regionPlaceholder ?? "us-east-1"}
           spellCheck={false}
         />
       </Row>
@@ -744,10 +724,10 @@ export function ConnectForm({
         />
       </Row>
       <Row
-        label={isGcs ? "HMAC Access ID" : "Access Key ID"}
+        label={preset?.keyIdLabel ?? "Access Key ID"}
         hint={
-          isGcs
-            ? "Access ID of a Cloud Storage HMAC key. Service account keys usually start with GOOG1."
+          preset
+            ? `${preset.keyIdLabel} from your ${preset.label} key.`
             : "Access key ID from your S3 credentials. AWS keys usually start with AKIA."
         }
         layout={fieldLayout}
@@ -756,15 +736,17 @@ export function ConnectForm({
           className={fieldInputCls}
           value={username}
           onChange={(e) => setUsername(e.target.value)}
-          placeholder={isGcs ? "GOOG1…" : "AKIA…"}
+          placeholder={preset ? "" : "AKIA…"}
           spellCheck={false}
           autoCapitalize="off"
         />
       </Row>
       <Row
-        label={isGcs ? "HMAC Secret" : "Secret Access Key"}
+        label={preset?.secretLabel ?? "Secret Access Key"}
         hint={
-          isGcs ? "Secret shown once when the HMAC key was created." : "Secret access key that pairs with the access key ID."
+          preset
+            ? `${preset.secretLabel} shown once when you created the key.`
+            : "Secret access key that pairs with the access key ID."
         }
         layout={fieldLayout}
       >
@@ -777,7 +759,7 @@ export function ConnectForm({
           autoFocus={isPane && autoFocus && !!seed}
         />
       </Row>
-      {!isGcs && (
+      {!preset && (
         <Row
           label="Session Token"
           hint="Optional token for temporary credentials. Leave blank when using long-lived access keys."
@@ -971,9 +953,7 @@ export function ConnectForm({
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder={
-                protocol === "s3"
-                  ? `${s3Bucket || "bucket"} (${s3EndpointValue ? (endpointHost(s3EndpointValue) ?? s3EndpointValue) : "AWS"})`
-                  : `${username || "user"}@${server || "host"}`
+                protocol === "s3" ? `${s3Bucket || "bucket"} (${s3EndpointLabel})` : `${username || "user"}@${server || "host"}`
               }
             />
           </Row>
@@ -1151,7 +1131,7 @@ export function ConnectForm({
               spellCheck={false}
             />
           </Row>
-          {protocol === "s3" && !isGcs && (
+          {protocol === "s3" && !preset?.pathStyleOnly && (
             <Row
               label="Addressing"
               hint="Path-style puts the bucket in the URL path instead of the hostname. Most custom endpoints need this; AWS S3 works either way."

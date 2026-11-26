@@ -455,7 +455,7 @@ export class SessionManager {
     const target: S3Target = {
       bucket: config.bucket,
       location: locationFor(session.profile.remotePath),
-      provider: config.provider,
+      ...(config.preset ? { preset: config.preset } : {}),
     };
     try {
       await client.send(
