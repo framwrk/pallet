@@ -604,6 +604,7 @@ function AppearancePanel({
 
 const PROTOCOL_LABELS: Record<Favorite["protocol"], string> = {
   sftp: "SFTP",
+  scp: "SCP",
   ftp: "FTP",
   ftps: "FTPS",
   "ftps-implicit": "FTPS (Implicit)",

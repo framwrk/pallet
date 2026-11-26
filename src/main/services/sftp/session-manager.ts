@@ -28,11 +28,13 @@ import {
   normalizeS3Error,
   s3ConfigFromProfile,
 } from "../s3/s3-client";
-import { ftpTlsMode, isWebDav } from "@shared/sftp/sftp.utils";
+import { ftpTlsMode, isSsh, isWebDav } from "@shared/sftp/sftp.utils";
 import { locationFor, prefixForPath } from "../s3/s3-path";
 import { Client as FtpClient } from "basic-ftp";
+import { ScpConnection } from "../scp/scp-client";
 import { createHash } from "crypto";
 import { promises as fs } from "fs";
+import { realpathScript } from "../scp/scp-shell";
 
 export interface HostKeyDecisionInput {
   host: string;
@@ -74,6 +76,7 @@ interface Session {
   s3Target: S3Target | null;
   smb: SmbConnection | null;
   webdav: WebDavConnection | null;
+  scp: ScpConnection | null;
   sftp: SFTPWrapper | null;
   pool: ChannelPool;
   ftpPool: FtpPool;
@@ -128,6 +131,7 @@ export function parseKeyType(keyBlob: Buffer): string {
 
 export function protocolOf(profile: ConnectProfile): ConnectionProtocol {
   if (
+    profile.protocol === "scp" ||
     profile.protocol === "ftp" ||
     profile.protocol === "ftps" ||
     profile.protocol === "ftps-implicit" ||
@@ -163,6 +167,12 @@ function connectionError(err: Error): Error {
   return Object.assign(new Error("The connection isn't reachable"), {
     code: (err as NodeJS.ErrnoException).code,
   });
+}
+
+/** ssh2's subsystem refusal hides the useful next step. */
+function sftpError(err: Error): Error {
+  if (!/Unable to start subsystem: sftp/i.test(err.message)) return err;
+  return Object.assign(new Error("This server doesn't offer SFTP. Connect with SCP instead."), { code: "ENOSFTP" });
 }
 
 async function resolveSshAgent(): Promise<BaseAgent> {
@@ -255,8 +265,8 @@ export class SessionManager {
    */
   async openTerminalClient(sessionId: string): Promise<SshClient> {
     const session = this.mustGet(sessionId);
-    if (protocolOf(session.profile) !== "sftp") {
-      const err: NodeJS.ErrnoException = new Error("Terminal is available for SFTP connections only");
+    if (!isSsh(protocolOf(session.profile))) {
+      const err: NodeJS.ErrnoException = new Error("Terminal is available for SFTP and SCP connections only");
       err.code = "ENOTSSH";
       throw err;
     }
@@ -296,12 +306,13 @@ export class SessionManager {
       id,
       profile,
       generation: 0,
-      client: protocolOf(profile) === "sftp" ? new SshClient() : null,
+      client: isSsh(protocolOf(profile)) ? new SshClient() : null,
       ftp: null,
       s3: null,
       s3Target: null,
       smb: null,
       webdav: null,
+      scp: null,
       sftp: null,
       pool: { free: [], total: 0, waiters: [] },
       ftpPool: { free: [], total: 0, waiters: [] },
@@ -361,6 +372,7 @@ export class SessionManager {
     session.s3 = null;
     this.closeSmb(session);
     this.closeWebDav(session);
+    this.closeScp(session);
     session.generation++;
     this.resetPool(session, new Error("Connection cancelled"));
     this.resetFtpPool(session, new Error("Connection cancelled"));
@@ -381,7 +393,7 @@ export class SessionManager {
       await this.dialWebDav(session);
       return;
     }
-    if (protocol !== "sftp") {
+    if (!isSsh(protocol)) {
       await this.dialFtp(session);
       return;
     }
@@ -405,9 +417,20 @@ export class SessionManager {
       client.once("error", onError);
       client.connect(config);
     });
-    session.sftp = await new Promise<SFTPWrapper>((resolve, reject) => {
-      client.sftp((err, sftp) => (err ? reject(err) : resolve(sftp)));
-    });
+    try {
+      if (protocol === "scp") {
+        const scp = await ScpConnection.open(client, poolSizeFor(session.profile));
+        this.closeScp(session);
+        session.scp = scp;
+      } else {
+        session.sftp = await new Promise<SFTPWrapper>((resolve, reject) => {
+          client.sftp((err, sftp) => (err ? reject(sftpError(err)) : resolve(sftp)));
+        });
+      }
+    } catch (err) {
+      client.end();
+      throw err;
+    }
     // Post-handshake errors must not become uncaught exceptions.
     client.on("error", () => {});
     session.reconnectAttempt = 0;
@@ -511,6 +534,12 @@ export class SessionManager {
     this.setStatus(session, "connected");
   }
 
+  private closeScp(session: Session): void {
+    const connection = session.scp;
+    session.scp = null;
+    connection?.close();
+  }
+
   private closeWebDav(session: Session): void {
     const connection = session.webdav;
     session.webdav = null;
@@ -553,6 +582,14 @@ export class SessionManager {
       const [resource] = await webdav.propfind(path, 0, true).catch(() => []);
       return resource?.isDir ? path : "/";
     }
+    if (protocolOf(session.profile) === "scp") {
+      const scp = session.scp;
+      if (!scp) throw new Error("No SCP connection");
+      if (!want) return scp.home;
+      const relative = want.replace(/^~(\/|$)/, "");
+      const path = want.startsWith("/") ? want : `${scp.home.replace(/\/$/, "")}/${relative}`;
+      return (await this.scpRealpath(scp, path)) ?? scp.home;
+    }
     if (protocolOf(session.profile) !== "sftp") {
       const ftp = session.ftp;
       if (!ftp) throw new Error("No FTP client");
@@ -589,6 +626,7 @@ export class SessionManager {
     session.s3 = null;
     this.closeSmb(session);
     this.closeWebDav(session);
+    this.closeScp(session);
     session.generation++;
     this.resetPool(session, new Error("Connection lost"));
     this.resetFtpPool(session, new Error("Connection lost"));
@@ -656,11 +694,12 @@ export class SessionManager {
   private async tryReconnect(session: Session): Promise<void> {
     if (session.closing || !this.sessions.has(session.id)) return;
     session.client?.removeAllListeners();
-    session.client = protocolOf(session.profile) === "sftp" ? new SshClient() : null;
+    session.client = isSsh(protocolOf(session.profile)) ? new SshClient() : null;
     session.ftp?.close();
     session.ftp = null;
     this.closeSmb(session);
     this.closeWebDav(session);
+    this.closeScp(session);
     try {
       await this.dial(session);
       session.client?.on("close", () => this.handleDrop(session));
@@ -690,6 +729,7 @@ export class SessionManager {
     session.s3 = null;
     this.closeSmb(session);
     this.closeWebDav(session);
+    this.closeScp(session);
     session.generation++;
     this.resetPool(session, new Error("Disconnected"));
     this.resetFtpPool(session, new Error("Disconnected"));
@@ -766,6 +806,26 @@ export class SessionManager {
       throw err;
     }
     return session.smb;
+  }
+
+  /** The session's SCP exec-channel gate; shared by browsing and transfers. */
+  scpConnection(sessionId: string): ScpConnection {
+    const session = this.mustGet(sessionId);
+    if (!session.scp || session.scp.closed || session.status !== "connected") {
+      const err: NodeJS.ErrnoException = new Error("Not connected");
+      err.code = "ENOTCONN";
+      throw err;
+    }
+    return session.scp;
+  }
+
+  private async scpRealpath(scp: ScpConnection, path: string): Promise<string | null> {
+    try {
+      const { stdout } = await scp.run(realpathScript(path), "Could not open the folder");
+      return stdout.toString("utf8").replace(/\n$/, "");
+    } catch {
+      return null;
+    }
   }
 
   /** The session's WebDAV connection; shared by browsing and transfers. */

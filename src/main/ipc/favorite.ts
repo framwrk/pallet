@@ -1,7 +1,7 @@
 import * as store from "../services/favorite-store.service";
 import type { ConnectProfile, ConnectResult } from "@shared/sftp/sftp.types";
 import type { Favorite, FavoriteInput, FavoriteSecret } from "@shared/favorite/favorite.types";
-import { isWebDav, verifiesTls } from "@shared/sftp/sftp.utils";
+import { isSsh, isWebDav, verifiesTls } from "@shared/sftp/sftp.utils";
 import { FavoriteChannels } from "@shared/ipc/ipc.constants";
 import type { IpcResult } from "@shared/ipc/ipc.types";
 import { ipcMain } from "electron";
@@ -64,7 +64,7 @@ async function connectFavorite(id: string, attemptId?: string): Promise<ConnectR
       ...(favorite.remotePath ? { remotePath: favorite.remotePath } : {}),
     };
   } else if (favorite.authMethod === "agent") {
-    if (favorite.protocol !== "sftp") throw new Error("SSH agent authentication is only available for SFTP");
+    if (!isSsh(favorite.protocol)) throw new Error("SSH agent authentication is only available for SFTP and SCP");
     profile = {
       protocol: favorite.protocol,
       host: favorite.host,
@@ -95,7 +95,7 @@ async function connectFavorite(id: string, attemptId?: string): Promise<ConnectR
         ...(favorite.remotePath ? { remotePath: favorite.remotePath } : {}),
       };
     } else {
-      if (favorite.protocol !== "sftp") throw new Error("FTP, FTPS, SMB, and WebDAV favorites require password authentication");
+      if (!isSsh(favorite.protocol)) throw new Error("FTP, FTPS, SMB, and WebDAV favorites require password authentication");
       if (!favorite.privateKeyPath) {
         const err: NodeJS.ErrnoException = new Error("Favorite has no private key path");
         err.code = "ENOSECRET";

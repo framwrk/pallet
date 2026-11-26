@@ -7,7 +7,7 @@ password="${PALLET_TEST_PASSWORD:-pallet}"
 echo "pallet:${password}" | chpasswd
 
 case "${PALLET_TEST_PROTOCOL:-sftp}" in
-  sftp)
+  sftp | scp)
     if [ ! -f /etc/ssh/host-keys/ssh_host_ed25519_key ]; then
       ssh-keygen -q -t ed25519 -N "" -f /etc/ssh/host-keys/ssh_host_ed25519_key
     fi
@@ -16,7 +16,13 @@ case "${PALLET_TEST_PROTOCOL:-sftp}" in
       ssh-keygen -q -t rsa -b 3072 -N "" -f /etc/ssh/host-keys/ssh_host_rsa_key
     fi
 
-    exec /usr/sbin/sshd -D -e -f /etc/ssh/sshd_config
+    config=/etc/ssh/sshd_config
+    if [ "${PALLET_TEST_PROTOCOL:-sftp}" = scp ]; then
+      # SCP-only server: same sshd, no SFTP subsystem.
+      sed '/^Subsystem/d' /etc/ssh/sshd_config > /etc/ssh/sshd_config_scp
+      config=/etc/ssh/sshd_config_scp
+    fi
+    exec /usr/sbin/sshd -D -e -f "$config"
     ;;
   ftp)
     exec /usr/sbin/pure-ftpd \

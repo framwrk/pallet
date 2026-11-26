@@ -4,8 +4,8 @@
 
 **A free and open-source dual-pane file manager for macOS.**
 
-Connect to servers over SFTP, FTP, explicit or implicit FTPS, SMB, or WebDAV, or to S3-compatible
-object storage, and move files between your Mac and remote locations.
+Connect to servers over SFTP, SCP, FTP, explicit or implicit FTPS, SMB, or WebDAV, or to
+S3-compatible object storage, and move files between your Mac and remote locations.
 
 [![Release](https://img.shields.io/github/v/release/framwrk/pallet?sort=semver&label=release)](https://github.com/framwrk/pallet/releases)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
@@ -28,7 +28,10 @@ remote hosts.
 - **SFTP, FTP, and FTPS (explicit or implicit):** password or private-key authentication, plus SSH
   agent authentication for SFTP (including 1Password's agent), per-connection keepalive, concurrency,
   and compression options, and SSH trust-on-first-use host key verification.
-- **SFTP + SSH terminal:** open an interactive login shell in either SFTP pane with the pane's
+- **SCP for SSH servers without SFTP:** routers, NAS boxes, and hardened hosts that lack the SFTP
+  subsystem work over SCP with the same SSH sign-in and host keys. See
+  [SCP connections](docs/scp-connections.md).
+- **SFTP + SSH terminal:** open an interactive login shell in either SFTP or SCP pane with the pane's
   terminal button or **⌃&#96;**. The shell reuses the connection's credentials over a second SSH
   connection, keeps running while you browse files, and closes with the file session.
 - **S3-compatible storage:** connect to one bucket with an optional starting prefix on AWS S3 or a
@@ -244,6 +247,10 @@ Connect from Pallet with these test-only credentials:
 | SFTP          | `localhost` | `2222` | `pallet` | `pallet` | `/home/pallet` |
 | FTP           | `localhost` | `2121` | `pallet` | `pallet` | `/`            |
 | Explicit FTPS | `localhost` | `2122` | `pallet` | `pallet` | `/`            |
+| SCP only      | `localhost` | `2223` | `pallet` | `pallet` | `/home/pallet` |
+
+The SCP-only server (sshd without an SFTP subsystem) is opt-in: start it with
+`docker compose --profile scp up -d --build --wait scp`, then run `bun run test:scp`.
 
 The SSH host keys persist across container rebuilds, so Pallet's trusted-host entry remains valid.
 FTPS generates a self-signed certificate for `localhost` on first start and persists it in a Docker

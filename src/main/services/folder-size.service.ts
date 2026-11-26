@@ -2,6 +2,7 @@ import { type Dirent, promises as fs } from "fs";
 import type { FileInfo } from "basic-ftp";
 import { S3Service } from "./s3/s3.service";
 import type { SFTPWrapper } from "ssh2";
+import { ScpService } from "./scp/scp.service";
 import type { SessionManager } from "./sftp/session-manager";
 import type { SizeTarget } from "@shared/fs/fs.types";
 import { SmbService } from "./smb/smb.service";
@@ -167,11 +168,13 @@ export class FolderSizes {
   private localGate = new Gate(LOCAL_JOBS);
   private remoteGates = new Map<string, Gate>();
   private s3: S3Service;
+  private scp: ScpService;
   private smb: SmbService;
   private webdav: WebDavService;
 
   constructor(private sessions: SessionManager) {
     this.s3 = new S3Service(sessions);
+    this.scp = new ScpService(sessions);
     this.smb = new SmbService(sessions);
     this.webdav = new WebDavService(sessions);
   }
@@ -223,6 +226,7 @@ export class FolderSizes {
     const protocol = this.sessions.protocol(sessionId);
     if (protocol === "s3") return this.s3.folderSize(sessionId, path);
     if (protocol === "smb") return this.smb.folderSize(sessionId, path);
+    if (protocol === "scp") return this.scp.folderSize(sessionId, path);
     if (isWebDav(protocol)) return this.webdav.folderSize(sessionId, path);
     if (protocol !== "sftp") return walkFtp(this.sessions, sessionId, path);
     return walkRemote(this.sessions, sessionId, path);

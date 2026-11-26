@@ -1,8 +1,8 @@
 import type { ColorLabel, Favorite, FavoriteInput, FavoriteSecret } from "@shared/favorite/favorite.types";
 import { deleteSecret, storeSecret } from "./secrets";
 import { findS3Preset, normalizePresetRegion, presetEndpoint } from "@shared/s3/s3-presets";
+import { isSsh, isWebDav } from "@shared/sftp/sftp.utils";
 import { getDb } from "./database";
-import { isWebDav } from "@shared/sftp/sftp.utils";
 import { randomUUID } from "crypto";
 import { serializeS3Secret } from "./s3/s3-secret";
 
@@ -41,7 +41,8 @@ interface Row {
 }
 
 function protocolFrom(value: string): Favorite["protocol"] {
-  return value === "ftp" ||
+  return value === "scp" ||
+    value === "ftp" ||
     value === "ftps" ||
     value === "ftps-implicit" ||
     value === "s3" ||
@@ -57,7 +58,7 @@ function fromRow(row: Row): Favorite {
   const authMethod =
     protocol === "s3"
       ? "s3"
-      : protocol === "sftp" && row.auth_method === "agent"
+      : isSsh(protocol) && row.auth_method === "agent"
         ? "agent"
         : row.auth_method === "key"
           ? "key"
@@ -149,7 +150,7 @@ export function saveFavorite(input: FavoriteInput, secret?: FavoriteSecret | nul
 
   const authMethod = isS3
     ? "s3"
-    : protocol === "sftp" && (input.authMethod === "key" || input.authMethod === "agent")
+    : isSsh(protocol) && (input.authMethod === "key" || input.authMethod === "agent")
       ? input.authMethod
       : "password";
   const privateKeyPath = authMethod === "key" ? (input.privateKeyPath ?? null) : null;

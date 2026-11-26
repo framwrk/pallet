@@ -32,6 +32,26 @@ services:
       retries: 10
       start_period: 2s
 
+  scp:
+    <<: *network-settings
+    profiles: ["scp"]
+    build:
+      context: ./test-server
+    environment:
+      <<: *network-environment
+      PALLET_TEST_PASSWORD: "${PALLET_TEST_PASSWORD:-pallet}"
+      PALLET_TEST_PROTOCOL: scp
+    ports:
+      - "127.0.0.1:${PALLET_SCP_TEST_PORT:-2223}:22"
+    volumes:
+      - test-server-scp-host-keys:/etc/ssh/host-keys
+    healthcheck:
+      test: ["CMD", "pidof", "sshd"]
+      interval: 2s
+      timeout: 2s
+      retries: 10
+      start_period: 2s
+
   ftp:
     <<: *network-settings
     build:
@@ -99,4 +119,5 @@ services:
 
 volumes:
   test-server-host-keys:
+  test-server-scp-host-keys:
   test-server-ftps-certificate:

@@ -209,8 +209,9 @@ export class EditSessions {
   }
 
   private async streamUpload(edit: EditSession, partPath: string, signal: AbortSignal): Promise<void> {
+    const { size } = await fs.stat(edit.localPath);
     const src = createReadStream(edit.localPath);
-    const dst = await edit.endpoint.createWriteStream(partPath, edit.remoteMode, { signal });
+    const dst = await edit.endpoint.createWriteStream(partPath, edit.remoteMode, { signal, size });
     await pipeline(src, dst, { signal });
   }
 

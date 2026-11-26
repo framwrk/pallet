@@ -21,7 +21,7 @@ import { S3_PRESETS, findS3Preset, presetEndpoint } from "@shared/s3/s3-presets"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cancelConnection, connectRemote, isCancelledConnection } from "@/store/sftp.store";
-import { isWebDav, verifiesTls } from "@shared/sftp/sftp.utils";
+import { isSsh, isWebDav, verifiesTls } from "@shared/sftp/sftp.utils";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -32,6 +32,7 @@ import { saveFavorite } from "@/store/favorite.store";
 
 const PROTOCOLS: Record<ConnectionProtocol, string> = {
   sftp: "SFTP",
+  scp: "SCP",
   ftp: "FTP",
   ftps: "FTPS",
   "ftps-implicit": "FTPS (Implicit)",
@@ -42,7 +43,7 @@ const PROTOCOLS: Record<ConnectionProtocol, string> = {
 };
 
 function defaultPort(protocol: ConnectionProtocol): number {
-  if (protocol === "sftp") return 22;
+  if (isSsh(protocol)) return 22;
   if (protocol === "s3" || protocol === "webdavs") return 443;
   if (protocol === "webdav") return 80;
   if (protocol === "smb") return 445;
@@ -221,7 +222,7 @@ export function ConnectForm({
   const portTouched = useRef(seed ? seed.port !== defaultPort(initialProtocol) : false);
   const [username, setUsername] = useState(seed?.username ?? "");
   const [authMethod, setAuthMethod] = useState<"password" | "key" | "agent" | "s3">(
-    initialProtocol === "s3" ? "s3" : initialProtocol === "sftp" ? (seed?.authMethod ?? "password") : "password",
+    initialProtocol === "s3" ? "s3" : isSsh(initialProtocol) ? (seed?.authMethod ?? "password") : "password",
   );
   const [password, setPassword] = useState("");
   const [showSecret, setShowSecret] = useState(false);
@@ -286,7 +287,7 @@ export function ConnectForm({
     setProtocol(nextProtocol);
     setShowSecret(false);
     if (nextProtocol === "s3") setAuthMethod("s3");
-    else if (authMethod === "s3" || nextProtocol !== "sftp") setAuthMethod("password");
+    else if (authMethod === "s3" || !isSsh(nextProtocol)) setAuthMethod("password");
     setError(null);
   }
 
@@ -514,7 +515,7 @@ export function ConnectForm({
       >
         <LockKeyhole data-icon="inline-start" /> Password
       </Button>
-      {protocol === "sftp" && (
+      {isSsh(protocol) && (
         <>
           <Button
             type="button"
@@ -837,7 +838,7 @@ export function ConnectForm({
               </div>
             </div>
 
-            {protocol === "sftp" && authPicker}
+            {isSsh(protocol) && authPicker}
 
             <div className="pallet-credentials-grid grid grid-cols-2 gap-2.5">
               <Row
@@ -1166,7 +1167,7 @@ export function ConnectForm({
               />
             </Row>
           )}
-          {protocol === "sftp" && (
+          {isSsh(protocol) && (
             <Row
               label="Keepalive (s)"
               layout={fieldLayout}
@@ -1181,7 +1182,7 @@ export function ConnectForm({
           <Row
             label="Concurrency"
             layout={fieldLayout}
-            className={cn(isPane && protocol !== "sftp" && "pallet-options-span col-span-2")}
+            className={cn(isPane && !isSsh(protocol) && "pallet-options-span col-span-2")}
           >
             <div className="flex items-center gap-2">
               <Input
@@ -1192,7 +1193,7 @@ export function ConnectForm({
               {!isPane && <span className="text-muted-foreground text-[11px]">parallel transfer channels (1–7)</span>}
             </div>
           </Row>
-          {protocol === "sftp" && (
+          {isSsh(protocol) && (
             <Row
               label="Compression"
               layout={fieldLayout}

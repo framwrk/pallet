@@ -28,6 +28,7 @@
     "test:offline": "bun test test-server",
     "test:s3": "bun run test-s3/run.ts",
     "test:smb": "bun run test-smb/run.ts",
+    "test:scp": "bun run test-server/verify-scp.ts",
     "test:transfers": "bun test test-server/transfer.test.ts test-server/session-pool.test.ts test-server/transfer-speed.test.ts test-server/broadcast.test.ts",
     "test:ui:local": "bun run test-server/ui/run.ts local",
     "test:ui:integration": "bun run test-server/ui/run.ts integration",
