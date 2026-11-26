@@ -36,6 +36,9 @@ remote hosts.
   session token. A **Backblaze B2** preset derives the endpoint from the region and uses B2's Key ID
   and Application key. See [S3 connections](docs/s3-connections.md) for fields, IAM permissions, B2
   notes, and limitations.
+- **Google Cloud Storage:** a provider preset on S3 connections that signs in with an HMAC key and
+  fills in the Cloud Storage endpoint and region. See
+  [Google Cloud Storage](docs/s3-connections.md#google-cloud-storage) for key setup and IAM roles.
 - **SMB file shares:** connect to one share on a Windows PC, Mac, NAS, or Samba server with a
   username and password. Pallet speaks SMB 2.1 and 3.x with NTLMv2 sign-in, and signs and encrypts
   traffic when the server offers it. See [SMB connections](docs/smb-connections.md).

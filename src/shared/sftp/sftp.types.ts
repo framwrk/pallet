@@ -10,6 +10,8 @@ export type ConnectionProtocol = "sftp" | "ftp" | "ftps" | "ftps-implicit" | "s3
 
 /** S3 connection settings; one connection is scoped to one bucket and prefix. */
 export interface S3ConnectionOptions {
+  /** Provider preset id from S3_PRESETS; absent for AWS or a custom endpoint. */
+  preset?: string;
   /** Absolute http(s) origin; blank uses the AWS regional endpoint. */
   endpoint?: string;
   region: string;

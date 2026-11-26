@@ -55,6 +55,7 @@ async function connectFavorite(id: string, attemptId?: string): Promise<ConnectR
         ...(secret.sessionToken ? { sessionToken: secret.sessionToken } : {}),
       },
       s3: {
+        ...(favorite.s3Preset ? { preset: favorite.s3Preset } : {}),
         ...(favorite.s3Endpoint ? { endpoint: favorite.s3Endpoint } : {}),
         region,
         bucket,

@@ -24,6 +24,7 @@ import {
 } from "./s3-path";
 import { normalizeS3Error, s3Call, s3Error } from "./s3-client";
 import type { Entry } from "@shared/fs/fs.types";
+import { GCS_PRESET_ID } from "@shared/s3/s3-presets";
 
 /** Minimal command sender; the real S3Client and tests both satisfy it. */
 export interface S3Like {
@@ -33,6 +34,8 @@ export interface S3Like {
 export interface S3Target {
   bucket: string;
   location: S3Location;
+  /** Provider preset id; only the Google Cloud Storage preset changes copies. */
+  preset?: string;
 }
 
 interface ListedObject {
@@ -46,6 +49,8 @@ const MB = 1024 * 1024;
 const GIB = 1024 * MB;
 /** Single CopyObject limit: 5 GB in decimal bytes, the strictest of AWS (5 GiB) and Backblaze B2. */
 export const SINGLE_COPY_LIMIT = 5_000_000_000;
+/** Cloud Storage has no UploadPartCopy; its CopyObject covers the 5 TiB object maximum. */
+export const GCS_SINGLE_COPY_LIMIT = 5 * 1024 * GIB;
 const MULTIPART_MIN_PART = 5 * MB;
 const MULTIPART_MAX_PART = 5 * GIB;
 const MULTIPART_MAX_PARTS = 10_000;
@@ -311,6 +316,10 @@ export interface CopyOptions {
   partSize?: number;
 }
 
+export function copyOptionsFor(target: S3Target): CopyOptions {
+  return target.preset === GCS_PRESET_ID ? { singleCopyLimit: GCS_SINGLE_COPY_LIMIT } : {};
+}
+
 function multipartPartSize(size: number, requested?: number): number {
   if (requested && requested > 0) {
     return Math.min(MULTIPART_MAX_PART, Math.max(MULTIPART_MIN_PART, Math.floor(requested)));
@@ -413,7 +422,7 @@ export async function renamePath(client: S3Like, target: S3Target, from: string,
         code: "EEXIST",
       });
     }
-    await copyObject(client, target.bucket, fromKey, toKey);
+    await copyObject(client, target.bucket, fromKey, toKey, copyOptionsFor(target));
     await deleteKeys(client, target.bucket, [fromKey]);
     return;
   }
@@ -439,7 +448,7 @@ export async function renamePath(client: S3Like, target: S3Target, from: string,
   let copied = 0;
   try {
     for (const move of moves) {
-      await copyObject(client, target.bucket, move.from, move.to);
+      await copyObject(client, target.bucket, move.from, move.to, copyOptionsFor(target));
       copied++;
     }
   } catch (err) {

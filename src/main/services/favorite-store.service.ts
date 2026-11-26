@@ -156,10 +156,11 @@ export function saveFavorite(input: FavoriteInput, secret?: FavoriteSecret | nul
   const s3Preset = isS3 && input.s3Preset ? findS3Preset(input.s3Preset) : undefined;
   if (isS3 && input.s3Preset && !s3Preset) throw invalid(`Unknown S3 provider preset: ${input.s3Preset}`);
   // A preset's endpoint always follows from its region, whatever the renderer sent.
-  const presetOrigin = s3Preset ? presetEndpoint(s3Preset, input.s3Region ?? "") : null;
-  if (s3Preset && !presetOrigin) throw invalid(`Invalid ${s3Preset.label} region: ${input.s3Region ?? ""}`);
+  const presetRegion = s3Preset?.fixedRegion ?? input.s3Region ?? "";
+  const presetOrigin = s3Preset ? presetEndpoint(s3Preset, presetRegion) : null;
+  if (s3Preset && !presetOrigin) throw invalid(`Invalid ${s3Preset.label} region: ${presetRegion}`);
   const s3Endpoint = isS3 ? (presetOrigin ?? input.s3Endpoint ?? null) : null;
-  const s3Region = isS3 ? ((s3Preset ? normalizePresetRegion(input.s3Region ?? "") : input.s3Region) ?? null) : null;
+  const s3Region = isS3 ? ((s3Preset ? normalizePresetRegion(presetRegion) : input.s3Region) ?? null) : null;
   if (s3Preset && secret && typeof secret === "object" && secret.sessionToken) {
     throw invalid(`${s3Preset.label} favorites do not use a session token`);
   }
@@ -167,7 +168,7 @@ export function saveFavorite(input: FavoriteInput, secret?: FavoriteSecret | nul
     throw invalid("Re-enter the S3 credentials when changing the provider");
   }
   const s3Bucket = isS3 ? (input.s3Bucket ?? null) : null;
-  const s3ForcePathStyle = isS3 && input.s3ForcePathStyle === true ? 1 : 0;
+  const s3ForcePathStyle = s3Preset?.pathStyleOnly || (isS3 && input.s3ForcePathStyle === true) ? 1 : 0;
   const smbShare = isSmb ? (input.smbShare?.trim() ?? null) : null;
   const smbDomain = isSmb ? input.smbDomain?.trim() || null : null;
   const webdavRoot = isWebDav(protocol) ? input.webdavRoot?.trim() || null : null;

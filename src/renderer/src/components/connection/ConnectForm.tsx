@@ -228,10 +228,14 @@ export function ConnectForm({
   const [keyPath, setKeyPath] = useState(seed?.privateKeyPath ?? "");
   const [passphrase, setPassphrase] = useState("");
   const [s3Preset, setS3Preset] = useState(seedS3?.s3Preset ?? "");
+  const seedPreset = findS3Preset(seedS3?.s3Preset);
   const [s3Endpoint, setS3Endpoint] = useState(seedS3?.s3Endpoint ?? "");
-  const [s3Region, setS3Region] = useState(seedS3?.s3Region ?? "us-east-1");
+  // A fixed-region preset always shows its own region, whatever was stored.
+  const [s3Region, setS3Region] = useState(seedPreset?.fixedRegion ?? seedS3?.s3Region ?? "us-east-1");
   const [s3Bucket, setS3Bucket] = useState(seedS3?.s3Bucket ?? "");
-  const [s3ForcePathStyle, setS3ForcePathStyle] = useState(seedS3?.s3ForcePathStyle ?? Boolean(seedS3?.s3Endpoint));
+  const [s3ForcePathStyle, setS3ForcePathStyle] = useState(
+    Boolean(seedPreset?.pathStyleOnly) || (seedS3?.s3ForcePathStyle ?? Boolean(seedS3?.s3Endpoint)),
+  );
   const pathStyleTouched = useRef(seedS3?.s3ForcePathStyle !== undefined);
   const [secretAccessKey, setSecretAccessKey] = useState("");
   const [sessionToken, setSessionToken] = useState("");
@@ -388,6 +392,7 @@ export function ConnectForm({
           username: username.trim(),
           auth: { method: "s3", secretAccessKey, ...(sessionToken ? { sessionToken } : {}) },
           s3: {
+            ...(preset ? { preset: preset.id } : {}),
             ...(s3EndpointValue ? { endpoint: normalizeS3Endpoint(s3EndpointValue) } : {}),
             region: s3RegionResolved,
             bucket: s3Bucket.trim(),
@@ -613,15 +618,18 @@ export function ConnectForm({
           value={s3Preset || "custom"}
           onValueChange={(value) => {
             const next = value && value !== "custom" ? value : "";
+            const nextPreset = findS3Preset(next);
             setS3Preset(next);
             setError(null);
+            // A fixed region (such as Cloud Storage's "auto") never carries over to another provider.
+            const region = preset?.fixedRegion ? "" : s3RegionValue;
             if (next) {
               setSessionToken("");
               // AWS's default region is never a valid provider region.
-              if (s3RegionValue === "us-east-1") setS3Region("");
-              if (!pathStyleTouched.current) setS3ForcePathStyle(true);
+              setS3Region(nextPreset?.fixedRegion ?? (region === "us-east-1" ? "" : region));
+              if (nextPreset?.pathStyleOnly || !pathStyleTouched.current) setS3ForcePathStyle(true);
             } else {
-              if (!s3RegionValue) setS3Region("us-east-1");
+              setS3Region(region || "us-east-1");
               if (!pathStyleTouched.current) setS3ForcePathStyle(Boolean(s3Endpoint.trim()));
             }
           }}
@@ -685,15 +693,18 @@ export function ConnectForm({
       <Row
         label="Region"
         hint={
-          preset
-            ? `Region from your ${preset.label} endpoint, e.g. ${preset.regionPlaceholder}.${s3EndpointValue ? ` Connects to ${s3EndpointValue}.` : ""}`
-            : "Required for AWS S3. With a custom endpoint you can leave this blank. us-east-1 is used by default."
+          preset?.fixedRegion
+            ? `Set by the ${preset.label} preset. Connects to ${s3EndpointValue}.`
+            : preset
+              ? `Region from your ${preset.label} endpoint, e.g. ${preset.regionPlaceholder}.${s3EndpointValue ? ` Connects to ${s3EndpointValue}.` : ""}`
+              : "Required for AWS S3. With a custom endpoint you can leave this blank. us-east-1 is used by default."
         }
         layout={fieldLayout}
       >
         <Input
           className={fieldInputCls}
           value={s3Region}
+          readOnly={Boolean(preset?.fixedRegion)}
           onChange={(e) => setS3Region(e.target.value)}
           placeholder={preset?.regionPlaceholder ?? "us-east-1"}
           spellCheck={false}
@@ -716,7 +727,7 @@ export function ConnectForm({
         label={preset?.keyIdLabel ?? "Access Key ID"}
         hint={
           preset
-            ? `${preset.keyIdLabel} from your ${preset.label} application key.`
+            ? `${preset.keyIdLabel} from your ${preset.label} key.`
             : "Access key ID from your S3 credentials. AWS keys usually start with AKIA."
         }
         layout={fieldLayout}
@@ -1120,7 +1131,7 @@ export function ConnectForm({
               spellCheck={false}
             />
           </Row>
-          {protocol === "s3" && (
+          {protocol === "s3" && !preset?.pathStyleOnly && (
             <Row
               label="Addressing"
               hint="Path-style puts the bucket in the URL path instead of the hostname. Most custom endpoints need this; AWS S3 works either way."

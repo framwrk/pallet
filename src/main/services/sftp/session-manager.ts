@@ -452,7 +452,11 @@ export class SessionManager {
     const config = s3ConfigFromProfile(session.profile);
     const credentials = credentialsFromProfile(session.profile);
     const client = createS3Client(config, credentials);
-    const target: S3Target = { bucket: config.bucket, location: locationFor(session.profile.remotePath) };
+    const target: S3Target = {
+      bucket: config.bucket,
+      location: locationFor(session.profile.remotePath),
+      ...(config.preset ? { preset: config.preset } : {}),
+    };
     try {
       await client.send(
         new ListObjectsV2Command({

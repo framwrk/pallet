@@ -7,7 +7,16 @@ import {
   type WriteOptions,
 } from "../transfer/transfer-endpoint";
 import { PassThrough, Readable, Writable } from "stream";
-import { type S3Like, type S3Target, copyObject, createFolder, listDirectory, statKey, statPathOrNull } from "./s3-ops";
+import {
+  type S3Like,
+  type S3Target,
+  copyObject,
+  copyOptionsFor,
+  createFolder,
+  listDirectory,
+  statKey,
+  statPathOrNull,
+} from "./s3-ops";
 import { S3_DIR_MODE, S3_FILE_MODE, keyForPath, normalizePath } from "./s3-path";
 import { normalizeS3Error, s3Call, s3Error } from "./s3-client";
 import type { SessionManager } from "../sftp/session-manager";
@@ -252,7 +261,7 @@ export class S3Endpoint implements TransferEndpoint {
       const fromKey = keyForPath(target.location, normalizePath(from));
       const toKey = keyForPath(target.location, normalizePath(to));
       if (fromKey === toKey) return;
-      await copyObject(client, target.bucket, fromKey, toKey);
+      await copyObject(client, target.bucket, fromKey, toKey, copyOptionsFor(target));
       await s3Call(() => client.send(new DeleteObjectCommand({ Bucket: target.bucket, Key: fromKey })));
     });
   }

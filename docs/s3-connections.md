@@ -4,22 +4,23 @@ Pallet's Quick Connect supports S3-compatible object storage alongside SFTP, FTP
 One connection is scoped to a single general-purpose bucket plus an optional starting key prefix; it
 is not a bucket browser. MinIO is exercised against a disposable local server; AWS S3 uses the same
 client and configuration but is only verified when an operator runs the opt-in real-AWS check. Other
-S3-compatible services use the same configuration, but are not separately verified.
+S3-compatible services use the same configuration, but are not separately verified. Backblaze B2 and
+Google Cloud Storage have [provider presets](#provider-presets) on the same connection type.
 
 ## Setup fields
 
-| Field                     | Notes                                                                                                                                                                                        |
-| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Protocol**              | S3.                                                                                                                                                                                          |
-| **Provider**              | **AWS or custom endpoint**, or a provider preset such as **Backblaze B2**. A preset hides **Endpoint** and **Session Token**, derives the endpoint from **Region**, and relabels the keys.   |
-| **Endpoint**              | Optional `http://` or `https://` origin for MinIO, Cloudflare R2, Wasabi, and similar. The scheme may be omitted, in which case `https://` is assumed. Blank uses the AWS regional endpoint. |
-| **Region**                | Required for AWS. Optional with a custom endpoint, where blank defaults to `us-east-1`; it is always sent as the request-signing region.                                                     |
-| **Bucket**                | One existing general-purpose bucket. Pallet does not list your buckets, create them, or delete them.                                                                                         |
-| **Starting Prefix**       | Optional key prefix, stored in the favorite's **Remote Path** and shown as **Prefix**. The pane's `/` is this prefix; blank means the bucket root.                                           |
-| **Access Key ID**         | Stored in the favorite's nonsecret username field.                                                                                                                                           |
-| **Secret Access Key**     | Stored in the encrypted secret blob.                                                                                                                                                         |
-| **Session Token**         | Optional, for temporary credentials. Stored in the same encrypted blob.                                                                                                                      |
-| **Path-style addressing** | Defaults on for custom endpoints and off for AWS. Enable or disable it per connection.                                                                                                       |
+| Field                     | Notes                                                                                                                                                                                                                                             |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Protocol**              | S3.                                                                                                                                                                                                                                               |
+| **Provider**              | **AWS or custom endpoint**, or a provider preset such as **Backblaze B2** or **Google Cloud Storage**. A preset hides **Endpoint** and **Session Token**, derives the endpoint from **Region** (Cloud Storage fixes both), and relabels the keys. |
+| **Endpoint**              | Optional `http://` or `https://` origin for MinIO, Cloudflare R2, Wasabi, and similar. The scheme may be omitted, in which case `https://` is assumed. Blank uses the AWS regional endpoint.                                                      |
+| **Region**                | Required for AWS. Optional with a custom endpoint, where blank defaults to `us-east-1`; it is always sent as the request-signing region.                                                                                                          |
+| **Bucket**                | One existing general-purpose bucket. Pallet does not list your buckets, create them, or delete them.                                                                                                                                              |
+| **Starting Prefix**       | Optional key prefix, stored in the favorite's **Remote Path** and shown as **Prefix**. The pane's `/` is this prefix; blank means the bucket root.                                                                                                |
+| **Access Key ID**         | Stored in the favorite's nonsecret username field.                                                                                                                                                                                                |
+| **Secret Access Key**     | Stored in the encrypted secret blob.                                                                                                                                                                                                              |
+| **Session Token**         | Optional, for temporary credentials. Stored in the same encrypted blob.                                                                                                                                                                           |
+| **Path-style addressing** | Defaults on for custom endpoints and off for AWS. Enable or disable it per connection.                                                                                                                                                            |
 
 The endpoint must be an origin: no credentials, query, fragment, or base path. HTTPS uses the
 platform trust store with verification always on; there is no insecure-verification switch. When the
@@ -33,7 +34,8 @@ a region placeholder, and the provider's names for the key fields. It is not a s
 connections still use the S3 client described here. The favorite stores the preset id next to the
 derived endpoint, and the main process recomputes the endpoint from the region on save, so a preset
 favorite cannot point anywhere but its provider. A region must be one DNS label, such as
-`us-west-004`.
+`us-west-004`. A preset can also fix the region and require path-style addressing, as Google Cloud
+Storage does.
 
 ### Backblaze B2
 
@@ -66,6 +68,75 @@ not verified by the automated checks.
   prefix or a folder under it, or the connection test fails with access denied. The key needs the
   `listFiles`, `readFiles`, `writeFiles`, and `deleteFiles` capabilities.
 - **Credentials.** B2 application keys are long-lived, so the preset has no session token field.
+
+### Google Cloud Storage
+
+Choose **Provider → Google Cloud Storage** to connect to a Cloud Storage bucket through its
+S3-compatible XML API. The preset fills in and locks the endpoint (`https://storage.googleapis.com`)
+and signing region (`auto`), always uses path-style addressing, and relabels the credential fields
+**HMAC Access ID** and **HMAC Secret**. There is no session token field. The favorite stores the
+preset, and it reopens with the same settings.
+
+#### Creating an HMAC key
+
+1. In the Google Cloud console, open **Cloud Storage → Settings → Interoperability**.
+2. Under **Service account HMAC**, choose **Create a key for a service account** and pick (or
+   create) a service account. Google recommends service account keys over user account keys.
+3. Copy the access ID (it starts with `GOOG1`) and the secret. The secret is shown only once.
+4. In Pallet, enter the bucket name, the access ID, and the secret.
+
+With `gcloud`: `gcloud storage hmac create SERVICE_ACCOUNT_EMAIL`.
+
+HMAC sign-in fails with 403 if an organization policy enforces `constraints/storage.restrictAuthTypes`
+against HMAC keys.
+
+#### IAM roles
+
+Grant the service account a role on the bucket (not the project) that covers the operations Pallet
+uses:
+
+| Use                                  | Role                                                       |
+| ------------------------------------ | ---------------------------------------------------------- |
+| Browse, preview, and download only   | `roles/storage.objectViewer`                               |
+| Browse, upload, rename, delete, edit | `roles/storage.objectUser`, or `roles/storage.objectAdmin` |
+
+`roles/storage.objectCreator` alone is not enough: Pallet lists, reads, and deletes its staging
+objects. The permissions involved are `storage.objects.list`, `storage.objects.get`,
+`storage.objects.create`, `storage.objects.delete`, and `storage.multipartUploads.*` for uploads
+larger than one 8 MiB part. To limit a connection to a prefix, add an IAM condition on
+`resource.name.startsWith("projects/_/buckets/BUCKET/objects/PREFIX/")` for object access; listing
+still needs `storage.objects.list` on the bucket.
+
+#### How the preset differs from generic S3
+
+- **Addressing:** path-style (`storage.googleapis.com/BUCKET/KEY`), so bucket names containing dots
+  stay valid under Google's TLS certificate.
+- **Checksums:** recent AWS SDK versions add CRC32 checksum headers and trailers to uploads by
+  default, which Cloud Storage does not accept. As with every custom endpoint, the client asks for
+  checksums only when an operation requires one, which also keeps multipart uploads from requesting
+  a CRC32 checksum algorithm. `DeleteObjects` still carries the CRC32 checksum it requires (see
+  [Backblaze B2](#backblaze-b2)); Google documents multi-object delete, but acceptance of that header
+  is unverified, and a failed delete during rename leaves both the source and the copy.
+- **Copies:** Cloud Storage has no `UploadPartCopy`, but one `CopyObject` covers objects up to its
+  5 TiB maximum, so Pallet never uses multipart server-side copy with this preset.
+- **Uploads:** large uploads use the XML API's S3-compatible multipart upload with 8 MiB parts.
+- **Reads:** downloads and previews send `Accept-Encoding: gzip`. Cloud Storage ignores `Range` when
+  it decompresses an object stored with `Content-Encoding: gzip`, so Pallet asks for the stored bytes
+  instead. Such objects download in their stored, compressed form.
+- **Credentials:** HMAC keys have no session token. Changing an existing favorite's provider requires
+  entering a new key pair, so a saved credential never moves to another provider.
+
+#### Limitations
+
+- Only HMAC keys are supported: no OAuth, service account JSON keys, workload identity, or
+  `gcloud` credentials.
+- Bucket features Pallet does not use elsewhere (Object Versioning, retention, holds, Autoclass,
+  storage classes) are not exposed. A replace fails if the destination object is under a hold or an
+  unexpired retention period.
+- Incomplete multipart uploads never expire on their own in Cloud Storage. Add a lifecycle rule
+  that deletes `.pallet-` staging objects and aborts incomplete multipart uploads if crashes are a
+  concern.
+- The preset has not been verified against a live Cloud Storage bucket by Pallet's automated checks.
 
 ## Required IAM permissions
 
@@ -153,8 +224,9 @@ staged upload and the server-side copy succeed, so a failed replacement leaves i
 staging key or aborting an upload is best effort.
 
 Interrupted files that involve S3 restart from byte zero; Pallet does not persist multipart upload
-IDs or resume partial objects. Objects larger than 5,000,000,000 bytes are copied server-side with
-multipart `UploadPartCopy`.
+IDs or resume partial objects. With AWS and custom endpoints, objects larger than 5,000,000,000 bytes
+are copied server-side with multipart `UploadPartCopy`; the Google Cloud Storage preset always uses a
+single `CopyObject`.
 
 A crash or unreachable endpoint can leave staging objects and incomplete multipart uploads behind,
 which may incur storage cost. Pallet never changes a bucket's lifecycle configuration. If that risk
@@ -174,7 +246,8 @@ already copied remain at the destination until you review and remove them.
 
 Delete is recursive for folders, batched through `DeleteObjects` in groups of 1000, and inspects the
 per-key results. A delete that partially fails reports the affected keys instead of treating the
-request as successful. Deletes are permanent; there is no S3 Trash.
+request as successful. Pallet has no S3 Trash: a delete removes the live object. Bucket versioning,
+or soft delete in Google Cloud Storage, may still keep a recoverable copy outside Pallet.
 
 ## Sizing, previews, and editing
 
@@ -212,4 +285,6 @@ re-entering credentials; Pallet does not refresh tokens or use a credential prov
 ## Verification status
 
 MinIO, AWS S3, and packaged-app checks are opt-in and are not part of the default CI suite. The
-default offline, UI, and release checks do not exercise an S3 endpoint.
+default offline, UI, and release checks do not exercise an S3 endpoint. The offline suite covers how
+the Google Cloud Storage preset becomes client configuration, but there is no live Cloud Storage
+check.
