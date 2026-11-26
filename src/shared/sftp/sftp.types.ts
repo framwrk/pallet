@@ -6,7 +6,7 @@ export type AuthSpec =
   | { method: "s3"; secretAccessKey: string; sessionToken?: string };
 
 /** Remote connection protocol. Missing values from older callers mean SFTP. */
-export type ConnectionProtocol = "sftp" | "ftp" | "ftps" | "s3" | "smb";
+export type ConnectionProtocol = "sftp" | "ftp" | "ftps" | "ftps-implicit" | "s3" | "smb";
 
 /** S3 connection settings; one connection is scoped to one bucket and prefix. */
 export interface S3ConnectionOptions {

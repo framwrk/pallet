@@ -3,6 +3,7 @@ import type { ConnectProfile, ConnectResult } from "@shared/sftp/sftp.types";
 import type { Favorite, FavoriteInput, FavoriteSecret } from "@shared/favorite/favorite.types";
 import { FavoriteChannels } from "@shared/ipc/ipc.constants";
 import type { IpcResult } from "@shared/ipc/ipc.types";
+import { ftpTlsMode } from "@shared/sftp/sftp.utils";
 import { ipcMain } from "electron";
 import { parseS3Secret } from "../services/s3/s3-secret";
 import { readSecret } from "../services/secrets";
@@ -85,7 +86,7 @@ async function connectFavorite(id: string, attemptId?: string): Promise<ConnectR
         port: favorite.port,
         username: favorite.username,
         auth: { method: "password", password: secret },
-        ...(favorite.protocol === "ftps" ? { tlsRejectUnauthorized: favorite.tlsRejectUnauthorized !== false } : {}),
+        ...(ftpTlsMode(favorite.protocol) ? { tlsRejectUnauthorized: favorite.tlsRejectUnauthorized !== false } : {}),
         ...(favorite.protocol === "smb"
           ? { smb: { share: favorite.smbShare ?? "", ...(favorite.smbDomain ? { domain: favorite.smbDomain } : {}) } }
           : {}),

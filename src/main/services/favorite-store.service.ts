@@ -37,7 +37,7 @@ interface Row {
 }
 
 function protocolFrom(value: string): Favorite["protocol"] {
-  return value === "ftp" || value === "ftps" || value === "s3" || value === "smb" ? value : "sftp";
+  return value === "ftp" || value === "ftps" || value === "ftps-implicit" || value === "s3" || value === "smb" ? value : "sftp";
 }
 
 function fromRow(row: Row): Favorite {

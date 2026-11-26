@@ -176,9 +176,9 @@ the selected pane when the right pane is already connected, and otherwise opens 
 
 | Field                               | Notes                                                                                                                               |
 | ----------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| **Protocol**                        | SFTP (with an SSH terminal), FTP, explicit FTPS, S3, or SMB. SFTP is selected by default.                                            |
+| **Protocol**                        | SFTP (with an SSH terminal), FTP, explicit FTPS, implicit FTPS, S3, or SMB. SFTP is selected by default.                            |
 | **Server**                          | Hostname or IP.                                                                                                                     |
-| **Port**                            | Defaults to 22 for SFTP, 21 for FTP and FTPS, and 445 for SMB; Pallet preserves custom ports when you switch protocols.             |
+| **Port**                            | Defaults to 22 for SFTP, 21 for FTP and FTPS, 990 for implicit FTPS, and 445 for SMB; Pallet keeps custom ports across switches.    |
 | **Username**                        |                                                                                                                                     |
 | **Authenticate**                    | Password for every protocol; **Private Key** and **SSH Agent** are also available for SFTP.                                         |
 | **Password** / **Key + Passphrase** | Key auth takes a path to your private key; the passphrase field appears with it. Agent auth uses keys already loaded in your agent. |
@@ -196,7 +196,7 @@ In **Local Path**, `~` expands to your home folder (for example `~/Downloads`).
   [Settings](#settings), which starts at 4. Raise it for many small files; lower it if your server
   limits sessions. Pallet clamps values outside the range rather than rejecting them.
 - **Compression**: SFTP only; negotiates zlib. Useful on slow links, at the cost of CPU.
-- **Verify TLS certificate**: FTPS only, and enabled by default. Disable it only for a trusted
+- **Verify TLS certificate**: explicit and implicit FTPS only, and enabled by default. Disable it only for a trusted
   private or test server that uses a self-signed certificate.
 
 Click **Connect** to connect. Turn on **Add to Favorites** at the bottom of the form to save the
@@ -244,7 +244,7 @@ login shell. Click the button again (**Show Files**) or press **⌃&#96;** to re
 - A file-session reconnect does not interrupt the shell, because the terminal has its own
   connection. Disconnecting the file session (the **×**, **⌘W**, or exhausted reconnect attempts)
   closes the shell too. Quitting Pallet closes every shell.
-- FTP, explicit FTPS, S3, and SMB panes show no terminal button.
+- FTP, explicit FTPS, implicit FTPS, S3, and SMB panes show no terminal button.
 
 ---
 

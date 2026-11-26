@@ -4,8 +4,8 @@
 
 **A free and open-source dual-pane file manager for macOS.**
 
-Connect to servers over SFTP, FTP, explicit FTPS, or SMB, or to S3-compatible object storage, and
-move files between your Mac and remote locations.
+Connect to servers over SFTP, FTP, explicit or implicit FTPS, or SMB, or to S3-compatible object
+storage, and move files between your Mac and remote locations.
 
 [![Release](https://img.shields.io/github/v/release/framwrk/pallet?sort=semver&label=release)](https://github.com/framwrk/pallet/releases)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
@@ -25,9 +25,9 @@ the right pane is the server. Press **⌘K** to connect, select a file, and pres
 the other pane. Replace the local pane with a second server from the toolbar to transfer between
 remote hosts.
 
-- **SFTP, FTP, and explicit FTPS:** password or private-key authentication, plus SSH agent
-  authentication for SFTP (including 1Password's agent), per-connection keepalive, concurrency, and
-  compression options, and SSH trust-on-first-use host key verification.
+- **SFTP, FTP, and FTPS (explicit or implicit):** password or private-key authentication, plus SSH
+  agent authentication for SFTP (including 1Password's agent), per-connection keepalive, concurrency,
+  and compression options, and SSH trust-on-first-use host key verification.
 - **SFTP + SSH terminal:** open an interactive login shell in either SFTP pane with the pane's
   terminal button or **⌃&#96;**. The shell reuses the connection's credentials over a second SSH
   connection, keeps running while you browse files, and closes with the file session.

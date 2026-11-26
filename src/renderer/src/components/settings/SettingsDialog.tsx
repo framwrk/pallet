@@ -606,6 +606,7 @@ const PROTOCOL_LABELS: Record<Favorite["protocol"], string> = {
   sftp: "SFTP",
   ftp: "FTP",
   ftps: "FTPS",
+  "ftps-implicit": "FTPS (Implicit)",
   s3: "S3",
   smb: "SMB",
 };

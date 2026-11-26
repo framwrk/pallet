@@ -8,6 +8,7 @@ import type { SFTPWrapper } from "ssh2";
 import type { SessionManager } from "../sftp/session-manager";
 import { SmbEndpoint } from "../smb/smb-endpoint";
 import { TLSSocket } from "tls";
+import { ftpTlsMode } from "@shared/sftp/sftp.utils";
 
 export interface EndpointStat {
   size: number;
@@ -515,7 +516,7 @@ class FtpEndpoint implements TransferEndpoint {
     const input = new PassThrough();
     input.on("error", () => {});
     let dataReady = Promise.resolve();
-    if (this.sessions.protocol(this.sessionId) === "ftps") {
+    if (ftpTlsMode(this.sessions.protocol(this.sessionId))) {
       const prepare = lease.client.prepareTransfer;
       dataReady = new Promise<void>((resolve) => {
         const prepareUpload: typeof prepare = async (ftp) => {

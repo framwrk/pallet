@@ -26,12 +26,14 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
+import { ftpTlsMode } from "@shared/sftp/sftp.utils";
 import { saveFavorite } from "@/store/favorite.store";
 
 const PROTOCOLS: Record<ConnectionProtocol, string> = {
   sftp: "SFTP",
   ftp: "FTP",
   ftps: "FTPS",
+  "ftps-implicit": "FTPS (Implicit)",
   s3: "S3",
   smb: "SMB",
 };
@@ -40,6 +42,7 @@ function defaultPort(protocol: ConnectionProtocol): number {
   if (protocol === "sftp") return 22;
   if (protocol === "s3") return 443;
   if (protocol === "smb") return 445;
+  if (protocol === "ftps-implicit") return 990;
   return 21;
 }
 
@@ -94,7 +97,7 @@ function ProtocolSelect({
         className={cn(
           endpoint
             ? "pallet-endpoint-protocol dark:hover:bg-muted/40 h-7 min-w-0 gap-0.5 border-transparent bg-transparent px-1 py-0 font-mono text-[11px] shadow-none data-[size=sm]:h-7 dark:bg-transparent [&>svg]:size-3"
-            : "h-8 w-28 text-[13px] data-[size=sm]:h-8",
+            : "h-8 w-36 text-[13px] data-[size=sm]:h-8",
         )}
       >
         {endpoint ? <span className="text-muted-foreground">{protocol}://</span> : <SelectValue />}
@@ -202,6 +205,7 @@ export function ConnectForm({
   const seedS3 = seed?.protocol === "s3" ? seed : null;
   const initialProtocol = seed?.protocol ?? "sftp";
   const [protocol, setProtocol] = useState<ConnectionProtocol>(initialProtocol);
+  const usesTls = ftpTlsMode(protocol) !== null;
   const [name, setName] = useState(seed?.name ?? "");
   const [server, setServer] = useState(seed?.host ?? "");
   const [port, setPort] = useState(String(seed?.port ?? defaultPort(initialProtocol)));
@@ -328,7 +332,7 @@ export function ConnectForm({
       username: username.trim(),
       authMethod,
       ...(authMethod === "key" && keyPath.trim() ? { privateKeyPath: keyPath.trim() } : {}),
-      ...(protocol === "ftps" ? { tlsRejectUnauthorized } : {}),
+      ...(usesTls ? { tlsRejectUnauthorized } : {}),
       ...(protocol === "smb"
         ? { smbShare: smbShare.trim(), ...(smbDomain.trim() ? { smbDomain: smbDomain.trim() } : {}) }
         : {}),
@@ -381,7 +385,7 @@ export function ConnectForm({
           keepaliveIntervalMs:
             Math.max(0, Number.isFinite(keepaliveSeconds) ? keepaliveSeconds : defaultKeepaliveSeconds) * 1000,
           compression,
-          ...(protocol === "ftps" ? { tlsRejectUnauthorized } : {}),
+          ...(usesTls ? { tlsRejectUnauthorized } : {}),
           ...(protocol === "smb"
             ? { smb: { share: smbShare.trim(), ...(smbDomain.trim() ? { domain: smbDomain.trim() } : {}) } }
             : {}),
@@ -1080,7 +1084,7 @@ export function ConnectForm({
               </div>
             </Row>
           )}
-          {protocol === "ftps" && (
+          {usesTls && (
             <Row
               label="TLS Security"
               layout={fieldLayout}

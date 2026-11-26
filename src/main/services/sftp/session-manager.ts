@@ -26,6 +26,7 @@ import { locationFor, prefixForPath } from "../s3/s3-path";
 import { Client as FtpClient } from "basic-ftp";
 import { createHash } from "crypto";
 import { promises as fs } from "fs";
+import { ftpTlsMode } from "@shared/sftp/sftp.utils";
 
 export interface HostKeyDecisionInput {
   host: string;
@@ -119,7 +120,13 @@ export function parseKeyType(keyBlob: Buffer): string {
 }
 
 export function protocolOf(profile: ConnectProfile): ConnectionProtocol {
-  if (profile.protocol === "ftp" || profile.protocol === "ftps" || profile.protocol === "s3" || profile.protocol === "smb") {
+  if (
+    profile.protocol === "ftp" ||
+    profile.protocol === "ftps" ||
+    profile.protocol === "ftps-implicit" ||
+    profile.protocol === "s3" ||
+    profile.protocol === "smb"
+  ) {
     return profile.protocol;
   }
   return "sftp";
@@ -399,6 +406,7 @@ export class SessionManager {
     if (profile.auth.method !== "password") {
       throw new Error("FTP and FTPS require password authentication");
     }
+    const tls = ftpTlsMode(protocolOf(profile));
     const client = new FtpClient(20_000);
     try {
       await client.access({
@@ -406,10 +414,8 @@ export class SessionManager {
         port: profile.port,
         user: profile.username,
         password: profile.auth.password,
-        secure: protocolOf(profile) === "ftps",
-        ...(protocolOf(profile) === "ftps"
-          ? { secureOptions: { rejectUnauthorized: profile.tlsRejectUnauthorized !== false } }
-          : {}),
+        secure: tls === "explicit" ? true : tls === "implicit" ? "implicit" : false,
+        ...(tls ? { secureOptions: { rejectUnauthorized: profile.tlsRejectUnauthorized !== false } } : {}),
       });
       return client;
     } catch (err) {
@@ -769,7 +775,7 @@ export class SessionManager {
   /** Lease an independent FTP control connection for one transfer/endpoint. */
   async acquireFtpClient(sessionId: string): Promise<{ client: FtpClient; release: (broken?: boolean) => void }> {
     const session = this.mustGet(sessionId);
-    if (protocolOf(session.profile) !== "ftp" && protocolOf(session.profile) !== "ftps") {
+    if (protocolOf(session.profile) !== "ftp" && !ftpTlsMode(protocolOf(session.profile))) {
       throw new Error("Not an FTP session");
     }
     if (session.status !== "connected") {
